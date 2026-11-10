@@ -79,3 +79,6 @@ VALUES (:playlistId, :chatId, :messageId, :addedAt, NULL);
 removeEntry:
 UPDATE playlist_songs SET removed_at = :now
 WHERE playlist_id = :playlistId AND chat_id = :chatId AND message_id = :messageId;
+
+renamePlaylist:
+UPDATE playlists SET name = :name, modified_at = :modifiedAt WHERE id = :id;

@@ -133,3 +133,9 @@ UPDATE songs SET tags_at = 1 WHERE tags_at = 0 AND (user_edited = 1 OR enrich_st
 
 prepareFavoriteAt:
 UPDATE songs SET favorite_at = 1 WHERE favorite_at = 0 AND favorite = 1;
+
+artistRows:
+SELECT * FROM songs WHERE artist = :artist ORDER BY album, title;
+
+markPlayed:
+UPDATE songs SET last_played_at = :at WHERE chat_id = :chatId AND message_id = :messageId;

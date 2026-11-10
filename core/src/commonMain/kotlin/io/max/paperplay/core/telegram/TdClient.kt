@@ -64,6 +64,7 @@ val DefaultTdUpdates = setOf(
     "updateAuthorizationState",
     "updateFile",
     "updateNewMessage",
+    "updateMessageContent",
     "updateDeleteMessages",
     "updateMessageSendSucceeded",
     "updateMessageSendFailed",

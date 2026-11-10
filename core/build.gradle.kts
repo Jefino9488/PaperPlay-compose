@@ -22,6 +22,7 @@ kotlin {
     jvm()
     sourceSets {
         commonMain.dependencies {
+            api(project(":player"))
             api(libs.coroutines.core)
             api(libs.serialization.json)
             api(libs.sqldelight.runtime)
