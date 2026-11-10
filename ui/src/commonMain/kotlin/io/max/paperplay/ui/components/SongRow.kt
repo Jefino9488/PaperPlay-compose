@@ -102,6 +102,7 @@ private fun SongMenu(song: SongUi, actions: SongActions) {
     Box {
         GlyphButton("⋮", "Song options", { open = true })
         DropdownMenu(open, { open = false }) {
+            @Composable
             fun item(text: String, run: () -> Unit) = DropdownMenuItem(
                 text = { Text(text) }, onClick = { open = false; run() },
             )

@@ -3,7 +3,7 @@ package io.max.paperplay.ui.logic
 import io.max.paperplay.ui.state.SongUi
 
 /** Words of a search query, lowercased; blank query gives none. */
-fun searchWords(query: String): List<String> = query.lowercase().split(Regex("\s+")).filter { it.isNotEmpty() }
+fun searchWords(query: String): List<String> = query.lowercase().split(Regex("\\s+")).filter { it.isNotEmpty() }
 
 /** True when title, artist, album or genre together hold every word, in any order. */
 fun SongUi.matches(words: List<String>): Boolean {
