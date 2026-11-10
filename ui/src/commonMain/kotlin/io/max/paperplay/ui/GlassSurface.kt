@@ -28,7 +28,10 @@ fun GlassSurface(
                 blur(8.dp.toPx())
                 lens(12.dp.toPx(), 24.dp.toPx())
             },
-            onDrawSurface = { drawRect(Color.White.copy(alpha = 0.25f)) },
+            onDrawSurface = { drawRect(Color.White.copy(alpha = if (glassEffectsSupported()) 0.25f else 0.6f)) },
         ),
     ) { content() }
 }
+
+/** True when blur/vibrancy RenderEffects work (Android 12+; always on desktop). Below that the surface is a plain translucent tint. */
+internal expect fun glassEffectsSupported(): Boolean
