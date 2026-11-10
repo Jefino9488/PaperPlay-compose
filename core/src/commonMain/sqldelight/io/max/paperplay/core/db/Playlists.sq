@@ -1,0 +1,81 @@
+CREATE TABLE playlists (
+  "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+  "name" TEXT NOT NULL,
+  "uuid" TEXT NOT NULL DEFAULT '',
+  "modified_at" INTEGER NOT NULL DEFAULT 0,
+  "deleted_at" INTEGER,
+  "source_url" TEXT
+);
+
+CREATE TABLE playlist_songs (
+  "playlist_id" INTEGER NOT NULL REFERENCES playlists (id) ON DELETE CASCADE,
+  "chat_id" INTEGER NOT NULL,
+  "message_id" INTEGER NOT NULL,
+  "added_at" INTEGER NOT NULL,
+  "source_added_at" INTEGER,
+  "removed_at" INTEGER,
+  PRIMARY KEY ("playlist_id", "chat_id", "message_id")
+);
+
+CREATE TABLE missing_tracks (
+  "playlist_id" INTEGER NOT NULL REFERENCES playlists (id) ON DELETE CASCADE,
+  "track_key" TEXT NOT NULL,
+  "title" TEXT NOT NULL,
+  "artist" TEXT NOT NULL,
+  "duration_sec" INTEGER NOT NULL DEFAULT 0,
+  "position" INTEGER NOT NULL DEFAULT 0,
+  "source_added_at" INTEGER,
+  PRIMARY KEY ("playlist_id", "track_key")
+);
+
+livePlaylists:
+SELECT * FROM playlists WHERE deleted_at IS NULL;
+
+playlist:
+SELECT * FROM playlists WHERE id = :id;
+
+insertPlaylist:
+INSERT INTO playlists (name, uuid, modified_at, source_url) VALUES (:name, :uuid, :modifiedAt, :sourceUrl);
+
+lastInsertRowId:
+SELECT last_insert_rowid();
+
+markPlaylistDeleted:
+UPDATE playlists SET deleted_at = :now, modified_at = :now WHERE id = :id;
+
+emptyUuidPlaylists:
+SELECT id, name FROM playlists WHERE uuid = '';
+
+setPlaylistUuid:
+UPDATE playlists SET uuid = :uuid WHERE id = :id;
+
+missingTracks:
+SELECT * FROM missing_tracks WHERE playlist_id = :playlistId ORDER BY position ASC;
+
+insertMissingTrack:
+INSERT OR REPLACE INTO missing_tracks VALUES ?;
+
+playlistSongs:
+SELECT songs.* FROM songs
+JOIN playlist_songs ON playlist_songs.chat_id = songs.chat_id AND playlist_songs.message_id = songs.message_id
+WHERE playlist_songs.playlist_id = :playlistId AND playlist_songs.removed_at IS NULL
+ORDER BY playlist_songs.added_at ASC;
+
+sourceDates:
+SELECT chat_id, message_id, source_added_at FROM playlist_songs
+WHERE playlist_id = :playlistId AND removed_at IS NULL AND source_added_at IS NOT NULL;
+
+entriesOf:
+SELECT * FROM playlist_songs WHERE chat_id = :chatId AND message_id = :messageId AND removed_at IS NULL;
+
+reviveEntry:
+UPDATE playlist_songs SET added_at = :addedAt, removed_at = NULL
+WHERE playlist_id = :playlistId AND chat_id = :chatId AND message_id = :messageId;
+
+insertEntry:
+INSERT OR IGNORE INTO playlist_songs (playlist_id, chat_id, message_id, added_at, removed_at)
+VALUES (:playlistId, :chatId, :messageId, :addedAt, NULL);
+
+removeEntry:
+UPDATE playlist_songs SET removed_at = :now
+WHERE playlist_id = :playlistId AND chat_id = :chatId AND message_id = :messageId;

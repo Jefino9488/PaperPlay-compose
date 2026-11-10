@@ -1,0 +1,128 @@
+CREATE TABLE library_chats (
+  "id" INTEGER NOT NULL,
+  "title" TEXT NOT NULL,
+  "last_scanned_message_id" INTEGER,
+  "use_bot" INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0 CHECK ("use_bot" IN (0, 1)),
+  "walk_done" INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0 CHECK ("walk_done" IN (0, 1)),
+  PRIMARY KEY ("id")
+);
+
+CREATE TABLE prefs (
+  "key" TEXT NOT NULL,
+  "value" TEXT NOT NULL,
+  PRIMARY KEY ("key")
+);
+
+CREATE TABLE mood_votes (
+  "chat_id" INTEGER NOT NULL,
+  "message_id" INTEGER NOT NULL,
+  "mood" TEXT NOT NULL,
+  "vote" INTEGER NOT NULL,
+  "at" INTEGER NOT NULL,
+  PRIMARY KEY ("chat_id", "message_id", "mood")
+);
+
+CREATE TABLE forum_topics (
+  "chat_id" INTEGER NOT NULL,
+  "topic_id" INTEGER NOT NULL,
+  "name" TEXT NOT NULL,
+  PRIMARY KEY ("chat_id", "topic_id")
+);
+
+CREATE TABLE post_copies (
+  "chat_id" INTEGER NOT NULL,
+  "message_id" INTEGER NOT NULL,
+  "unique_id" TEXT NOT NULL,
+  "file_name" TEXT NOT NULL,
+  "size" INTEGER NOT NULL,
+  "topic_id" INTEGER,
+  "date" INTEGER NOT NULL,
+  PRIMARY KEY ("chat_id", "message_id")
+);
+
+CREATE TABLE listen_stats (
+  "origin" TEXT NOT NULL,
+  "day" TEXT NOT NULL,
+  "track_key" TEXT NOT NULL,
+  "ms" INTEGER NOT NULL DEFAULT 0,
+  "plays" INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY ("origin", "day", "track_key")
+);
+
+chats:
+SELECT * FROM library_chats;
+
+chatTitle:
+SELECT title FROM library_chats WHERE id = :chatId;
+
+insertChat:
+INSERT OR REPLACE INTO library_chats VALUES ?;
+
+deleteChat:
+DELETE FROM library_chats WHERE id = :chatId;
+
+advanceScanned:
+UPDATE library_chats SET last_scanned_message_id = :messageId
+WHERE id = :chatId AND walk_done = 1 AND COALESCE(last_scanned_message_id, 0) < :messageId;
+
+pref:
+SELECT value FROM prefs WHERE "key" = :key;
+
+setPref:
+INSERT OR REPLACE INTO prefs ("key", "value") VALUES (:key, :value);
+
+deletePref:
+DELETE FROM prefs WHERE "key" = :key;
+
+setMoodVote:
+INSERT OR REPLACE INTO mood_votes VALUES ?;
+
+moodVotes:
+SELECT * FROM mood_votes;
+
+moveMoodVotes:
+UPDATE mood_votes SET chat_id = :toChat, message_id = :toMessage WHERE chat_id = :chatId AND message_id = :messageId;
+
+clearMoodVotes:
+DELETE FROM mood_votes;
+
+topics:
+SELECT * FROM forum_topics ORDER BY name ASC;
+
+saveTopic:
+INSERT OR REPLACE INTO forum_topics (chat_id, topic_id, name) VALUES (:chatId, :topicId, :name);
+
+deleteTopicsOfChat:
+DELETE FROM forum_topics WHERE chat_id = :chatId;
+
+postCopiesOf:
+SELECT * FROM post_copies WHERE unique_id = :uniqueId ORDER BY date ASC;
+
+insertPostCopy:
+INSERT OR REPLACE INTO post_copies VALUES ?;
+
+deletePostCopy:
+DELETE FROM post_copies WHERE chat_id = :chatId AND message_id = :messageId;
+
+deletePostCopiesOfChat:
+DELETE FROM post_copies WHERE chat_id = :chatId;
+
+listenRows:
+SELECT * FROM listen_stats WHERE (:origin IS NULL OR origin = :origin);
+
+addListenUpdate:
+UPDATE listen_stats SET ms = ms + :ms, plays = plays + :plays WHERE origin = :origin AND day = :day AND track_key = :trackKey;
+
+mergeListenUpdate:
+UPDATE listen_stats SET ms = MAX(ms, :ms), plays = MAX(plays, :plays) WHERE origin = :origin AND day = :day AND track_key = :trackKey;
+
+insertListen:
+INSERT OR IGNORE INTO listen_stats (origin, day, track_key, ms, plays) VALUES (:origin, :day, :trackKey, :ms, :plays);
+
+listenTotals:
+SELECT l.track_key AS k, SUM(l.ms) AS ms, SUM(l.plays) AS plays, s.title AS title, s.artist AS artist
+FROM listen_stats l LEFT JOIN songs s ON s.unique_id = l.track_key
+WHERE l.day >= :fromDay GROUP BY l.track_key ORDER BY ms DESC;
+
+listenPerDay:
+SELECT day, SUM(ms) AS ms FROM listen_stats WHERE day >= :fromDay GROUP BY day ORDER BY day;
