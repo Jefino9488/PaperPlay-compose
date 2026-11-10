@@ -29,9 +29,11 @@ private const val USER_SESSION_ENTRY = "usersession.enc"
 private const val COVERS = "covers"
 private const val PROFILE = "profile"
 private const val MAX_COVER = 20L * 1024 * 1024
-private const val MAX_MANIFEST = 256L * 1024 * 1024
+private const val MAX_MANIFEST = 96L * 1024 * 1024
 private const val MAX_CREDENTIALS = 1L * 1024 * 1024
-private const val MAX_SESSION = 128L * 1024 * 1024
+// The session is opened in memory (read, decoded, decrypted), so a big account folder would run a phone out of
+// memory. Above this it is skipped and the person signs in again; nothing uses the restored bytes yet anyway.
+private const val MAX_SESSION = 16L * 1024 * 1024
 private val safeName = Regex("^[\\w.-]+$")
 private val camel = Regex("([A-Z])")
 
@@ -56,6 +58,7 @@ class BackupRestorer {
         var manifest: ByteArray? = null,
         var credentials: ByteArray? = null,
         var session: ByteArray? = null,
+        var sessionTooBig: Boolean = false,
         val covers: MutableSet<String> = mutableSetOf(),
         var profile: String? = null,
         val unknown: MutableList<String> = mutableListOf(),
@@ -83,7 +86,10 @@ class BackupRestorer {
                 when {
                     e.name == MANIFEST -> scan.manifest = e.readBytes(MAX_MANIFEST) ?: throw BackupException("This backup is damaged.")
                     e.name == CREDENTIALS -> scan.credentials = e.readBytes(MAX_CREDENTIALS)
-                    e.name == USER_SESSION_ENTRY -> scan.session = e.readBytes(MAX_SESSION)
+                    e.name == USER_SESSION_ENTRY -> {
+                        scan.session = e.readBytes(MAX_SESSION)
+                        if (scan.session == null) scan.sessionTooBig = true
+                    }
                     parts.size == 2 && parts[0] == COVERS && safeName.matches(parts[1]) -> {
                         val bytes = e.readBytes(MAX_COVER)
                         if (bytes == null) scan.tooBig++ else {
@@ -241,6 +247,7 @@ class BackupRestorer {
         // The session is Flutter's zip of the account's TDLib folder plus `__key` (its database key). It is stored
         // as it came: re-keying needs TDLib, and Telegram may have ended it since (one device at a time).
         when {
+            scan.sessionTooBig -> out += RestoreItem("Account session", Outcome.Skipped, "too large to carry over; sign in again later")
             scan.session == null -> {}
             session == null -> out += RestoreItem("Account session", Outcome.Skipped, "needs the backup password")
             else -> item("Account session", true) { store.put(SecretKeys.USER_SESSION, session) }
