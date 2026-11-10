@@ -85,7 +85,7 @@ fun CredentialsForm(onSave: (apiId: String, apiHash: String, token: String) -> S
 }
 
 @Composable
-fun SetupScreen(backend: CoreBackend, onSaved: () -> Unit) {
+fun SetupScreen(backend: CoreBackend, onSaved: () -> Unit, onRestore: () -> Unit) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.Center) {
         Text("Paper Play", style = MaterialTheme.typography.displaySmall)
         Text(
@@ -94,6 +94,7 @@ fun SetupScreen(backend: CoreBackend, onSaved: () -> Unit) {
             Modifier.padding(vertical = 12.dp), color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         CredentialsForm(backend::saveCredentials, onSaved)
+        OutlinedButton(onRestore, Modifier.fillMaxWidth().padding(top = 16.dp)) { Text("Restore everything from a backup") }
     }
 }
 

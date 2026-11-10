@@ -73,6 +73,20 @@ fun streamBackupSource(open: () -> InputStream) = BackupSource { visit ->
                         out.write(buf, 0, n)
                     }
                 }
+                override fun copyTo(path: String): Long {
+                    val file = File(path).apply { parentFile?.mkdirs() }
+                    var total = 0L
+                    file.outputStream().buffered(256 * 1024).use { out ->
+                        val buf = ByteArray(256 * 1024)
+                        while (true) {
+                            val n = zip.read(buf)
+                            if (n < 0) break
+                            out.write(buf, 0, n)
+                            total += n
+                        }
+                    }
+                    return total
+                }
             })
         }
     }
@@ -98,4 +112,95 @@ open class FileSecretStore(
     }
     override fun get(key: String) = file(key).takeIf { it.exists() }?.let { unprotect(it.readBytes()) }
     override fun remove(key: String) { file(key).delete() }
+}
+
+private val SESSION_DATA_KEY = "\"data\":\"".encodeToByteArray()
+
+/** Reads up to and including the `"data":"` marker; returns what came before it (the small salt/nonce/mac part). */
+private fun readSealedHead(input: InputStream): String {
+    val head = java.io.ByteArrayOutputStream()
+    var matched = 0
+    while (true) {
+        val b = input.read()
+        if (b < 0 || head.size() > 4096) throw IllegalArgumentException("Sealed data is damaged.")
+        head.write(b)
+        matched = if (b.toByte() == SESSION_DATA_KEY[matched]) matched + 1 else if (b.toByte() == SESSION_DATA_KEY[0]) 1 else 0
+        if (matched == SESSION_DATA_KEY.size) break
+    }
+    return head.toByteArray().decodeToString().removeSuffix("\"data\":\"") + "\"data\":\"\"}"
+}
+
+/** The base64 text of the data value as a byte stream, ending at its closing quote. */
+private class QuotedBase64(private val input: InputStream) : InputStream() {
+    private var done = false
+    override fun read(): Int {
+        if (done) return -1
+        val b = input.read()
+        if (b < 0 || b == '"'.code) { done = true; return -1 }
+        return b
+    }
+    override fun read(buf: ByteArray, off: Int, len: Int): Int {
+        if (done) return -1
+        val n = input.read(buf, off, len)
+        if (n < 0) { done = true; return -1 }
+        for (i in off until off + n) {
+            if (buf[i] == '"'.code.toByte()) { done = true; return if (i == off) -1 else i - off }
+        }
+        return n
+    }
+}
+
+actual fun openSealedFile(sealedPath: String, password: String, outPath: String) {
+    File(sealedPath).inputStream().buffered(256 * 1024).use { input ->
+        val head = try {
+            Json.parseToJsonElement(readSealedHead(input)).jsonObject
+        } catch (_: IllegalArgumentException) {
+            throw IllegalArgumentException("Sealed data is damaged.")
+        } catch (_: Exception) {
+            throw IllegalArgumentException("Sealed data is damaged.")
+        }
+        val b64 = Base64.getDecoder()
+        val salt: ByteArray; val nonce: ByteArray
+        try {
+            salt = b64.decode(head.getValue("salt").jsonPrimitive.content)
+            nonce = b64.decode(head.getValue("nonce").jsonPrimitive.content)
+        } catch (_: Exception) {
+            throw IllegalArgumentException("Sealed data is damaged.")
+        }
+        if (nonce.size != 12) throw IllegalArgumentException("Sealed data is damaged.")
+        val key = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
+            .generateSecret(PBEKeySpec(password.toCharArray(), salt, KDF_ITERATIONS, 256)).encoded
+        // GCM encrypts with AES in counter mode, the counter starting at nonce || 2 (block 1 is the tag mask).
+        val counter = nonce + byteArrayOf(0, 0, 0, 2)
+        val cipher = Cipher.getInstance("AES/CTR/NoPadding").apply {
+            init(Cipher.DECRYPT_MODE, SecretKeySpec(key, "AES"), javax.crypto.spec.IvParameterSpec(counter))
+        }
+        File(outPath).apply { parentFile?.mkdirs() }.outputStream().buffered(256 * 1024).use { out ->
+            b64.wrap(QuotedBase64(input)).use { data ->
+                val buf = ByteArray(256 * 1024)
+                while (true) {
+                    val n = data.read(buf)
+                    if (n < 0) break
+                    out.write(cipher.update(buf, 0, n))
+                }
+            }
+        }
+    }
+}
+
+actual fun extractSessionZip(zipPath: String, targetDir: String): ByteArray? {
+    var key: ByteArray? = null
+    val root = File(targetDir).apply { mkdirs() }.canonicalFile
+    ZipInputStream(File(zipPath).inputStream().buffered(256 * 1024)).use { zip ->
+        while (true) {
+            val e = zip.nextEntry ?: break
+            if (e.isDirectory) continue
+            if (e.name == "__key") { key = zip.readBytes(); continue }
+            val file = File(root, e.name).canonicalFile
+            if (!file.path.startsWith(root.path + File.separator)) continue // never write outside the folder
+            file.parentFile?.mkdirs()
+            file.outputStream().buffered(256 * 1024).use { zip.copyTo(it) }
+        }
+    }
+    return key
 }

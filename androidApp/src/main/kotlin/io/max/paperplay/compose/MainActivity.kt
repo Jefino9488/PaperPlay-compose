@@ -37,6 +37,7 @@ class MainActivity : ComponentActivity() {
             File(filesDir, "covers").path,
             File(filesDir, "profile").path,
             androidSecretStore(File(filesDir, "secrets")),
+            File(filesDir, "user_td").path.replace(File.separatorChar, '/'),
         ) { libraryDriver(applicationContext, it) }
         setContent {
             // Remembered, so a recomposition while the picker is open does not forget who asked.

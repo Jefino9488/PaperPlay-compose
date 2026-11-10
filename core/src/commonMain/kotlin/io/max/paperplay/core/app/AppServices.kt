@@ -11,6 +11,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -29,7 +30,8 @@ class AppServices(
     val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
     clock: () -> Long = { Clock.System.now().toEpochMilliseconds() },
 ) {
-    val db = LibraryDatabase(platform.openDriver("${platform.dataDir}/library.sqlite"))
+    private val driver = platform.openDriver("${platform.dataDir}/library.sqlite")
+    val db = LibraryDatabase(driver)
     val library = LibraryRepository(LibraryRepo(db, clock), clock)
     val scanner = Scanner(library, scope)
     val resolver = TrackResolver { client }
@@ -104,6 +106,15 @@ class AppServices(
                 _error.value = e.message ?: e::class.simpleName
             }
         }
+    }
+
+    /**
+     * Stops background work and closes the library file, so a restore can replace it (Windows will not rename an open
+     * file). Use it only before [connect]; once connected, [disconnect] first.
+     */
+    fun close() {
+        scope.cancel()
+        runCatching { driver.close() }
     }
 
     /** Adds a library chat and reads it. */

@@ -17,7 +17,7 @@ fun desktopSecretStore(dir: File): SecretStore =
 /** Library, covers, profile and secrets all under [dir]. */
 fun desktopRestoreTarget(dir: File): RestoreTarget {
     val d = dir.path.replace(File.separatorChar, '/')
-    return RestoreTarget("$d/library.sqlite", "$d/covers", "$d/profile", desktopSecretStore(File(dir, "secrets"))) {
+    return RestoreTarget("$d/library.sqlite", "$d/covers", "$d/profile", desktopSecretStore(File(dir, "secrets")), "$d/user_td") {
         io.max.paperplay.core.db.libraryDriver(it)
     }
 }

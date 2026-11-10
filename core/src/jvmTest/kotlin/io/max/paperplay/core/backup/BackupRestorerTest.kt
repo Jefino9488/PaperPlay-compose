@@ -39,7 +39,7 @@ class BackupRestorerTest {
         val dir: File = Files.createTempDirectory("restore").toFile().also { it.deleteOnExit() }
         val secrets = MemSecrets()
         val db = "${dir.path.replace('\\', '/')}/library.sqlite"
-        val target = RestoreTarget(db, "${dir.path.replace('\\', '/')}/covers", "${dir.path.replace('\\', '/')}/profile", secrets) { libraryDriver(it) }
+        val target = RestoreTarget(db, "${dir.path.replace('\\', '/')}/covers", "${dir.path.replace('\\', '/')}/profile", secrets, "${dir.path.replace('\\', '/')}/user_td") { libraryDriver(it) }
         fun query(sql: String): List<List<String?>> = DriverManager.getConnection("jdbc:sqlite:$db").use { c ->
             c.createStatement().executeQuery(sql).use { rs ->
                 buildList { while (rs.next()) add((1..rs.metaData.columnCount).map { rs.getString(it) }) }
@@ -123,7 +123,11 @@ class BackupRestorerTest {
         assertEquals(token, env.secrets.get(SecretKeys.BOT_TOKEN)!!.decodeToString())
         assertEquals("""["b2"]""", env.secrets.get(SecretKeys.EXTRA_BOTS)!!.decodeToString())
         assertEquals("rt", env.secrets.get(SecretKeys.SPOTIFY_REFRESH_TOKEN)!!.decodeToString())
-        assertContentEquals(session, env.secrets.get(SecretKeys.USER_SESSION))
+        // The account folder is unpacked on disk and its database key kept as a secret.
+        assertContentEquals("dbkey".toByteArray(), env.secrets.get(SecretKeys.USER_SESSION_KEY))
+        assertContentEquals(byteArrayOf(1, 2, 3), File(env.dir, "user_td/db.sqlite").readBytes())
+        assertFalse(File(env.dir, "user_td/__key").exists())
+        assertTrue(r.of(Outcome.Restored).any { it.name == "Account session" })
         assertEquals(listOf("Unrecognized entries"), r.of(Outcome.Skipped).map { it.name }.filter { it.startsWith("Unrec") })
         assertTrue(r.of(Outcome.Failed).isEmpty())
         assertFalse(File(env.db + ".new").exists() || File(env.db + ".restoring").exists())

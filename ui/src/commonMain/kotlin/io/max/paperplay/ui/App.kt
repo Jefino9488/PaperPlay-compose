@@ -29,17 +29,21 @@ fun App(env: AppEnv) {
                 skipLabel = "Set up without a backup",
             )
         } else {
-            Main(env)
+            Main(env, onRestore = { restoring = true })
         }
     }
 }
 
 @Composable
-private fun Main(env: AppEnv) {
+private fun Main(env: AppEnv, onRestore: () -> Unit) {
     val backend = remember { CoreBackend(env.createServices()) }
     var hasCredentials by remember { mutableStateOf(backend.services.hasCredentials) }
     LaunchedEffect(hasCredentials) {
         if (hasCredentials) backend.connect()
     }
-    if (hasCredentials) MainShell(backend) else SetupScreen(backend) { hasCredentials = true }
+    if (hasCredentials) MainShell(backend) else SetupScreen(backend, onSaved = { hasCredentials = true }, onRestore = {
+        // The library file must be closed before a restore replaces it.
+        backend.services.close()
+        onRestore()
+    })
 }

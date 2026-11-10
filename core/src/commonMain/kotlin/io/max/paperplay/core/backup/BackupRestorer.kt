@@ -31,9 +31,6 @@ private const val PROFILE = "profile"
 private const val MAX_COVER = 20L * 1024 * 1024
 private const val MAX_MANIFEST = 96L * 1024 * 1024
 private const val MAX_CREDENTIALS = 1L * 1024 * 1024
-// The session is opened in memory (read, decoded, decrypted), so a big account folder would run a phone out of
-// memory. Above this it is skipped and the person signs in again; nothing uses the restored bytes yet anyway.
-private const val MAX_SESSION = 16L * 1024 * 1024
 private val safeName = Regex("^[\\w.-]+$")
 private val camel = Regex("([A-Z])")
 
@@ -57,8 +54,9 @@ class BackupRestorer {
     private class Scanned(
         var manifest: ByteArray? = null,
         var credentials: ByteArray? = null,
-        var session: ByteArray? = null,
-        var sessionTooBig: Boolean = false,
+        /** The sealed account session was in the backup. It is streamed to [sessionFile] because it can be hundreds of MB. */
+        var sessionPresent: Boolean = false,
+        var sessionFile: String? = null,
         val covers: MutableSet<String> = mutableSetOf(),
         var profile: String? = null,
         val unknown: MutableList<String> = mutableListOf(),
@@ -87,8 +85,12 @@ class BackupRestorer {
                     e.name == MANIFEST -> scan.manifest = e.readBytes(MAX_MANIFEST) ?: throw BackupException("This backup is damaged.")
                     e.name == CREDENTIALS -> scan.credentials = e.readBytes(MAX_CREDENTIALS)
                     e.name == USER_SESSION_ENTRY -> {
-                        scan.session = e.readBytes(MAX_SESSION)
-                        if (scan.session == null) scan.sessionTooBig = true
+                        scan.sessionPresent = true
+                        if (target.userSessionDir != null) {
+                            progress("Reading the account session", 0.03)
+                            e.copyTo("$staging/session.enc")
+                            scan.sessionFile = "$staging/session.enc"
+                        }
                     }
                     parts.size == 2 && parts[0] == COVERS && safeName.matches(parts[1]) -> {
                         val bytes = e.readBytes(MAX_COVER)
@@ -121,7 +123,23 @@ class BackupRestorer {
         // Sealed data is opened first, so a wrong password stops the restore before anything changes.
         val pw = options.password
         val creds: JsonObject? = scan.credentials?.let { if (pw == null) null else parseCredentials(it, pw) }
-        val session: ByteArray? = scan.session?.let { if (pw == null) null else openSession(it, pw) }
+        // The account session is far too big to hold in memory: it is decrypted file to file and unpacked on disk.
+        // It is optional, so a session that can't be opened costs only itself, never the library.
+        var sessionKey: ByteArray? = null
+        val sessionFile = scan.sessionFile
+        if (sessionFile != null && pw != null) {
+            progress("Opening the account session", 0.06)
+            sessionKey = try {
+                openSealedFile(sessionFile, pw, "$staging/session.zip")
+                Fs.deleteRecursively(sessionFile)
+                extractSessionZip("$staging/session.zip", "$staging/user_td").also { Fs.deleteRecursively("$staging/session.zip") }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                Fs.deleteRecursively("$staging/user_td")
+                null
+            }
+        }
 
         progress("Building the library", 0.1)
         val newDb = target.libraryPath + ".new"
@@ -139,6 +157,7 @@ class BackupRestorer {
         val moves = mutableListOf(newDb to target.libraryPath)
         moves += "$staging/$COVERS" to target.coversDir
         if (scan.profile != null) moves += "$staging/$PROFILE" to target.profileDir
+        if (sessionKey != null && target.userSessionDir != null) moves += "$staging/user_td" to target.userSessionDir
         try {
             swap(moves, target.libraryPath)
         } catch (e: Exception) {
@@ -160,7 +179,21 @@ class BackupRestorer {
         else RestoreItem("Profile picture", Outcome.Skipped, "none in the backup")
 
         progress("Saving credentials", 0.97)
-        items += storeSecrets(target.secrets, scan, creds, session)
+        items += storeSecrets(target.secrets, scan, creds)
+        if (scan.sessionPresent) {
+            items += when {
+                target.userSessionDir == null -> RestoreItem("Account session", Outcome.Skipped, "not supported on this device")
+                pw == null -> RestoreItem("Account session", Outcome.Skipped, "needs the backup password")
+                sessionKey == null -> RestoreItem("Account session", Outcome.Skipped, "could not be opened; sign in again later")
+                else -> try {
+                    target.secrets.put(SecretKeys.USER_SESSION_KEY, sessionKey)
+                    RestoreItem("Account session", Outcome.Restored)
+                } catch (e: Exception) {
+                    if (e is CancellationException) throw e
+                    RestoreItem("Account session", Outcome.Failed, "could not be saved")
+                }
+            }
+        }
         if (scan.unknown.isNotEmpty()) items += RestoreItem("Unrecognized entries", Outcome.Skipped, "${scan.unknown.size} not understood")
         progress("Done", 1.0)
         return RestoreResult(songCount, items)
@@ -208,13 +241,7 @@ class BackupRestorer {
         }
     }
 
-    private fun openSession(sealed: ByteArray, password: String): ByteArray = try {
-        openSealed(sealed.decodeToString(), password)
-    } catch (_: IllegalArgumentException) {
-        throw BackupException("The account session in this backup is damaged.")
-    }
-
-    private fun storeSecrets(store: SecretStore, scan: Scanned, creds: JsonObject?, session: ByteArray?): List<RestoreItem> {
+    private fun storeSecrets(store: SecretStore, scan: Scanned, creds: JsonObject?): List<RestoreItem> {
         val out = mutableListOf<RestoreItem>()
         fun item(name: String, present: Boolean, block: () -> Unit) {
             if (!present) return
@@ -243,14 +270,6 @@ class BackupRestorer {
                 str("spotifyClientId")?.let { put(SecretKeys.SPOTIFY_CLIENT_ID, it) }
             }
             item("ListenBrainz", str("listenBrainzToken") != null) { put(SecretKeys.LISTENBRAINZ_TOKEN, str("listenBrainzToken")!!) }
-        }
-        // The session is Flutter's zip of the account's TDLib folder plus `__key` (its database key). It is stored
-        // as it came: re-keying needs TDLib, and Telegram may have ended it since (one device at a time).
-        when {
-            scan.sessionTooBig -> out += RestoreItem("Account session", Outcome.Skipped, "too large to carry over; sign in again later")
-            scan.session == null -> {}
-            session == null -> out += RestoreItem("Account session", Outcome.Skipped, "needs the backup password")
-            else -> item("Account session", true) { store.put(SecretKeys.USER_SESSION, session) }
         }
         return out
     }

@@ -32,6 +32,9 @@ interface BackupEntry {
 
     /** The whole entry, or null if it is larger than [limit] bytes. */
     fun readBytes(limit: Long): ByteArray?
+
+    /** Streams the whole entry into the file at [path] without holding it in memory; returns its size in bytes. */
+    fun copyTo(path: String): Long
 }
 
 /** Where a backup zip comes from. [scan] calls [visit] for each entry, one pass. */
@@ -52,6 +55,8 @@ class RestoreTarget(
     val coversDir: String,
     val profileDir: String,
     val secrets: SecretStore,
+    /** Where the account's TDLib folder from the backup goes; null leaves the account session out. */
+    val userSessionDir: String? = null,
     /** Opens (creating or upgrading) a library database at a path; used on a temp file and on the old library. */
     val openDriver: (path: String) -> SqlDriver,
 )
@@ -93,4 +98,7 @@ object SecretKeys {
     const val LISTENBRAINZ_TOKEN = "listenBrainzToken"
     /** Flutter's zip of the account's TDLib folder plus a `__key` entry holding its database key. */
     const val USER_SESSION = "usersession"
+
+    /** The database key of the restored account folder (the `__key` entry of the session zip). */
+    const val USER_SESSION_KEY = "usersessionKey"
 }

@@ -16,3 +16,16 @@ expect object Fs {
  * Throws [WrongPassword] if the password does not open it, [IllegalArgumentException] if malformed.
  */
 expect fun openSealed(sealed: String, password: String): ByteArray
+
+/**
+ * Like [openSealed], but for data too big for memory: reads the sealed JSON at [sealedPath] as a stream and writes the
+ * plain bytes to [outPath]. The data part is opened with the cipher's counter stream, so the GCM tag is not checked
+ * here; the caller has already opened the (small) credentials with the same password, and a wrong result is not a zip.
+ */
+expect fun openSealedFile(sealedPath: String, password: String, outPath: String)
+
+/**
+ * Unpacks the account session zip at [zipPath] into [targetDir] and returns the bytes of its `__key` entry, or null
+ * if there is none. Unsafe entry names are never written.
+ */
+expect fun extractSessionZip(zipPath: String, targetDir: String): ByteArray?
