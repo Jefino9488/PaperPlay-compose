@@ -1,0 +1,58 @@
+-- Queries for the LAN library sync (package core.sync). Tables are defined in the other .sq files.
+
+songsDelta:
+SELECT * FROM songs
+WHERE (:afterRowId > 0 AND rowid > :afterRowId) OR tags_at > :since OR favorite_at > :since
+  OR last_played_at > :since OR cover_at > :since OR mood_scanned_at > :since;
+
+maxSongRowId:
+SELECT COALESCE(MAX(rowid), 0) FROM songs;
+
+allPostCopies:
+SELECT * FROM post_copies;
+
+allPlaylists:
+SELECT * FROM playlists;
+
+allEntries:
+SELECT * FROM playlist_songs;
+
+allMissing:
+SELECT * FROM missing_tracks;
+
+playlistByUuid:
+SELECT * FROM playlists WHERE uuid = :uuid;
+
+insertPlaylistRow:
+INSERT INTO playlists (name, uuid, modified_at, deleted_at, source_url) VALUES (:name, :uuid, :modifiedAt, :deletedAt, :sourceUrl);
+
+updatePlaylistRow:
+UPDATE playlists SET name = :name, modified_at = :modifiedAt, deleted_at = :deletedAt, source_url = :sourceUrl WHERE id = :id;
+
+entriesOfPlaylist:
+SELECT * FROM playlist_songs WHERE playlist_id = :playlistId;
+
+setEntrySourceDate:
+UPDATE playlist_songs SET source_added_at = :at WHERE playlist_id = :playlistId AND chat_id = :chatId AND message_id = :messageId;
+
+upsertEntry:
+INSERT OR REPLACE INTO playlist_songs VALUES ?;
+
+insertTopicIgnore:
+INSERT OR IGNORE INTO forum_topics (chat_id, topic_id, name) VALUES (:chatId, :topicId, :name);
+
+insertCopyIgnore:
+INSERT OR IGNORE INTO post_copies VALUES ?;
+
+setChatScanned:
+UPDATE library_chats SET last_scanned_message_id = :scanned, walk_done = :walkDone WHERE id = :id;
+
+-- Only the columns a merge may change. Cover, cache and pin stay per device.
+writeMerged:
+UPDATE songs SET title = :title, artist = :artist, album = :album, duration_sec = :durationSec,
+  release_id = :releaseId, cover_url = :coverUrl, genre = :genre, year = :year, metadata_source = :metadataSource,
+  user_edited = :userEdited, enrich_state = :enrichState, lyrics = :lyrics, tags_at = :tagsAt,
+  sample_rate = :sampleRate, bit_depth = :bitDepth, codec = :codec, favorite = :favorite, favorite_at = :favoriteAt,
+  mood_scanned_at = :moodScannedAt, instrumental = :instrumental, plays = :plays, skips = :skips,
+  last_played_at = :lastPlayedAt
+WHERE chat_id = :chatId AND message_id = :messageId;
