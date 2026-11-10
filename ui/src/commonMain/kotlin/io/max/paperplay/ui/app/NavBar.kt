@@ -7,6 +7,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.clickable
@@ -65,7 +66,7 @@ private val entries = listOf(
 
 /** The bottom bar: floating glass or docked, laid out by the nav style prefs. */
 @Composable
-fun NavBar(selected: Int, backdrop: Backdrop, prefs: UiPrefs, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
+fun NavBar(selected: Int, backdrop: Backdrop, prefs: UiPrefs, inset: Dp, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
     val layout = prefs.navLayout
     val labels = layout == NavLayout.Labels || layout == NavLayout.Dock
     val glass = prefs.look(LookGroup.Nav) == Look.Glass
@@ -79,7 +80,9 @@ fun NavBar(selected: Int, backdrop: Backdrop, prefs: UiPrefs, onSelect: (Int) ->
     }
     val bar = modifier.fillMaxWidth().height(height)
     when {
-        docked -> Box(bar.background(MaterialTheme.colorScheme.surface).border(BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)), RectangleShape)) { items() }
+        docked -> {
+            Box(modifier.fillMaxWidth().height(height + inset).background(MaterialTheme.colorScheme.surface)) { Box(Modifier.fillMaxSize().padding(bottom = inset)) { items() } }
+        }
         glass -> GlassSurface(backdrop, bar, cornerRadius = corner, blur = prefs.glassBlur.dp, tintAlpha = prefs.glassTint) { items() }
         else -> Box(bar.clip(RoundedCornerShape(corner)).background(MaterialTheme.colorScheme.surfaceContainerHigh)) { items() }
     }

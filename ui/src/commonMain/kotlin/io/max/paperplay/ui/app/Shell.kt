@@ -85,7 +85,8 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit) {
     val songs = (lib.songs as? Load.Ready)?.value.orEmpty()
     val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val bottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    val barsHeight = (if (pb.current != null) 68.dp + 8.dp else 0.dp) + 64.dp + 24.dp + bottomInset
+    val navHeight = if (prefs.navLayout == NavLayout.Labels || prefs.navLayout == NavLayout.Dock) 76.dp else 64.dp
+    val barsHeight = (if (pb.current != null) 70.dp + 8.dp else 0.dp) + navHeight + (if (prefs.floatingNav) 24.dp else 0.dp) + bottomInset
     val currentId = pb.current?.id
 
     CompositionLocalProvider(LocalCoverLoader provides loader) {
@@ -102,13 +103,13 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit) {
                 }
             }
             Column(
-                Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(start = 24.dp, end = 24.dp, bottom = 12.dp + bottomInset),
+                Modifier.align(Alignment.BottomCenter).fillMaxWidth().then(if (prefs.floatingNav) Modifier.padding(start = 24.dp, end = 24.dp, bottom = 12.dp + bottomInset) else Modifier),
             ) {
                 if (pb.current != null) {
-                    MiniPlayer(pb, { showPlayer = true }, backend::togglePlay, backend::next, backend::previous)
+                    MiniPlayer(pb, { showPlayer = true }, backend::togglePlay, backend::next, backend::previous, if (prefs.floatingNav) Modifier else Modifier.padding(horizontal = 8.dp))
                     Box(Modifier.height(8.dp))
                 }
-                NavBar(if (settings) 3 else tab, backdrop, prefs, { tab = it; detail = null; settings = false; settingsStack.clear() })
+                NavBar(if (settings) 3 else tab, backdrop, prefs, bottomInset, { tab = it; detail = null; settings = false; settingsStack.clear() })
             }
             if (showPlayer) FullPlayer(pb, pbError, backend, { showPlayer = false }, Modifier.padding(top = top))
             SnackbarHost(snack, Modifier.align(Alignment.TopCenter).padding(top = top))
