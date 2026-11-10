@@ -31,7 +31,7 @@ class LibraryFilingStore(private val repo: LibraryRepo) : FilingStore {
     private val misc get() = repo.db.miscQueries
 
     override fun pref(key: String) = repo.pref(key)
-    override fun setPref(key: String, value: String) = repo.setPref(key, value)
+    override fun setPref(key: String, value: String) { repo.setPref(key, value) }
     override fun mainChatId() = parseMainChat(pref(MAIN_CHAT_KEY))
     override fun songs(): List<Song> = songsQ.allSongs().executeAsList()
     override fun song(chatId: Long, messageId: Long) = songsQ.song(chatId, messageId).executeAsOneOrNull()

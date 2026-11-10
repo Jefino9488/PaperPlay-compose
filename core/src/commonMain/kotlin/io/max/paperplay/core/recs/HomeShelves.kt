@@ -45,7 +45,7 @@ object HomeShelves {
         gone: Map<String, Long> = emptyMap(),
     ): HomeMix = withContext(Dispatchers.Default) {
         val ctx = currentCoroutineContext()
-        val live = DeletedSongs.without(songs, gone)
+        val live = songs.filter { it.unique_id !in gone }
         val random = Random(day.year * 1000 + day.month * 40 + day.day)
         val seen = HashSet<String>()
         // Songs on an album look the same on a shelf, even though each has its own file.
@@ -77,7 +77,7 @@ object HomeShelves {
         }
 
         // Single-song "albums" would just repeat the song, so only real ones count.
-        val albums = groupBy { it.album }.apply { entries.removeAll { it.value.size < 2 } }
+        val albums = groupBy { it.album }.apply { entries.removeIf { e -> e.value.size < 2 } }
         val artists = groupBy { firstArtist(it.artist) }
         val genres = groupBy { it.genre }
 
@@ -103,7 +103,7 @@ object HomeShelves {
             groupShelf(title, kind, pool)?.let { shelves.add(it) }
         }
 
-        addSongs("Recently played", DeletedSongs.without(recent, gone))
+        addSongs("Recently played", recent.filter { it.unique_id !in gone })
 
         // Chosen here, though shown further down: each album can only appear once on the page, and rows of songs
         // would otherwise use them all up first.
@@ -126,7 +126,7 @@ object HomeShelves {
         addSongs("Picked for today", shuffled(live.filter { it.last_played_at == null }))
 
         // What's been played lately decides what to suggest more of.
-        val liveRecent = DeletedSongs.without(recent, gone)
+        val liveRecent = recent.filter { it.unique_id !in gone }
         val recentArtists = liveRecent.mapTo(LinkedHashSet()) { firstArtist(it.artist) }
         for (a in recentArtists.filter { (artists[it]?.size ?: 0) >= SHELF_MIN }.take(2)) {
             addSongs("More from $a", shuffled(artists.getValue(a)))
@@ -141,12 +141,12 @@ object HomeShelves {
         ctx.ensureActive()
 
         addGroups("Artists", ShelfKind.ARTISTS, shuffled(artists.entries.filter { it.value.size >= 2 }))
-        addSongs("Your favorites", shuffled(DeletedSongs.without(favorites, gone)))
+        addSongs("Your favorites", shuffled(favorites.filter { it.unique_id !in gone }))
 
         val stale = day.epochMs - STALE_AFTER_MS
         addSongs(
             "Back in rotation",
-            live.filter { it.last_played_at != null && it.last_played_at!! < stale }.sortedBy { it.last_played_at },
+            live.filter { it.last_played_at != null && it.last_played_at < stale }.sortedBy { it.last_played_at ?: Long.MAX_VALUE },
         )
 
         // Whatever hasn't appeared yet, so the page keeps offering something new.
