@@ -1,0 +1,3 @@
+-- Reads filing needs across all rows; the tables live in Misc.sq.
+allPostCopies:
+SELECT * FROM post_copies;
