@@ -8,6 +8,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import io.max.paperplay.core.app.AppServices
 import io.max.paperplay.core.backup.BackupRestorer
@@ -45,8 +46,10 @@ class MainActivity : ComponentActivity() {
             }
             // The media notification needs this on Android 13 and later; playing works without it.
             val notifications = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
-            val env = remember {
+            LaunchedEffect(Unit) {
                 if (Build.VERSION.SDK_INT >= 33) notifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+            val env = remember {
                 AppEnv(
                     restore = RestoreHooks(
                         pickBackup = { onPicked -> pending[0] = onPicked; picker.launch(arrayOf("*/*")) },
