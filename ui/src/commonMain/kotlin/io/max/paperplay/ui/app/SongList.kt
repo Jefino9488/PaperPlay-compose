@@ -13,7 +13,18 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.Sort
+import androidx.compose.material.icons.rounded.ArrowDownward
+import androidx.compose.material.icons.rounded.ArrowUpward
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Shuffle
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.ui.draw.clip
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
@@ -98,18 +109,33 @@ fun SongList(
                 TextButton({ selection = Selection() }) { Text("Clear") }
             }
         } else if (searchable) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(
-                    query, { query = it }, Modifier.weight(1f), singleLine = true,
-                    placeholder = { Text("Search songs, artists, albums") },
-                    shape = RoundedCornerShape(28.dp),
-                )
-                if (sortable) Box {
-                    TextButton({ sortMenu = true }) { Text("Sort") }
+            PillField(query, { query = it }, "Search songs, artists, albums", Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+        }
+        LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(bottom = bottomPadding)) {
+            if (header != null) item { header() }
+            if (shown.isNotEmpty()) item {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        Modifier.size(60.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer).clickable { actions.play(shown, 0) },
+                        contentAlignment = Alignment.Center,
+                    ) { Icon(Icons.Rounded.PlayArrow, "Play", Modifier.size(32.dp), tint = MaterialTheme.colorScheme.onPrimaryContainer) }
+                    IconButton({ actions.shuffle(shown) }, Modifier.padding(start = 12.dp)) { Icon(Icons.Rounded.Shuffle, "Shuffle") }
+                    val mins = shown.sumOf { it.durationSec } / 60
+                    Text(
+                        "${shown.size} songs · " + (if (mins >= 60) "${mins / 60} hr " else "") + "${mins % 60} min",
+                        Modifier.padding(start = 12.dp), style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+                if (sortable) Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp), contentAlignment = Alignment.CenterEnd) {
+                    Row(Modifier.clip(RoundedCornerShape(12.dp)).clickable { sortMenu = true }.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.AutoMirrored.Rounded.Sort, null, Modifier.size(20.dp))
+                        Text(sort.label, Modifier.padding(horizontal = 8.dp), style = MaterialTheme.typography.bodyMedium)
+                        Icon(if (reverse) Icons.Rounded.ArrowUpward else Icons.Rounded.ArrowDownward, null, Modifier.size(20.dp))
+                    }
                     DropdownMenu(sortMenu, { sortMenu = false }) {
                         SongSort.entries.forEach { s ->
                             DropdownMenuItem(
-                                text = { Text(s.label + if (s == sort) (if (reverse) "  ↑" else "  ↓") else "") },
+                                text = { Text(s.label) },
                                 onClick = {
                                     if (s == sort) reverse = !reverse else { sort = s; reverse = false }
                                     sortMenu = false
@@ -117,16 +143,6 @@ fun SongList(
                             )
                         }
                     }
-                }
-            }
-        }
-        LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(bottom = bottomPadding)) {
-            if (header != null) item { header() }
-            if (shown.isNotEmpty()) item {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button({ actions.play(shown, 0) }) { Text("Play") }
-                    OutlinedButton({ actions.shuffle(shown) }) { Text("Shuffle") }
-                    Text("${shown.size} songs", Modifier.padding(start = 4.dp).align(Alignment.CenterVertically), style = MaterialTheme.typography.labelMedium)
                 }
             }
             if (shown.isEmpty()) item {

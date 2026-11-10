@@ -19,6 +19,7 @@ class FileCoverLoader(private val maxSide: Int = 384, private val limit: Int = 1
     @Composable
     override fun painter(uri: String): Painter? {
         val bitmap by produceState(cache[uri], uri) {
+            value = cache[uri]
             if (value != null) return@produceState
             val decoded = withContext(Dispatchers.IO) { decodeImageFile(uri, maxSide) }
             if (decoded != null) {

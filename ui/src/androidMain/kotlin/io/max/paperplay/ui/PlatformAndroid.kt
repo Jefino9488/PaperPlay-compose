@@ -16,3 +16,5 @@ actual fun decodeImageFile(path: String, maxSide: Int): ImageBitmap? = runCatchi
     while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= maxSide) sample *= 2
     BitmapFactory.decodeFile(path, BitmapFactory.Options().apply { inSampleSize = sample })?.asImageBitmap()
 }.getOrNull()
+
+actual fun currentHour(): Int = java.time.LocalTime.now().hour

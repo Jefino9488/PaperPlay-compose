@@ -11,3 +11,5 @@ actual fun PlatformBackHandler(enabled: Boolean, onBack: () -> Unit) = Unit
 actual fun decodeImageFile(path: String, maxSide: Int): ImageBitmap? = runCatching {
     org.jetbrains.skia.Image.makeFromEncoded(File(path).readBytes()).toComposeImageBitmap()
 }.getOrNull()
+
+actual fun currentHour(): Int = java.time.LocalTime.now().hour

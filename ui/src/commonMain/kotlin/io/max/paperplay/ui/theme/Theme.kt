@@ -42,7 +42,9 @@ fun PaperPlayTheme(
     val base = platform ?: schemeFromSeed(seed ?: FallbackSeed, dark)
     val scheme = if (dark && amoled) base.amoled() else base
     CompositionLocalProvider(LocalReducedTransparency provides !glassEffectsSupported()) {
-        MaterialTheme(colorScheme = scheme, typography = nunitoTypography(), shapes = PaperShapes, content = content)
+        MaterialTheme(colorScheme = scheme, typography = nunitoTypography(), shapes = PaperShapes) {
+            androidx.compose.material3.Surface(color = scheme.background, contentColor = scheme.onBackground, content = content)
+        }
     }
 }
 

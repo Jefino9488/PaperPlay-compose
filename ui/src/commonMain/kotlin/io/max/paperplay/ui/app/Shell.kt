@@ -94,7 +94,7 @@ fun MainShell(backend: CoreBackend) {
                 when {
                     settings -> SettingsScreen(conn, songs.size, backend, barsHeight)
                     d != null -> DetailScreen(d, backend, currentId, actions, { detail = null }, barsHeight)
-                    tab == 0 -> HomeScreen(lib, favorites, recents, pb, conn, actions, barsHeight)
+                    tab == 0 -> HomeScreen(lib, favorites, recents, pb, conn, actions, { detail = it }, barsHeight)
                     tab == 1 -> SearchScreen(backend, currentId, actions, barsHeight)
                     tab == 2 -> LibraryScreen(lib, favorites, currentId, actions, { detail = it }, { newPlaylist = true }, barsHeight)
                     else -> ProfileScreen(songs.size, favorites.size, lib.playlists.size, conn, { settings = true }, barsHeight)

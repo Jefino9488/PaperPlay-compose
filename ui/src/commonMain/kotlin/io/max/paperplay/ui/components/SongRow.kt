@@ -10,7 +10,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -54,7 +58,7 @@ fun SongRow(
                 Text("✓", color = scheme.primary, fontSize = 28.sp)
             }
         } else {
-            CoverImage(song.coverUri, song.id)
+            CoverImage(song.coverUri, song.id, size = 56.dp, radius = 12.dp)
         }
         Column(Modifier.weight(1f).padding(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.Center) {
             Text(
@@ -67,7 +71,7 @@ fun SongRow(
                 else if (song.offline) Badge("Offline")
                 if (song.qualityLabel != null) {
                     Text(
-                        song.qualityLabel, style = MaterialTheme.typography.labelSmall,
+                        song.qualityLabel.substringBefore(' '), style = MaterialTheme.typography.labelSmall,
                         color = if (song.lossless) scheme.primary else scheme.onSurfaceVariant,
                         modifier = Modifier.padding(end = 6.dp),
                     )
@@ -77,11 +81,14 @@ fun SongRow(
                     style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant,
                     modifier = Modifier.weight(1f, fill = false),
                 )
-                Text(
-                    formatDuration(song.durationSec.toLong()), style = MaterialTheme.typography.labelSmall,
-                    color = scheme.onSurfaceVariant, modifier = Modifier.padding(start = 6.dp),
-                )
             }
+        }
+        if (song.sizeBytes > 0) {
+            val kbps = if (song.durationSec > 0) song.sizeBytes * 8 / song.durationSec / 1000 else 0
+            Text(
+                (if (kbps > 0) "$kbps kbps · " else "") + "${song.sizeBytes / 1_000_000} MB",
+                style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant, maxLines = 1,
+            )
         }
         if (song.favorite) Text("♥", color = scheme.primary, fontSize = 14.sp, modifier = Modifier.padding(end = 4.dp))
         if (actions != null) SongMenu(song, actions) else Box(Modifier.size(8.dp))
@@ -100,7 +107,7 @@ private fun Badge(text: String) {
 private fun SongMenu(song: SongUi, actions: SongActions) {
     var open by remember { mutableStateOf(false) }
     Box {
-        GlyphButton("⋮", "Song options", { open = true })
+        IconButton({ open = true }) { Icon(Icons.Rounded.MoreVert, "Song options") }
         DropdownMenu(open, { open = false }) {
             @Composable
             fun item(text: String, run: () -> Unit) = DropdownMenuItem(

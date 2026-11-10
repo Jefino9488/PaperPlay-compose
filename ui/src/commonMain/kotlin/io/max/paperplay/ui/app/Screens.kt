@@ -1,6 +1,10 @@
 package io.max.paperplay.ui.app
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -103,22 +107,55 @@ fun SetupScreen(backend: CoreBackend, onSaved: () -> Unit, onRestore: () -> Unit
 @Composable
 fun HomeScreen(
     lib: LibraryUi, favorites: List<SongUi>, recents: List<SongUi>, playback: PlaybackUiState,
-    conn: ConnectionUi, actions: ListActions, bottomPadding: Dp, modifier: Modifier = Modifier,
+    conn: ConnectionUi, actions: ListActions, onOpen: (Detail) -> Unit, bottomPadding: Dp, modifier: Modifier = Modifier,
 ) {
     val songs = (lib.songs as? Load.Ready)?.value.orEmpty()
     LazyColumn(modifier, contentPadding = PaddingValues(bottom = bottomPadding)) {
-        item { TopBar("Paper Play") }
+        item {
+            val h = io.max.paperplay.ui.currentHour()
+            TopBar(if (h < 12) "Good morning" else if (h < 18) "Good afternoon" else "Good evening")
+        }
         item { StatusLine(conn, songs.size) }
-        if (songs.isNotEmpty()) item {
-            Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button({ actions.shuffle(songs) }) { Text("Shuffle all") }
-                OutlinedButton({ actions.play(songs, 0) }) { Text("Play all") }
+        val tiles = buildList<Pair<GroupUi, () -> Unit>> {
+            if (favorites.isNotEmpty()) add(GroupUi("fav", "Favorites", coverUris = favorites.map { it.coverUri }) to { actions.play(favorites, 0) })
+            lib.playlists.take(6 - size).forEach { g -> add(g to { onOpen(Detail.Playlist(g.id, g.name)) }) }
+        }
+        if (tiles.isNotEmpty()) item {
+            Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                tiles.chunked(2).forEach { pair ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        pair.forEach { (g, click) ->
+                            Row(
+                                Modifier.weight(1f).height(56.dp).clip(RoundedCornerShape(12.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceContainerHigh).clickable(onClick = click),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                CoverGrid(g.coverUris, g.id, 56.dp, 0.dp)
+                                Text(g.name, Modifier.padding(horizontal = 12.dp), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall)
+                            }
+                        }
+                        if (pair.size == 1) Spacer(Modifier.weight(1f))
+                    }
+                }
             }
         }
         if (recents.isNotEmpty()) item { Shelf("Recently played", recents, playback.current?.id, actions) }
         if (favorites.isNotEmpty()) item { Shelf("Favorites", favorites, playback.current?.id, actions) }
         val added = songs.sortedByDescending { it.addedAt }.take(20)
         if (added.isNotEmpty()) item { Shelf("Recently added", added, playback.current?.id, actions) }
+        if (lib.playlists.isNotEmpty()) item {
+            Column {
+                Section("Your playlists")
+                LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    items(lib.playlists, key = { it.id }) { g ->
+                        Column(Modifier.width(150.dp).clickable { onOpen(Detail.Playlist(g.id, g.name)) }) {
+                            CoverGrid(g.coverUris, g.id, 150.dp, 16.dp)
+                            Text(g.name, Modifier.padding(top = 6.dp), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelLarge)
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -176,10 +213,8 @@ fun LibraryScreen(
 ) {
     var tab by remember { mutableStateOf(0) }
     Column(modifier) {
-        ScreenTitle("Library")
-        PrimaryScrollableTabRow(tab, edgePadding = 8.dp) {
-            libraryTabs.forEachIndexed { i, t -> Tab(tab == i, { tab = i }, text = { Text(t) }) }
-        }
+        TopBar("Your library")
+        ChipRow(libraryTabs, tab, { tab = it })
         when (tab) {
             0 -> when (val s = lib.songs) {
                 is Load.Loading -> Text("Loading…", Modifier.padding(24.dp))
@@ -251,11 +286,8 @@ fun SearchScreen(backend: CoreBackend, currentId: String?, actions: ListActions,
         }
     }
     Column(modifier) {
-        ScreenTitle("Search")
-        OutlinedTextField(
-            query, { query = it }, Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), singleLine = true,
-            placeholder = { Text("Songs, artists, albums") }, shape = RoundedCornerShape(28.dp),
-        )
+        TopBar("Search")
+        PillField(query, { query = it }, "Songs, artists or albums", Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
         SongList(
             results, currentId, actions, Modifier.fillMaxSize(), bottomPadding, sortable = false, searchable = false,
             empty = if (query.isBlank()) "Type to search your library." else "No songs match \"${query.trim()}\".",
@@ -272,7 +304,7 @@ fun SettingsScreen(conn: ConnectionUi, songCount: Int, backend: CoreBackend, bot
     var chatError by remember { mutableStateOf<String?>(null) }
     var editing by remember { mutableStateOf(false) }
     Column(modifier.verticalScroll(rememberScrollState()).padding(bottom = bottomPadding)) {
-        ScreenTitle("Settings")
+        TopBar("Settings")
         Section("Telegram")
         Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(

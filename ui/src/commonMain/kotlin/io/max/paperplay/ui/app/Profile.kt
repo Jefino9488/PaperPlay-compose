@@ -76,7 +76,7 @@ private fun Stat(icon: ImageVector, n: Int, label: String, modifier: Modifier) {
         Box(Modifier.size(56.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer), contentAlignment = Alignment.Center) {
             Icon(icon, null, tint = MaterialTheme.colorScheme.onPrimaryContainer)
         }
-        Text("$n", Modifier.padding(top = 8.dp), style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center)
+        Text("$n", Modifier.padding(top = 8.dp), style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary, textAlign = TextAlign.Center)
         Text(label, style = MaterialTheme.typography.bodyMedium)
     }
 }
