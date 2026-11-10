@@ -1,15 +1,15 @@
 [versions]
-backdrop = "2.0.0-alpha03"
-kotlin = "2.3.10"
-agp = "8.11.1"
-compose = "1.10.1"
-coroutines = "1.10.2"
-serialization = "1.9.0"
-jna = "5.17.0"
-androidxActivity = "1.10.1"
-sqldelight = "2.1.0"
-media3 = "1.8.0"
-vlcj = "4.11.0"
+backdrop = "2.0.1"
+kotlin = "2.4.21"
+agp = "9.5.1"
+compose = "1.12.2"
+coroutines = "1.11.0"
+serialization = "1.12.0"
+jna = "5.19.1"
+androidxActivity = "1.13.0"
+sqldelight = "2.4.1"
+media3 = "1.11.1"
+vlcj = "4.12.1"
 
 [libraries]
 backdrop = { module = "io.github.kyant0:backdrop", version.ref = "backdrop" }
@@ -28,9 +28,8 @@ vlcj = { module = "uk.co.caprica:vlcj", version.ref = "vlcj" }
 
 [plugins]
 kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
-kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 compose-multiplatform = { id = "org.jetbrains.compose", version.ref = "compose" }
 android-application = { id = "com.android.application", version.ref = "agp" }
-android-library = { id = "com.android.library", version.ref = "agp" }
+android-kmp-library = { id = "com.android.kotlin.multiplatform.library", version.ref = "agp" }
 sqldelight = { id = "app.cash.sqldelight", version.ref = "sqldelight" }
