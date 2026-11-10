@@ -35,7 +35,19 @@ class LibraryRepository(val repo: LibraryRepo, private val clock: () -> Long) {
     // Reads
     fun allSongs(): Flow<List<Song>> = watch { songs.allSongs().executeAsList() }
     fun favorites(): Flow<List<Song>> = watch { songs.favorites().executeAsList() }
-    fun recents(limit: Long = 50): Flow<List<Song>> = watch { songs.recent(limit).executeAsList() }
+    fun recents(limit: Long = 50): Flow<List<Song>> = watch {
+        songs.recent(limit) { chat_id, message_id, unique_id, remote_id, title, artist, album,
+            duration_sec, size, mime, file_name, date, cover_path, release_id, cover_url, genre, year,
+            metadata_source, favorite, cover_hi_res, user_edited, enrich_state, lyrics, cached_bytes,
+            last_played_at, pinned, tags_at, favorite_at, cover_at, instrumental, mood_scanned_at,
+            plays, skips, topic_id, sample_rate, bit_depth, codec ->
+            Song(chat_id, message_id, unique_id, remote_id, title, artist, album, duration_sec, size,
+                mime, file_name, date, cover_path, release_id, cover_url, genre, year, metadata_source,
+                favorite, cover_hi_res, user_edited, enrich_state, lyrics, cached_bytes, last_played_at,
+                pinned, tags_at, favorite_at, cover_at, instrumental, mood_scanned_at, plays, skips,
+                topic_id, sample_rate, bit_depth, codec)
+        }.executeAsList()
+    }
     fun album(name: String): Flow<List<Song>> = watch { songs.albumRows(name).executeAsList().sortedBy { it.title } }
     fun artist(name: String): Flow<List<Song>> = watch { songs.artistRows(name).executeAsList() }
     fun playlistSongs(id: Long): Flow<List<Song>> = watch { lists.playlistSongs(id).executeAsList() }
