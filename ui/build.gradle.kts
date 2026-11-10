@@ -18,6 +18,8 @@ kotlin {
             implementation(compose.runtime)
             implementation(compose.foundation)
             implementation(compose.material3)
+            implementation(compose.components.resources)
+            implementation("org.jetbrains.compose.material:material-icons-extended:1.7.3")
             implementation(libs.backdrop)
             implementation(project(":core"))
             implementation(project(":player"))
@@ -26,4 +28,9 @@ kotlin {
             implementation(libs.androidx.activity.compose)
         }
     }
+}
+
+compose.resources {
+    publicResClass = false
+    packageOfResClass = "io.max.paperplay.ui.res"
 }

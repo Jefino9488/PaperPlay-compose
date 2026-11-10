@@ -13,7 +13,13 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.ExperimentalTextApi
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
+import io.max.paperplay.ui.res.Res
+import io.max.paperplay.ui.res.nunito
+import org.jetbrains.compose.resources.Font
 import androidx.compose.ui.unit.dp
 import io.max.paperplay.ui.glassEffectsSupported
 import kotlin.math.abs
@@ -36,7 +42,7 @@ fun PaperPlayTheme(
     val base = platform ?: schemeFromSeed(seed ?: FallbackSeed, dark)
     val scheme = if (dark && amoled) base.amoled() else base
     CompositionLocalProvider(LocalReducedTransparency provides !glassEffectsSupported()) {
-        MaterialTheme(colorScheme = scheme, typography = PaperTypography, shapes = PaperShapes, content = content)
+        MaterialTheme(colorScheme = scheme, typography = nunitoTypography(), shapes = PaperShapes, content = content)
     }
 }
 
@@ -64,28 +70,22 @@ val PaperShapes = Shapes(
     extraLarge = RoundedCornerShape(32.dp),
 )
 
-private fun TextStyle.w(weight: Int) = copy(fontWeight = FontWeight(weight))
-
-private val base = Typography()
-
-/** Same weights as the Flutter theme (800 display and headline, 700 titles and labels, 500 body). */
-val PaperTypography = Typography(
-    displayLarge = base.displayLarge.w(800),
-    displayMedium = base.displayMedium.w(800),
-    displaySmall = base.displaySmall.w(800),
-    headlineLarge = base.headlineLarge.w(800),
-    headlineMedium = base.headlineMedium.w(800),
-    headlineSmall = base.headlineSmall.w(700),
-    titleLarge = base.titleLarge.w(700),
-    titleMedium = base.titleMedium.w(700),
-    titleSmall = base.titleSmall.w(700),
-    bodyLarge = base.bodyLarge.w(500),
-    bodyMedium = base.bodyMedium.w(500),
-    bodySmall = base.bodySmall.w(500),
-    labelLarge = base.labelLarge.w(700),
-    labelMedium = base.labelMedium.w(700),
-    labelSmall = base.labelSmall.w(700),
-)
+@OptIn(ExperimentalTextApi::class)
+@Composable
+private fun nunitoTypography(): Typography {
+    @Composable fun family(w: Int) = FontFamily(Font(Res.font.nunito, FontWeight(w), variationSettings = FontVariation.Settings(FontVariation.weight(w))))
+    val f = mapOf(500 to family(500), 700 to family(700), 800 to family(800))
+    fun TextStyle.w(weight: Int) = copy(fontFamily = f[weight], fontWeight = FontWeight(weight))
+    val b = Typography()
+    // Same weights as the Flutter theme (800 display and headline, 700 titles and labels, 500 body).
+    return Typography(
+        displayLarge = b.displayLarge.w(800), displayMedium = b.displayMedium.w(800), displaySmall = b.displaySmall.w(800),
+        headlineLarge = b.headlineLarge.w(800), headlineMedium = b.headlineMedium.w(800), headlineSmall = b.headlineSmall.w(700),
+        titleLarge = b.titleLarge.w(700), titleMedium = b.titleMedium.w(700), titleSmall = b.titleSmall.w(700),
+        bodyLarge = b.bodyLarge.w(500), bodyMedium = b.bodyMedium.w(500), bodySmall = b.bodySmall.w(500),
+        labelLarge = b.labelLarge.w(700), labelMedium = b.labelMedium.w(700), labelSmall = b.labelSmall.w(700),
+    )
+}
 
 /** True-black surfaces for OLED, with containers stepping up so cards stay visible. */
 fun ColorScheme.amoled(): ColorScheme = copy(

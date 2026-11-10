@@ -41,33 +41,6 @@ import io.max.paperplay.ui.state.PlaybackUiState
 import io.max.paperplay.ui.state.RepeatUi
 
 @Composable
-fun MiniPlayer(state: PlaybackUiState, backdrop: Backdrop, onOpen: () -> Unit, onToggle: () -> Unit, onNext: () -> Unit, modifier: Modifier = Modifier) {
-    val song = state.current ?: return
-    GlassSurface(backdrop, modifier.fillMaxWidth().height(68.dp), cornerRadius = 34.dp) {
-        Box(Modifier.fillMaxSize()) {
-            Row(Modifier.fillMaxSize().clickable(onClick = onOpen).padding(start = 10.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                CoverImage(song.coverUri, song.id, size = 48.dp, radius = 24.dp)
-                Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
-                    Text(song.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall)
-                    Text(
-                        song.artist, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                IconTap(if (state.playing) "Pause" else "Play", onToggle) {
-                    TransportGlyph(if (state.playing) TransportIcon.Pause else TransportIcon.Play)
-                }
-                IconTap("Next", onNext) { TransportGlyph(TransportIcon.Next) }
-            }
-            LinearProgressIndicator(
-                progress = { state.progress },
-                modifier = Modifier.align(Alignment.BottomCenter).padding(horizontal = 28.dp).fillMaxWidth().height(2.dp),
-            )
-        }
-    }
-}
-
-@Composable
 fun FullPlayer(state: PlaybackUiState, error: String?, backend: CoreBackend, onClose: () -> Unit, modifier: Modifier = Modifier) {
     var showQueue by remember { mutableStateOf(false) }
     val song = state.current

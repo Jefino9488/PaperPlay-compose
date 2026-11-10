@@ -107,7 +107,7 @@ fun HomeScreen(
 ) {
     val songs = (lib.songs as? Load.Ready)?.value.orEmpty()
     LazyColumn(modifier, contentPadding = PaddingValues(bottom = bottomPadding)) {
-        item { ScreenTitle("Paper Play") }
+        item { TopBar("Paper Play") }
         item { StatusLine(conn, songs.size) }
         if (songs.isNotEmpty()) item {
             Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {

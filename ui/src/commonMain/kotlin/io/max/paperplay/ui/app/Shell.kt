@@ -44,8 +44,6 @@ import io.max.paperplay.ui.components.LocalCoverLoader
 import io.max.paperplay.ui.state.Load
 import kotlinx.coroutines.launch
 
-private val tabs = listOf("Home", "Search", "Library", "Settings")
-
 @Composable
 fun MainShell(backend: CoreBackend) {
     val lib by backend.library.collectAsState()
@@ -57,6 +55,7 @@ fun MainShell(backend: CoreBackend) {
 
     var tab by remember { mutableIntStateOf(0) }
     var detail by remember { mutableStateOf<Detail?>(null) }
+    var settings by remember { mutableStateOf(false) }
     var showPlayer by remember { mutableStateOf(false) }
     var pickFor by remember { mutableStateOf<Set<String>?>(null) }
     var newPlaylist by remember { mutableStateOf(false) }
@@ -78,8 +77,9 @@ fun MainShell(backend: CoreBackend) {
     }
 
     PlatformBackHandler(showPlayer) { showPlayer = false }
-    PlatformBackHandler(!showPlayer && detail != null) { detail = null }
-    PlatformBackHandler(!showPlayer && detail == null && tab != 0) { tab = 0 }
+    PlatformBackHandler(!showPlayer && settings) { settings = false }
+    PlatformBackHandler(!showPlayer && !settings && detail != null) { detail = null }
+    PlatformBackHandler(!showPlayer && !settings && detail == null && tab != 0) { tab = 0 }
 
     val songs = (lib.songs as? Load.Ready)?.value.orEmpty()
     val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
@@ -92,36 +92,22 @@ fun MainShell(backend: CoreBackend) {
             Box(Modifier.fillMaxSize().layerBackdrop(backdrop).padding(top = top)) {
                 val d = detail
                 when {
+                    settings -> SettingsScreen(conn, songs.size, backend, barsHeight)
                     d != null -> DetailScreen(d, backend, currentId, actions, { detail = null }, barsHeight)
                     tab == 0 -> HomeScreen(lib, favorites, recents, pb, conn, actions, barsHeight)
                     tab == 1 -> SearchScreen(backend, currentId, actions, barsHeight)
                     tab == 2 -> LibraryScreen(lib, favorites, currentId, actions, { detail = it }, { newPlaylist = true }, barsHeight)
-                    else -> SettingsScreen(conn, songs.size, backend, barsHeight)
+                    else -> ProfileScreen(songs.size, favorites.size, lib.playlists.size, conn, { settings = true }, barsHeight)
                 }
             }
             Column(
-                Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 12.dp + bottomInset),
+                Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(start = 24.dp, end = 24.dp, bottom = 12.dp + bottomInset),
             ) {
                 if (pb.current != null) {
-                    MiniPlayer(pb, backdrop, { showPlayer = true }, backend::togglePlay, backend::next)
+                    MiniPlayer(pb, { showPlayer = true }, backend::togglePlay, backend::next, backend::previous)
                     Box(Modifier.height(8.dp))
                 }
-                GlassSurface(backdrop, Modifier.fillMaxWidth().height(64.dp), cornerRadius = 32.dp) {
-                    Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
-                        tabs.forEachIndexed { i, label ->
-                            Box(
-                                Modifier.weight(1f).fillMaxSize().clickable { tab = i; detail = null },
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Text(
-                                    label,
-                                    color = if (tab == i) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    fontWeight = if (tab == i) FontWeight.Bold else FontWeight.Normal,
-                                )
-                            }
-                        }
-                    }
-                }
+                NavBar(if (settings) 3 else tab, backdrop, { tab = it; detail = null; settings = false })
             }
             if (showPlayer) FullPlayer(pb, pbError, backend, { showPlayer = false }, Modifier.padding(top = top))
             SnackbarHost(snack, Modifier.align(Alignment.TopCenter).padding(top = top))
