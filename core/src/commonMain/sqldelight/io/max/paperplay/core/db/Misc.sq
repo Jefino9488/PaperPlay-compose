@@ -126,3 +126,6 @@ WHERE l.day >= :fromDay GROUP BY l.track_key ORDER BY ms DESC;
 
 listenPerDay:
 SELECT day, SUM(ms) AS ms FROM listen_stats WHERE day >= :fromDay GROUP BY day ORDER BY day;
+
+setScan:
+UPDATE library_chats SET last_scanned_message_id = :messageId, walk_done = :walkDone WHERE id = :chatId;
