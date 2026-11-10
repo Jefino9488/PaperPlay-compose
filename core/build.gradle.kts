@@ -28,17 +28,19 @@ kotlin {
         }
         // One JNA binding to libtdjson shared by both targets; only the JNA artifact differs.
         val jnaSrc = "src/jnaMain/kotlin"
+        val javaSrc = "src/javaMain/kotlin" // file, zip and crypto actuals shared by android and jvm
         androidMain {
-            kotlin.srcDir(jnaSrc)
+            kotlin.srcDir(jnaSrc); kotlin.srcDir(javaSrc)
             dependencies {
                 implementation("${libs.jna.android.get()}@aar")
                 implementation(libs.sqldelight.android)
             }
         }
         jvmMain {
-            kotlin.srcDir(jnaSrc)
+            kotlin.srcDir(jnaSrc); kotlin.srcDir(javaSrc)
             dependencies {
                 implementation(libs.jna)
+                implementation(libs.jna.platform)
                 implementation(libs.sqldelight.jdbc)
             }
         }

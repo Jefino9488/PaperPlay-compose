@@ -19,6 +19,7 @@ kotlin {
             implementation(compose.foundation)
             implementation(compose.material3)
             implementation(libs.backdrop)
+            implementation(project(":core"))
         }
     }
 }
