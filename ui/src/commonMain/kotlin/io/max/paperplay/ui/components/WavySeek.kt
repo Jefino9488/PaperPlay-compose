@@ -1,0 +1,118 @@
+package io.max.paperplay.ui.components
+
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.unit.dp
+import kotlin.math.PI
+import kotlin.math.min
+import kotlin.math.sin
+
+/**
+ * Seek bar in the Material 3 Expressive style: the played part is a moving wave while audio plays
+ * and flattens when paused. [value] and [buffered] are 0 to 1; [onSeek] fires when the finger lifts.
+ */
+@Composable
+fun WavySeek(
+    value: Float,
+    buffered: Float,
+    playing: Boolean,
+    onSeek: (Float) -> Unit,
+    modifier: Modifier = Modifier,
+    label: String? = null,
+) {
+    var dragging by remember { mutableStateOf<Float?>(null) }
+    var phase by remember { mutableFloatStateOf(0f) }
+    val moving = playing && dragging == null
+    val wave by animateFloatAsState(if (moving) 1f else 0f, tween(350))
+    LaunchedEffect(moving) {
+        if (!moving) return@LaunchedEffect
+        var last = 0L
+        while (true) {
+            withFrameNanos { t ->
+                if (last != 0L) phase = (phase + (t - last) / 2_000_000_000f) % 1f
+                last = t
+            }
+        }
+    }
+    val active = MaterialTheme.colorScheme.primary
+    val track = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.16f)
+    val bufferedColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.34f)
+    val shown = (dragging ?: value).coerceIn(0f, 1f)
+
+    Canvas(
+        modifier.fillMaxWidth().height(36.dp)
+            .semantics {
+                contentDescription = "Seek"
+                if (label != null) stateDescription = label
+            }
+            .pointerInput(Unit) {
+                detectTapGestures { onSeek((it.x / size.width).coerceIn(0f, 1f)) }
+            }
+            .pointerInput(Unit) {
+                detectHorizontalDragGestures(
+                    onDragStart = { dragging = (it.x / size.width).coerceIn(0f, 1f) },
+                    onDragEnd = { dragging?.let(onSeek); dragging = null },
+                    onDragCancel = { dragging = null },
+                ) { change, _ -> dragging = (change.position.x / size.width).coerceIn(0f, 1f) }
+            },
+    ) {
+        val stroke = 5.dp.toPx()
+        val amplitude = 3.5.dp.toPx() * wave
+        val wavelength = 34.dp.toPx()
+        val gap = 6.dp.toPx()
+        val mid = size.height / 2
+        val x = shown * size.width
+        val line = Stroke(stroke, cap = StrokeCap.Round)
+
+        val trackStart = min(x + gap, size.width)
+        if (trackStart < size.width) {
+            drawLine(track, Offset(trackStart, mid), Offset(size.width, mid), stroke, StrokeCap.Round)
+            val bufferedEnd = buffered.coerceIn(0f, 1f) * size.width
+            if (bufferedEnd > trackStart) {
+                drawLine(bufferedColor, Offset(trackStart, mid), Offset(bufferedEnd, mid), stroke, StrokeCap.Round)
+            }
+        }
+        val path = Path().apply {
+            moveTo(0f, mid)
+            var px = 2f
+            while (px <= x) {
+                // Tapers to flat at the thumb, so the wave meets it cleanly.
+                val taper = min(1f, (x - px) / 12.dp.toPx())
+                lineTo(px, mid + sin((px / wavelength - phase) * 2 * PI.toFloat()) * amplitude * taper)
+                px += 2f
+            }
+            lineTo(x, mid)
+        }
+        drawPath(path, active, style = line)
+        val thumbH = (if (dragging != null) 30.dp else 22.dp).toPx()
+        val thumbW = 6.dp.toPx()
+        drawRoundRect(
+            active, Offset(x - thumbW / 2, mid - thumbH / 2), Size(thumbW, thumbH), CornerRadius(thumbW / 2),
+        )
+    }
+}

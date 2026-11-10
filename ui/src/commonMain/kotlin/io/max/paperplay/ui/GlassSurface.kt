@@ -19,6 +19,8 @@ fun GlassSurface(
     cornerRadius: androidx.compose.ui.unit.Dp = 28.dp,
     content: @Composable () -> Unit,
 ) {
+    val tint = androidx.compose.material3.MaterialTheme.colorScheme.surfaceContainer
+    val reduced = io.max.paperplay.ui.theme.LocalReducedTransparency.current
     Box(
         modifier.drawBackdrop(
             backdrop = backdrop,
@@ -28,7 +30,7 @@ fun GlassSurface(
                 blur(8.dp.toPx())
                 lens(12.dp.toPx(), 24.dp.toPx())
             },
-            onDrawSurface = { drawRect(Color.White.copy(alpha = if (glassEffectsSupported()) 0.25f else 0.6f)) },
+            onDrawSurface = { drawRect(tint.copy(alpha = if (reduced) 0.88f else 0.35f)) },
         ),
     ) { content() }
 }
