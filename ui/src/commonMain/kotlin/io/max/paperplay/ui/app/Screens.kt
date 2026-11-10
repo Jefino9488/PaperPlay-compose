@@ -263,9 +263,7 @@ fun DetailScreen(
     }
     val songs by flow.collectAsState(emptyList())
     Column(modifier) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onBack) { Text("Back") }
-            Text(detail.title, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleLarge)
+        BackTopBar(detail.title, onBack) {
             if (detail is Detail.Playlist) TextButton({ backend.deletePlaylist(detail.id); onBack() }) { Text("Delete") }
         }
         SongList(songs, currentId, actions, Modifier.fillMaxSize(), bottomPadding, sortable = detail !is Detail.Playlist)
@@ -292,53 +290,5 @@ fun SearchScreen(backend: CoreBackend, currentId: String?, actions: ListActions,
             results, currentId, actions, Modifier.fillMaxSize(), bottomPadding, sortable = false, searchable = false,
             empty = if (query.isBlank()) "Type to search your library." else "No songs match \"${query.trim()}\".",
         )
-    }
-}
-
-// ---- Settings ------------------------------------------------------------------------------------------
-
-@Composable
-fun SettingsScreen(conn: ConnectionUi, songCount: Int, backend: CoreBackend, bottomPadding: Dp, modifier: Modifier = Modifier) {
-    var chatId by remember { mutableStateOf("") }
-    var chatTitle by remember { mutableStateOf("") }
-    var chatError by remember { mutableStateOf<String?>(null) }
-    var editing by remember { mutableStateOf(false) }
-    Column(modifier.verticalScroll(rememberScrollState()).padding(bottom = bottomPadding)) {
-        TopBar("Settings")
-        Section("Telegram")
-        Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(
-                when {
-                    conn.ready -> "Connected as your bot."
-                    conn.state.isEmpty() -> "Not connected."
-                    else -> "Connecting… (${conn.state.removePrefix("authorizationState")})"
-                },
-            )
-            if (conn.error != null) Text(conn.error, color = MaterialTheme.colorScheme.error)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(backend::connect) { Text("Reconnect") }
-                OutlinedButton({ editing = !editing }) { Text(if (editing) "Cancel" else "Change credentials") }
-            }
-            if (editing) CredentialsForm(backend::saveCredentials, { editing = false }, Modifier.padding(top = 8.dp))
-        }
-        Section("Library")
-        Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("$songCount songs")
-            conn.chats.forEach { Text("${it.title}  (${it.id})", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-            if (conn.scanText != null) Text(conn.scanText)
-            OutlinedTextField(chatId, { chatId = it }, Modifier.fillMaxWidth(), label = { Text("Chat id, like -1001234567890") }, singleLine = true)
-            OutlinedTextField(chatTitle, { chatTitle = it }, Modifier.fillMaxWidth(), label = { Text("Name (optional)") }, singleLine = true)
-            if (chatError != null) Text(chatError!!, color = MaterialTheme.colorScheme.error)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button({
-                    chatError = backend.addChat(chatId, chatTitle)
-                    if (chatError == null) { chatId = ""; chatTitle = "" }
-                }, enabled = conn.ready) { Text("Add chat") }
-                OutlinedButton(backend::rescan, enabled = conn.ready && conn.chats.isNotEmpty()) { Text("Scan again") }
-            }
-            if (!conn.ready) Text("Connect first to add a chat.", style = MaterialTheme.typography.bodySmall)
-        }
-        Section("About")
-        Text("Paper Play for Compose, early build.", Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

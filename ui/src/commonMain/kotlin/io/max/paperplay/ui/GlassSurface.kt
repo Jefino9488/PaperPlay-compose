@@ -17,6 +17,8 @@ fun GlassSurface(
     backdrop: Backdrop,
     modifier: Modifier = Modifier,
     cornerRadius: androidx.compose.ui.unit.Dp = 28.dp,
+    blur: androidx.compose.ui.unit.Dp = 8.dp,
+    tintAlpha: Float = 0.35f,
     content: @Composable () -> Unit,
 ) {
     val tint = androidx.compose.material3.MaterialTheme.colorScheme.surfaceContainer
@@ -27,10 +29,10 @@ fun GlassSurface(
             shape = { RoundedCornerShape(cornerRadius) },
             effects = {
                 vibrancy()
-                blur(8.dp.toPx())
+                blur(blur.toPx())
                 lens(12.dp.toPx(), 24.dp.toPx())
             },
-            onDrawSurface = { drawRect(tint.copy(alpha = if (reduced) 0.88f else 0.35f)) },
+            onDrawSurface = { drawRect(tint.copy(alpha = if (reduced) 0.88f else tintAlpha)) },
         ),
     ) { content() }
 }

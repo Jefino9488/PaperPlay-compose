@@ -45,7 +45,7 @@ import io.max.paperplay.ui.state.Load
 import kotlinx.coroutines.launch
 
 @Composable
-fun MainShell(backend: CoreBackend) {
+fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit) {
     val lib by backend.library.collectAsState()
     val favorites by backend.favorites.collectAsState()
     val recents by backend.recents.collectAsState()
@@ -56,6 +56,7 @@ fun MainShell(backend: CoreBackend) {
     var tab by remember { mutableIntStateOf(0) }
     var detail by remember { mutableStateOf<Detail?>(null) }
     var settings by remember { mutableStateOf(false) }
+    val settingsStack = remember { androidx.compose.runtime.mutableStateListOf<String>() }
     var showPlayer by remember { mutableStateOf(false) }
     var pickFor by remember { mutableStateOf<Set<String>?>(null) }
     var newPlaylist by remember { mutableStateOf(false) }
@@ -77,7 +78,7 @@ fun MainShell(backend: CoreBackend) {
     }
 
     PlatformBackHandler(showPlayer) { showPlayer = false }
-    PlatformBackHandler(!showPlayer && settings) { settings = false }
+    PlatformBackHandler(!showPlayer && settings) { if (settingsStack.isEmpty()) settings = false else settingsStack.removeAt(settingsStack.lastIndex) }
     PlatformBackHandler(!showPlayer && !settings && detail != null) { detail = null }
     PlatformBackHandler(!showPlayer && !settings && detail == null && tab != 0) { tab = 0 }
 
@@ -92,12 +93,12 @@ fun MainShell(backend: CoreBackend) {
             Box(Modifier.fillMaxSize().layerBackdrop(backdrop).padding(top = top)) {
                 val d = detail
                 when {
-                    settings -> SettingsScreen(conn, songs.size, backend, barsHeight)
+                    settings -> SettingsHost(settingsStack, prefs, conn, songs.size, backend, onRestore, { settings = false }, barsHeight)
                     d != null -> DetailScreen(d, backend, currentId, actions, { detail = null }, barsHeight)
                     tab == 0 -> HomeScreen(lib, favorites, recents, pb, conn, actions, { detail = it }, barsHeight)
                     tab == 1 -> SearchScreen(backend, currentId, actions, barsHeight)
                     tab == 2 -> LibraryScreen(lib, favorites, currentId, actions, { detail = it }, { newPlaylist = true }, barsHeight)
-                    else -> ProfileScreen(songs.size, favorites.size, lib.playlists.size, conn, { settings = true }, barsHeight)
+                    else -> ProfileScreen(songs.size, favorites.size, lib.playlists.size, conn, prefs, { settings = true }, barsHeight)
                 }
             }
             Column(
@@ -107,7 +108,7 @@ fun MainShell(backend: CoreBackend) {
                     MiniPlayer(pb, { showPlayer = true }, backend::togglePlay, backend::next, backend::previous)
                     Box(Modifier.height(8.dp))
                 }
-                NavBar(if (settings) 3 else tab, backdrop, { tab = it; detail = null; settings = false })
+                NavBar(if (settings) 3 else tab, backdrop, prefs, { tab = it; detail = null; settings = false; settingsStack.clear() })
             }
             if (showPlayer) FullPlayer(pb, pbError, backend, { showPlayer = false }, Modifier.padding(top = top))
             SnackbarHost(snack, Modifier.align(Alignment.TopCenter).padding(top = top))

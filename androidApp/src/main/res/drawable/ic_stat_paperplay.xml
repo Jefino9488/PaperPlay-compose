@@ -1,0 +1,13 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="1024"
+    android:viewportHeight="1024">
+    <!-- The play triangle with the paper plane's slit, in one colour as Android requires. -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="56"
+        android:strokeLineJoin="round"
+        android:pathData="M400,330 L735,512 L400,694 L400,556 L610,512 L400,468 Z" />
+</vector>

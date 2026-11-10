@@ -2,12 +2,19 @@ package io.max.paperplay.ui.app
 
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -56,30 +63,54 @@ private val entries = listOf(
     NavEntry(Icons.Outlined.Person, Icons.Rounded.Person, "Profile"),
 )
 
-/** Floating glass bar: the selected tab is a tonal pill showing its name. */
+/** The bottom bar: floating glass or docked, laid out by the nav style prefs. */
 @Composable
-fun NavBar(selected: Int, backdrop: Backdrop, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
-    GlassSurface(backdrop, modifier.fillMaxWidth().height(64.dp), cornerRadius = 32.dp) {
+fun NavBar(selected: Int, backdrop: Backdrop, prefs: UiPrefs, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
+    val layout = prefs.navLayout
+    val labels = layout == NavLayout.Labels || layout == NavLayout.Dock
+    val glass = prefs.look(LookGroup.Nav) == Look.Glass
+    val height = if (labels) 76.dp else 64.dp
+    val corner = (height / 2) * (prefs.barRadius / 100f)
+    val docked = !prefs.floatingNav
+    val items: @Composable () -> Unit = {
         Row(Modifier.fillMaxSize().padding(6.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-            entries.forEachIndexed { i, e ->
-                val on = i == selected
-                val ink = if (on) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
-                val scale by animateFloatAsState(if (on) 1.18f else 1f)
-                Row(
-                    Modifier.clip(RoundedCornerShape(28.dp))
-                        .background(if (on) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.9f) else androidx.compose.ui.graphics.Color.Transparent)
-                        .clickable { onSelect(i) }
-                        .animateContentSize()
-                        .padding(horizontal = if (on) 20.dp else 16.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(if (on) e.selected else e.icon, e.label, Modifier.size(27.dp).scale(scale), tint = ink)
-                    if (on) {
-                        Spacer(Modifier.width(8.dp))
-                        Text(e.label, style = MaterialTheme.typography.labelLarge, color = ink, maxLines = 1)
-                    }
-                }
-            }
+            entries.forEachIndexed { i, e -> NavItem(e, i == selected, prefs, if (layout == NavLayout.Dock) Modifier.weight(1f) else Modifier) { onSelect(i) } }
+        }
+    }
+    val bar = modifier.fillMaxWidth().height(height)
+    when {
+        docked -> Box(bar.background(MaterialTheme.colorScheme.surface).border(BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)), RectangleShape)) { items() }
+        glass -> GlassSurface(backdrop, bar, cornerRadius = corner, blur = prefs.glassBlur.dp, tintAlpha = prefs.glassTint) { items() }
+        else -> Box(bar.clip(RoundedCornerShape(corner)).background(MaterialTheme.colorScheme.surfaceContainerHigh)) { items() }
+    }
+}
+
+@Composable
+private fun NavItem(e: NavEntry, on: Boolean, prefs: UiPrefs, modifier: Modifier, onClick: () -> Unit) {
+    val layout = prefs.navLayout
+    val look = prefs.selectionLook
+    val scheme = MaterialTheme.colorScheme
+    val ink = if (on) (if (look == SelectionLook.Fill) scheme.onPrimaryContainer else scheme.primary) else scheme.onSurface
+    val scale by animateFloatAsState(if (on) 1.18f else 1f)
+    val shape = RoundedCornerShape(28.dp * (prefs.selectionRadius / 100f))
+    val bg = when {
+        on && look == SelectionLook.Fill -> scheme.primaryContainer.copy(alpha = 0.9f)
+        on && look == SelectionLook.Soft -> scheme.onSurface.copy(alpha = 0.16f)
+        else -> Color.Transparent
+    }
+    val ring = if (on && look == SelectionLook.Ring) Modifier.border(BorderStroke(1.5.dp, scheme.primary), shape) else Modifier
+    val icon: @Composable () -> Unit = { Icon(if (on) e.selected else e.icon, e.label, Modifier.size(27.dp).scale(scale), tint = ink) }
+    val inner = Modifier.clip(shape).background(bg).then(ring).clickable(onClick = onClick).animateContentSize()
+    when (layout) {
+        NavLayout.Pill -> Row(modifier.then(inner).padding(horizontal = if (on) 20.dp else 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            icon()
+            if (on) { Spacer(Modifier.width(8.dp)); Text(e.label, style = MaterialTheme.typography.labelLarge, color = ink, maxLines = 1) }
+        }
+        NavLayout.Icons -> Box(modifier.then(inner).padding(horizontal = 18.dp, vertical = 12.dp)) { icon() }
+        else -> Column(modifier.then(inner).padding(horizontal = 14.dp, vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            icon()
+            Text(e.label, style = MaterialTheme.typography.labelSmall, color = ink, maxLines = 1, fontWeight = if (on) FontWeight.Bold else null)
+            if (on && look == SelectionLook.Dot) Box(Modifier.padding(top = 2.dp).size(4.dp).clip(CircleShape).background(scheme.primary))
         }
     }
 }

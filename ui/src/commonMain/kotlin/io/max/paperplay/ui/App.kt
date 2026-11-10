@@ -10,6 +10,8 @@ import io.max.paperplay.core.app.AppServices
 import io.max.paperplay.ui.app.CoreBackend
 import io.max.paperplay.ui.app.MainShell
 import io.max.paperplay.ui.app.SetupScreen
+import io.max.paperplay.ui.app.ThemeMode
+import io.max.paperplay.ui.app.UiPrefs
 import io.max.paperplay.ui.theme.PaperPlayTheme
 
 /** What a platform gives the app: restore access, a way to build the services, and whether a library exists yet. */
@@ -41,9 +43,18 @@ private fun Main(env: AppEnv, onRestore: () -> Unit) {
     LaunchedEffect(hasCredentials) {
         if (hasCredentials) backend.connect()
     }
-    if (hasCredentials) MainShell(backend) else SetupScreen(backend, onSaved = { hasCredentials = true }, onRestore = {
+    val prefs = remember(backend) { UiPrefs(backend::pref, backend::setPref) }
+    val dark = when (prefs.themeMode) {
+        ThemeMode.Dark -> true
+        ThemeMode.Light -> false
+        ThemeMode.System -> androidx.compose.foundation.isSystemInDarkTheme()
+    }
+    val restore = {
         // The library file must be closed before a restore replaces it.
         backend.services.close()
         onRestore()
-    })
+    }
+    PaperPlayTheme(dark = dark, seed = prefs.seed, dynamic = prefs.accent == "dynamic", amoled = prefs.amoled) {
+        if (hasCredentials) MainShell(backend, prefs, restore) else SetupScreen(backend, onSaved = { hasCredentials = true }, onRestore = restore)
+    }
 }

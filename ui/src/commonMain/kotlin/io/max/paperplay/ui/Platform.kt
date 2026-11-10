@@ -12,3 +12,6 @@ expect fun decodeImageFile(path: String, maxSide: Int): ImageBitmap?
 
 /** Local hour of day, 0 to 23. */
 expect fun currentHour(): Int
+
+/** True on a phone, where the floating bar and glass settings apply; the desktop has a sidebar instead. */
+expect val isPhone: Boolean

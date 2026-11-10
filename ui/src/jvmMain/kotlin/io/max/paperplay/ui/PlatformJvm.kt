@@ -13,3 +13,5 @@ actual fun decodeImageFile(path: String, maxSide: Int): ImageBitmap? = runCatchi
 }.getOrNull()
 
 actual fun currentHour(): Int = java.time.LocalTime.now().hour
+
+actual val isPhone: Boolean = false

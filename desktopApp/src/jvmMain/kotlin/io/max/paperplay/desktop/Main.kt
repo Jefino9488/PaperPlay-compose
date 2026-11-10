@@ -40,7 +40,7 @@ fun main() {
             libraryExists = { File(dir, "library.sqlite").exists() },
             createServices = { AppServices(DesktopPlatform(dir)) },
         )
-        Window(onCloseRequest = ::exitApplication, title = "Paper Play", state = rememberWindowState(width = 1000.dp, height = 760.dp)) {
+        Window(onCloseRequest = ::exitApplication, title = "Paper Play", state = rememberWindowState(width = 1000.dp, height = 760.dp), icon = androidx.compose.ui.res.painterResource("icon.png")) {
             App(env)
         }
     }

@@ -175,6 +175,9 @@ class CoreBackend(val services: AppServices) {
 
     fun connect() = services.connect()
 
+    fun pref(key: String): String? = repo.pref(key)
+    fun setPref(key: String, value: String) = repo.setPref(key, value)
+
     /** Adds a chat to read songs from. [id] is Telegram's chat id, for example -1001234567890. */
     fun addChat(id: String, title: String): String? {
         val chatId = id.trim().toLongOrNull() ?: return "The chat id is a number, like -1001234567890."
