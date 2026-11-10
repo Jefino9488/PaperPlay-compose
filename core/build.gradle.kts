@@ -17,11 +17,26 @@ kotlin {
     jvm()
     sourceSets {
         commonMain.dependencies {
-            implementation(libs.coroutines.core)
+            api(libs.coroutines.core)
+            api(libs.serialization.json)
             api(libs.sqldelight.runtime)
         }
-        androidMain.dependencies { implementation(libs.sqldelight.android) }
-        jvmMain.dependencies { implementation(libs.sqldelight.jdbc) }
+        // One JNA binding to libtdjson shared by both targets; only the JNA artifact differs.
+        val jnaSrc = "src/jnaMain/kotlin"
+        androidMain {
+            kotlin.srcDir(jnaSrc)
+            dependencies {
+                implementation("${libs.jna.android.get()}@aar")
+                implementation(libs.sqldelight.android)
+            }
+        }
+        jvmMain {
+            kotlin.srcDir(jnaSrc)
+            dependencies {
+                implementation(libs.jna)
+                implementation(libs.sqldelight.jdbc)
+            }
+        }
         commonTest.dependencies { implementation(kotlin("test")) }
     }
 }
