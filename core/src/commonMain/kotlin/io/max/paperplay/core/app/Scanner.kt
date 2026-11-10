@@ -7,7 +7,9 @@ import io.max.paperplay.core.telegram.TdError
 import io.max.paperplay.core.telegram.request
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
@@ -216,6 +218,7 @@ class Scanner(
         val seen = mutableSetOf<Long>()
         _error.value = null
         try {
+            introduceChat(client, chat.id)
             while (true) {
                 if (repo.chat(chat.id) == null) return seen // Removed while reading.
                 val page = retrying {
@@ -254,6 +257,33 @@ class Scanner(
             return null
         } finally {
             _progress.value = null
+        }
+    }
+
+    /**
+     * A bot's TDLib database starts empty, so a channel is unknown to it ("Chat not found") until it is introduced.
+     * The first attempt needs the network, the forced one does not; a forced chat has no access hash, so the channel
+     * is then fetched, which is what makes its messages readable. Failures here are not fatal: the read that
+     * follows reports what is really wrong (the bot is not in the channel, or offline).
+     */
+    private suspend fun introduceChat(client: TdClient, chatId: Long) {
+        val group = -chatId - 1_000_000_000_000
+        if (group <= 0) return // Not a channel or supergroup id.
+        for (force in listOf(false, true)) {
+            try {
+                client.call(request("createSupergroupChat") { put("supergroup_id", group); put("force", force) })
+                break
+            } catch (_: TdError) {
+                // Offline, or the bot has not seen the channel; the forced attempt needs no network.
+            }
+        }
+        try {
+            withTimeout(10.seconds) { client.call(request("getSupergroup") { put("supergroup_id", group) }) }
+            withTimeout(10.seconds) { client.call(request("getChat") { put("chat_id", chatId) }) }
+        } catch (_: TdError) {
+            // The bot is not in the channel.
+        } catch (_: TimeoutCancellationException) {
+            // Offline.
         }
     }
 
