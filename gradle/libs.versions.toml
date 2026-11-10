@@ -1,7 +1,8 @@
 [versions]
-kotlin = "2.2.20"
+backdrop = "2.0.0-alpha03"
+kotlin = "2.3.10"
 agp = "8.11.1"
-compose = "1.9.0"
+compose = "1.10.1"
 coroutines = "1.10.2"
 serialization = "1.9.0"
 jna = "5.17.0"
@@ -11,6 +12,7 @@ media3 = "1.8.0"
 vlcj = "4.11.0"
 
 [libraries]
+backdrop = { module = "io.github.kyant0:backdrop", version.ref = "backdrop" }
 coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
 coroutines-swing = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-swing", version.ref = "coroutines" }
 serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }
