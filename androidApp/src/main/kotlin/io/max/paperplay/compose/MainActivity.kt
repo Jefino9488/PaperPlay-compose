@@ -3,11 +3,13 @@ package io.max.paperplay.compose
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import io.max.paperplay.player.initPlayer
 import io.max.paperplay.ui.App
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        initPlayer(applicationContext)
         setContent { App() }
     }
 }

@@ -8,6 +8,12 @@ kotlin {
     jvm()
     sourceSets {
         commonMain.dependencies { api(libs.coroutines.core) }
+        androidMain.dependencies {
+            api(libs.media3.exoplayer)
+            api(libs.media3.session)
+        }
+        jvmMain.dependencies { implementation(libs.vlcj) }
+        jvmTest.dependencies { implementation(kotlin("test")) }
     }
 }
 
