@@ -1,11 +1,13 @@
 [versions]
-kotlin = "2.2.20"
+backdrop = "2.0.0"
+kotlin = "2.3.21"
 agp = "8.11.1"
-compose = "1.9.0"
+compose = "1.11.0"
 coroutines = "1.10.2"
 androidxActivity = "1.10.1"
 
 [libraries]
+backdrop = { module = "io.github.kyant0:backdrop", version.ref = "backdrop" }
 coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
 coroutines-swing = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-swing", version.ref = "coroutines" }
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidxActivity" }
