@@ -1,0 +1,135 @@
+-- Mirrors Drift's db.dart (schema version 14). Table and column names must stay identical.
+CREATE TABLE songs (
+  "chat_id" INTEGER NOT NULL,
+  "message_id" INTEGER NOT NULL,
+  "unique_id" TEXT NOT NULL,
+  "remote_id" TEXT NOT NULL,
+  "title" TEXT NOT NULL,
+  "artist" TEXT NOT NULL,
+  "album" TEXT NOT NULL DEFAULT '',
+  "duration_sec" INTEGER NOT NULL DEFAULT 0,
+  "size" INTEGER NOT NULL,
+  "mime" TEXT NOT NULL,
+  "file_name" TEXT NOT NULL,
+  "date" INTEGER NOT NULL,
+  "cover_path" TEXT,
+  "release_id" TEXT,
+  "cover_url" TEXT,
+  "genre" TEXT,
+  "year" INTEGER,
+  "metadata_source" TEXT,
+  "favorite" INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0 CHECK ("favorite" IN (0, 1)),
+  "cover_hi_res" INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0 CHECK ("cover_hi_res" IN (0, 1)),
+  "user_edited" INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0 CHECK ("user_edited" IN (0, 1)),
+  "enrich_state" INTEGER NOT NULL DEFAULT 0,
+  "lyrics" TEXT,
+  "cached_bytes" INTEGER NOT NULL DEFAULT 0,
+  "last_played_at" INTEGER,
+  "pinned" INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0 CHECK ("pinned" IN (0, 1)),
+  "tags_at" INTEGER NOT NULL DEFAULT 0,
+  "favorite_at" INTEGER NOT NULL DEFAULT 0,
+  "cover_at" INTEGER NOT NULL DEFAULT 0,
+  "instrumental" INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0 CHECK ("instrumental" IN (0, 1)),
+  "mood_scanned_at" INTEGER NOT NULL DEFAULT 0,
+  "plays" INTEGER NOT NULL DEFAULT 0,
+  "skips" INTEGER NOT NULL DEFAULT 0,
+  "topic_id" INTEGER,
+  "sample_rate" INTEGER,
+  "bit_depth" INTEGER,
+  "codec" TEXT,
+  PRIMARY KEY ("chat_id", "message_id"),
+  UNIQUE ("unique_id")
+);
+
+allSongs:
+SELECT * FROM songs ORDER BY date DESC;
+
+song:
+SELECT * FROM songs WHERE chat_id = :chatId AND message_id = :messageId;
+
+songByUniqueId:
+SELECT * FROM songs WHERE unique_id = :uniqueId;
+
+favorites:
+SELECT * FROM songs WHERE favorite = 1 ORDER BY title ASC;
+
+recent:
+SELECT * FROM songs WHERE last_played_at IS NOT NULL ORDER BY last_played_at DESC LIMIT :limit;
+
+songsInChat:
+SELECT * FROM songs WHERE chat_id = :chatId ORDER BY message_id ASC;
+
+topicSongs:
+SELECT * FROM songs WHERE chat_id = :chatId AND topic_id = :topicId ORDER BY date DESC;
+
+albumRows:
+SELECT * FROM songs WHERE album = :album;
+
+cachedSongs:
+SELECT * FROM songs WHERE cached_bytes > 0;
+
+cachedSongsIn:
+SELECT * FROM songs WHERE chat_id = :chatId AND cached_bytes > 0;
+
+incompletePins:
+SELECT * FROM songs WHERE pinned = 1 AND cached_bytes < size;
+
+pendingToEnrich:
+SELECT * FROM songs WHERE enrich_state = 0 LIMIT 100 OFFSET :offset;
+
+nextToEnrich:
+SELECT * FROM songs WHERE enrich_state = 0 LIMIT 1;
+
+moodPending:
+SELECT * FROM songs WHERE mood_scanned_at = 0 LIMIT 100 OFFSET :offset;
+
+nextForMoodScan:
+SELECT * FROM songs WHERE mood_scanned_at = 0 LIMIT 1;
+
+moodScannedCount:
+SELECT COUNT(*) FROM songs WHERE mood_scanned_at > 0;
+
+libraryStats:
+SELECT COUNT(*) AS total,
+  COALESCE(SUM(enrich_state = 0), 0) AS waiting,
+  COALESCE(SUM(enrich_state = 1), 0) AS matched,
+  COALESCE(SUM(enrich_state = 2), 0) AS no_match,
+  COALESCE(SUM(cover_path IS NOT NULL), 0) AS covers
+FROM songs;
+
+insertSong:
+INSERT OR IGNORE INTO songs VALUES ?;
+
+deleteSong:
+DELETE FROM songs WHERE chat_id = :chatId AND message_id = :messageId;
+
+refreshPost:
+UPDATE songs SET remote_id = :remoteId, topic_id = :topicId WHERE chat_id = :chatId AND message_id = :messageId;
+
+repointPost:
+UPDATE songs SET chat_id = :toChat, message_id = :toMessage, remote_id = COALESCE(:remoteId, remote_id), topic_id = :topicId
+WHERE chat_id = :chatId AND message_id = :messageId;
+
+setCachedBytes:
+UPDATE songs SET cached_bytes = :bytes WHERE unique_id = :uniqueId;
+
+setAudioDetails:
+UPDATE songs SET sample_rate = :sampleRate, bit_depth = :bitDepth, codec = :codec WHERE unique_id = :uniqueId;
+
+setFavorite:
+UPDATE songs SET favorite = :favorite, favorite_at = :favoriteAt WHERE chat_id = :chatId AND message_id = :messageId;
+
+countFinished:
+UPDATE songs SET plays = plays + 1 WHERE chat_id = :chatId AND message_id = :messageId;
+
+countSkipped:
+UPDATE songs SET skips = skips + 1 WHERE chat_id = :chatId AND message_id = :messageId;
+
+clearLearnedSongs:
+UPDATE songs SET plays = 0, skips = 0 WHERE plays <> 0 OR skips <> 0;
+
+prepareTagsAt:
+UPDATE songs SET tags_at = 1 WHERE tags_at = 0 AND (user_edited = 1 OR enrich_state <> 0);
+
+prepareFavoriteAt:
+UPDATE songs SET favorite_at = 1 WHERE favorite_at = 0 AND favorite = 1;
