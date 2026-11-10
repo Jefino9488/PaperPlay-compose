@@ -9,3 +9,6 @@ fun libraryDriver(path: String? = null): JdbcSqliteDriver = JdbcSqliteDriver(
     Properties().apply { put("foreign_keys", "true") },
     LibrarySchema,
 )
+
+/** The same driver typed as [SqlDriver], for callers that do not have the JDBC driver on their classpath. */
+fun openLibraryDriver(path: String): app.cash.sqldelight.db.SqlDriver = libraryDriver(path)

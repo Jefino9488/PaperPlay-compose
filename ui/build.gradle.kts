@@ -20,6 +20,10 @@ kotlin {
             implementation(compose.material3)
             implementation(libs.backdrop)
             implementation(project(":core"))
+            implementation(project(":player"))
+        }
+        androidMain.dependencies {
+            implementation(libs.androidx.activity.compose)
         }
     }
 }

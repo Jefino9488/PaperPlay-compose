@@ -77,7 +77,14 @@ class AndroidPlayerEngine : PlayerEngine {
         _positionMs.value = player.currentPosition
     }
 
-    override fun setQueue(items: List<QueueItem>, startIndex: Int) {
+    /** ExoPlayer may only be used from its own (main) thread; callers may be on any thread. */
+    private fun onMain(block: () -> Unit) {
+        if (Looper.myLooper() == Looper.getMainLooper()) block() else handler.post(block)
+    }
+
+    override fun setQueue(items: List<QueueItem>, startIndex: Int) = onMain { setQueueNow(items, startIndex) }
+
+    private fun setQueueNow(items: List<QueueItem>, startIndex: Int) {
         failed = false
         PlaybackCore.sources.clear()
         val mediaItems = items.map { item ->
@@ -102,13 +109,13 @@ class AndroidPlayerEngine : PlayerEngine {
         player.play()
     }
 
-    override fun play() = player.play()
-    override fun pause() = player.pause()
-    override fun next() = player.seekToNextMediaItem()
-    override fun previous() = player.seekToPreviousMediaItem()
-    override fun seek(positionMs: Long) = player.seekTo(positionMs)
+    override fun play() = onMain { player.play() }
+    override fun pause() = onMain { player.pause() }
+    override fun next() = onMain { player.seekToNextMediaItem() }
+    override fun previous() = onMain { player.seekToPreviousMediaItem() }
+    override fun seek(positionMs: Long) = onMain { player.seekTo(positionMs) }
 
-    override fun release() {
+    override fun release() = onMain {
         handler.removeCallbacks(ticker)
         player.removeListener(listener)
         context.stopService(Intent(context, PlaybackService::class.java))

@@ -22,7 +22,8 @@ class LibraryRepository(val repo: LibraryRepo, private val clock: () -> Long) {
     private val songs get() = repo.db.songsQueries
     private val lists get() = repo.db.playlistsQueries
     private val misc get() = repo.db.miscQueries
-    private val changes = MutableStateFlow(0L)
+    /** Counts every write; collect it to re-run a query that [watch] does not cover. */
+    val changes = MutableStateFlow(0L)
 
     /** Call after changing the database behind this class's back (e.g. a restored backup). */
     fun invalidate() = changes.update { it + 1 }

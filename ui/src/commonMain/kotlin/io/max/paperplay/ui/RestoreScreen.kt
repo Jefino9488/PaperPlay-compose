@@ -56,7 +56,7 @@ private sealed interface RestoreState {
 }
 
 @Composable
-fun RestoreScreen(hooks: RestoreHooks, onContinue: () -> Unit, onSkip: (() -> Unit)? = null) {
+fun RestoreScreen(hooks: RestoreHooks, onContinue: () -> Unit, onSkip: (() -> Unit)? = null, skipLabel: String = "Skip (debug demo)") {
     val backdrop = rememberLayerBackdrop()
     val scope = rememberCoroutineScope()
     var state by remember { mutableStateOf<RestoreState>(RestoreState.Idle) }
@@ -110,7 +110,7 @@ fun RestoreScreen(hooks: RestoreHooks, onContinue: () -> Unit, onSkip: (() -> Un
                         )
                         if (s is RestoreState.Failed) Text(s.message, color = Color(0xFFFF8A80))
                         Button({ hooks.pickBackup(::start) }, Modifier.fillMaxWidth()) { Text("Restore from backup") }
-                        onSkip?.let { TextButton(it, Modifier.fillMaxWidth()) { Text("Skip (debug demo)") } }
+                        onSkip?.let { TextButton(it, Modifier.fillMaxWidth()) { Text(skipLabel) } }
                     }
                     is RestoreState.Running -> {
                         Text(s.stage, color = Color.White)
