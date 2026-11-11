@@ -44,6 +44,7 @@ class TdError(val code: Int, override val message: String) : Exception(message) 
 /**
  * Login and storage settings for one bot session. Not a data class and no toString: it holds
  * the bot token, API hash and database key, which must never reach a log.
+ * An empty [botToken] makes the owner's own account session: TDLib's login steps are left to the caller.
  * [encryptionKey] is the app's own (keyOverride when restoring a backup, else the keystore key).
  */
 class TdConfig(
@@ -57,7 +58,10 @@ class TdConfig(
     val deviceModel: String = "Android",
     val systemVersion: String = "",
     val appVersion: String = "0.1.0",
-)
+    val useMessageDatabase: Boolean = true,
+) {
+    val isUser get() = botToken.isEmpty()
+}
 
 /** Updates the app reacts to; everything else is dropped. */
 val DefaultTdUpdates = setOf(
@@ -113,6 +117,7 @@ class TdRuntime(
 class TdClient(private val runtime: TdRuntime, private val config: TdConfig) {
     private val _auth = MutableStateFlow("")
     private val _authError = MutableStateFlow<String?>(null)
+    private val _authLink = MutableStateFlow<String?>(null)
     private val _updates = MutableSharedFlow<JsonObject>(extraBufferCapacity = 512, onBufferOverflow = BufferOverflow.DROP_OLDEST)
     private val pending = MutableStateFlow<Map<Long, CompletableDeferred<JsonObject>>>(emptyMap())
     private val nextExtra = MutableStateFlow(1L)
@@ -126,6 +131,9 @@ class TdClient(private val runtime: TdRuntime, private val config: TdConfig) {
 
     /** Last failure from setup or login. */
     val authError: StateFlow<String?> = _authError
+
+    /** The `tg://login` link while the state is authorizationStateWaitOtherDeviceConfirmation; null otherwise. */
+    val authLink: StateFlow<String?> = _authLink
 
     /**
      * Updates from [DefaultTdUpdates]. Lossy: a collector that falls 512 behind loses the oldest,
@@ -191,20 +199,23 @@ class TdClient(private val runtime: TdRuntime, private val config: TdConfig) {
             pending.value[extra]?.complete(m) // late answers to timed-out calls have no taker
             return
         }
-        if (m.type == "updateAuthorizationState") onAuth(m["authorization_state"]!!.jsonObject.type!!)
+        if (m.type == "updateAuthorizationState") onAuth(m["authorization_state"]!!.jsonObject)
         _updates.tryEmit(m)
     }
 
-    private fun onAuth(state: String) {
+    private fun onAuth(info: JsonObject) {
+        val state = info.type!!
+        _authLink.value = if (state == "authorizationStateWaitOtherDeviceConfirmation") info["link"]?.jsonPrimitive?.contentOrNull else null
         _auth.value = state
         when (state) {
             "authorizationStateWaitTdlibParameters" -> runtime.scope.launch { attempt { sendParameters() } }
             "authorizationStateWaitPhoneNumber" -> { // TDLib's name for "not logged in"
+                if (config.isUser) return
                 _authError.value = null
                 runtime.scope.launch { attempt { call(request("checkAuthenticationBotToken") { put("token", config.botToken) }) } }
             }
             "authorizationStateClosed" -> {
-                if (!stopping) _authError.value = "Telegram ended the bot session."
+                if (!stopping) _authError.value = if (config.isUser) "Telegram ended the account session." else "Telegram ended the bot session."
                 stopping = false
                 closed.complete(Unit)
             }
@@ -223,7 +234,7 @@ class TdClient(private val runtime: TdRuntime, private val config: TdConfig) {
             put("database_encryption_key", config.encryptionKey)
             put("use_file_database", true)
             put("use_chat_info_database", true)
-            put("use_message_database", true)
+            put("use_message_database", config.useMessageDatabase)
             put("use_secret_chats", false)
             put("api_id", config.apiId)
             put("api_hash", config.apiHash)

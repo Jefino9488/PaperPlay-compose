@@ -48,7 +48,12 @@ class AppServices(
     val scanner = Scanner(library, scope)
 
     /** The owner's own account (login, chats, copying). The real one replaces the stand-in. */
-    val account: io.max.paperplay.core.account.AccountApi by lazy { io.max.paperplay.core.account.NoAccount() }
+    val account: io.max.paperplay.core.account.AccountApi by lazy {
+        io.max.paperplay.core.account.UserSession(
+            scope, { runtime ?: TdRuntime(platform.native, scope, platform.receiveDispatcher).also { runtime = it } },
+            platform.dataDir, platform.secrets, platform.settings, library::pref, library::setPref, platform.deviceModel, platform.appVersion,
+        )
+    }
 
     /** The saved index of the account's chats. The real one replaces the stand-in. */
     val chatIndex: io.max.paperplay.core.account.ChatIndexApi by lazy {
