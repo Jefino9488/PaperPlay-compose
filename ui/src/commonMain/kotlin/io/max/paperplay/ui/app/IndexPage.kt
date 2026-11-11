@@ -120,7 +120,9 @@ internal fun ChatSongsPage(backend: CoreBackend, chatId: Long, stack: MutableLis
     var busy by remember { mutableStateOf(false) }
     val shown = remember(songs, query) {
         val q = query.trim().lowercase()
-        if (q.isEmpty()) songs else songs.filter { "${it.post.title} ${it.post.artist}".lowercase().contains(q) }
+        val found = if (q.isEmpty()) songs else songs.filter { "${it.post.title} ${it.post.artist}".lowercase().contains(q) }
+        // Songs that are not in the library come first; each group keeps its newest-first order.
+        found.sortedBy { it.inMainChat || it.copied }
     }
     val live = progress?.takeIf { it.chatId == chatId }
 
