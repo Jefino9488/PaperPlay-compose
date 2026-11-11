@@ -35,6 +35,7 @@ interface PlayerEngine {
     val state: StateFlow<PlayerState>
     val positionMs: StateFlow<Long>
     val durationMs: StateFlow<Long>
+    val bufferedMs: StateFlow<Long>
     /** Index into the current queue, -1 when empty. */
     val currentIndex: StateFlow<Int>
 

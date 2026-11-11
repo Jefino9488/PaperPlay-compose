@@ -48,10 +48,12 @@ class AndroidPlayerEngine : PlayerEngine {
     private val _state = MutableStateFlow(PlayerState.Idle)
     private val _positionMs = MutableStateFlow(0L)
     private val _durationMs = MutableStateFlow(0L)
+    private val _bufferedMs = MutableStateFlow(0L)
     private val _currentIndex = MutableStateFlow(-1)
     override val state: StateFlow<PlayerState> = _state
     override val positionMs: StateFlow<Long> = _positionMs
     override val durationMs: StateFlow<Long> = _durationMs
+    override val bufferedMs: StateFlow<Long> = _bufferedMs
     override val currentIndex: StateFlow<Int> = _currentIndex
 
     private val playerListener = object : Player.Listener {
@@ -78,6 +80,7 @@ class AndroidPlayerEngine : PlayerEngine {
                 _state.value = PlayerState.Idle
                 _positionMs.value = 0L
                 _durationMs.value = 0L
+                _bufferedMs.value = 0L
                 _currentIndex.value = -1
             }
         }
@@ -91,6 +94,7 @@ class AndroidPlayerEngine : PlayerEngine {
                 return
             }
             _positionMs.value = mc.currentPosition.coerceAtLeast(0L)
+            _bufferedMs.value = mc.bufferedPosition.coerceAtLeast(0L)
             handler.postDelayed(this, POSITION_POLL_MS)
         }
     }
@@ -154,6 +158,7 @@ class AndroidPlayerEngine : PlayerEngine {
         if (mc == null || !mc.isConnected) {
             _state.value = if (failed) PlayerState.Error else PlayerState.Idle
             _durationMs.value = 0L
+            _bufferedMs.value = 0L
             _currentIndex.value = -1
             _positionMs.value = 0L
             updateTicker(null)
@@ -171,6 +176,7 @@ class AndroidPlayerEngine : PlayerEngine {
             }
         }
         _durationMs.value = mc.duration.takeIf { it != C.TIME_UNSET } ?: 0L
+        _bufferedMs.value = mc.bufferedPosition.coerceAtLeast(0L)
         _currentIndex.value = if (mc.mediaItemCount == 0) -1 else mc.currentMediaItemIndex
         _positionMs.value = mc.currentPosition.coerceAtLeast(0L)
         updateTicker(mc)
@@ -289,6 +295,7 @@ class AndroidPlayerEngine : PlayerEngine {
         _state.value = PlayerState.Idle
         _positionMs.value = 0L
         _durationMs.value = 0L
+        _bufferedMs.value = 0L
         _currentIndex.value = -1
     }
 

@@ -1,4 +1,4 @@
-﻿package io.max.paperplay.ui.app
+package io.max.paperplay.ui.app
 
 import io.max.paperplay.core.app.AppServices
 import io.max.paperplay.core.app.NowPlaying
@@ -340,6 +340,7 @@ class CoreBackend(val services: AppServices) {
             playing = isPlaying,
             positionMs = positionMs,
             durationMs = durationMs,
+            bufferedMs = bufferedMs,
             shuffle = shuffle,
             repeat = when (repeat) { Repeat.OFF -> RepeatUi.Off; Repeat.ALL -> RepeatUi.All; Repeat.ONE -> RepeatUi.One },
             queue = ui,

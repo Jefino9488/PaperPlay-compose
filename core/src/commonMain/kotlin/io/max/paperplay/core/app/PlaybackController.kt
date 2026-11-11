@@ -33,6 +33,7 @@ data class NowPlaying(
     val repeat: Repeat = Repeat.OFF,
     /** Text of the last failure to start a track; null otherwise. */
     val error: String? = null,
+    val bufferedMs: Long = 0,
 )
 
 /**
@@ -56,13 +57,17 @@ class PlaybackController(
     private var listening: Song? = null
     private var listenedMs = 0L
 
+    private val timing = combine(engine.positionMs, engine.durationMs, engine.bufferedMs) { pos, dur, buf ->
+        Triple(pos, dur, buf)
+    }
+
     val nowPlaying: StateFlow<NowPlaying> = combine(
-        engine.state, engine.positionMs, engine.durationMs, engine.currentIndex, meta,
-    ) { state, pos, dur, idx, m ->
+        engine.state, timing, engine.currentIndex, meta,
+    ) { state, (pos, dur, buf), idx, m ->
         val song = m.queue.getOrNull(idx)
         NowPlaying(
             song, pos, if (dur > 0) dur else (song?.duration_sec ?: 0) * 1000, state == PlayerState.Playing,
-            idx, m.queue, m.shuffle, m.repeat, m.error,
+            idx, m.queue, m.shuffle, m.repeat, m.error, buf,
         )
     }.stateIn(scope, SharingStarted.Eagerly, NowPlaying())
 

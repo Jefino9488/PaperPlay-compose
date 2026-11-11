@@ -27,10 +27,12 @@ class JvmPlayerEngine(vararg vlcArgs: String) : PlayerEngine {
     private val _state = MutableStateFlow(PlayerState.Idle)
     private val _positionMs = MutableStateFlow(0L)
     private val _durationMs = MutableStateFlow(0L)
+    private val _bufferedMs = MutableStateFlow(0L)
     private val _currentIndex = MutableStateFlow(-1)
     override val state: StateFlow<PlayerState> = _state
     override val positionMs: StateFlow<Long> = _positionMs
     override val durationMs: StateFlow<Long> = _durationMs
+    override val bufferedMs: StateFlow<Long> = _bufferedMs
     override val currentIndex: StateFlow<Int> = _currentIndex
 
     private val factory = run {
