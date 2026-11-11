@@ -177,6 +177,12 @@ class CoreBackend(val services: AppServices) {
         return found
     }
 
+    /** Listening totals for the last [days] days (0 for all time): per song and per day. */
+    fun listenStats(days: Int): Pair<List<io.max.paperplay.core.library.ListenTotal>, Map<String, Long>> {
+        val from = if (days <= 0) "0000-00-00" else io.max.paperplay.core.app.dayOf(nowMoment().epochMs - (days - 1) * 86_400_000L)
+        return repo.repo.listenTotals(from) to repo.repo.listenPerDay(from)
+    }
+
     /** Sleep timer: pauses at [sleepAt] (epoch ms). Null when none is set. */
     val sleepAt = MutableStateFlow<Long?>(null)
     private var sleepJob: kotlinx.coroutines.Job? = null

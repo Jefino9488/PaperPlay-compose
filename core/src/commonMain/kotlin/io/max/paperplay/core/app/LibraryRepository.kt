@@ -121,7 +121,7 @@ private fun Song.matches(words: List<String>): Boolean {
 }
 
 /** UTC calendar day of [millis] as yyyy-MM-dd. */
-internal fun dayOf(millis: Long): String {
+fun dayOf(millis: Long): String {
     val z = millis.floorDiv(86_400_000L) + 719_468
     val era = z.floorDiv(146_097L)
     val doe = z - era * 146_097

@@ -108,7 +108,7 @@ fun ProfileScreen(
                     }
                     NavRow("Tasks", icon = Icons.Rounded.TaskAlt, subtitle = conn.scanText ?: "Nothing running", onClick = onTasks)
                     NavRow("Listening", icon = Icons.Rounded.BarChart, subtitle = "Time listened, top songs and artists") {
-                        onSettings("listening")
+                        onSettings("stats")
                     }
                     NavRow("Duplicates", icon = Icons.Rounded.ContentCopy, subtitle = "Find repeated songs and remove the extras") {
                         onSettings("library")
