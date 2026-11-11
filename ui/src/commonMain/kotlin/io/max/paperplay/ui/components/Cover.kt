@@ -14,6 +14,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.layout.ContentScale
+import org.jetbrains.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
@@ -37,7 +38,7 @@ fun CoverImage(
 ) {
     val loader = LocalCoverLoader.current
     val painter = if (uri != null && loader != null) loader.painter(uri) else null
-    val shape = RoundedCornerShape(radius)
+    val shape = io.max.paperplay.ui.app.appShape(radius)
     Box(modifier.size(size).clip(shape)) {
         if (painter != null) {
             Image(painter, contentDescription = null, Modifier.size(size), contentScale = ContentScale.Crop)
@@ -71,4 +72,16 @@ fun mosaicColors(key: String): List<Color> {
         Color.hsv((base + 80f) % 360f, 0.50f, 0.75f),
         Color.hsv((base + 20f) % 360f, 0.65f, 0.50f),
     )
+}
+
+@Preview
+@Composable
+private fun CoverImagePreview() {
+    CoverImage(uri = null, key = "preview_key")
+}
+
+@Preview
+@Composable
+private fun CoverMosaicPreview() {
+    CoverMosaic(key = "preview_mosaic_key", modifier = Modifier.size(64.dp))
 }

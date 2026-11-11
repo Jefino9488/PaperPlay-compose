@@ -3,8 +3,12 @@ package io.max.paperplay.ui
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.Text
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import org.jetbrains.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.drawBackdrop
@@ -39,3 +43,12 @@ fun GlassSurface(
 
 /** True when blur/vibrancy RenderEffects work (Android 12+; always on desktop). Below that the surface is a plain translucent tint. */
 internal expect fun glassEffectsSupported(): Boolean
+
+@Preview
+@Composable
+private fun GlassSurfacePreview() {
+    val backdrop = com.kyant.backdrop.backdrops.rememberLayerBackdrop()
+    GlassSurface(backdrop = backdrop, modifier = Modifier.size(200.dp, 100.dp)) {
+        Text("Glass Surface", modifier = Modifier.padding(16.dp))
+    }
+}

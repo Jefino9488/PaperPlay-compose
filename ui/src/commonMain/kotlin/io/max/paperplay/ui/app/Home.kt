@@ -1,4 +1,6 @@
-package io.max.paperplay.ui.app
+﻿package io.max.paperplay.ui.app
+
+import io.max.paperplay.ui.components.AppIcon
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -35,7 +37,7 @@ import androidx.compose.material.icons.rounded.Spa
 import androidx.compose.material.icons.rounded.Umbrella
 import androidx.compose.material.icons.rounded.WaterDrop
 import androidx.compose.material.icons.rounded.WbSunny
-import androidx.compose.material3.Icon
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -49,6 +51,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import org.jetbrains.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.max.paperplay.ui.components.CoverImage
@@ -147,13 +150,18 @@ fun HomeScreen(
 private fun StatusLine(conn: ConnectionUi, songCount: Int) {
     val text = when {
         conn.error != null -> conn.error
-        !conn.ready && conn.state.isNotEmpty() -> "Connecting to Telegram…"
+        !conn.ready && conn.state.isNotEmpty() -> "Connecting to Telegramâ€¦"
         conn.scanText != null -> conn.scanText
         songCount == 0 && conn.ready -> "No songs yet. Add the chat that holds your music in Settings."
         else -> null
     } ?: return
-    Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
-        Text(text, color = if (conn.error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+    Column(Modifier.padding(horizontal = 16.dp, vertical = 2.dp)) {
+        AssistChip(
+            onClick = {},
+            enabled = false,
+            label = { Text(text, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+            modifier = Modifier.fillMaxWidth(),
+        )
         if (conn.scanText != null && conn.error == null) {
             val f = conn.scanFraction
             if (f != null) LinearProgressIndicator({ f.toFloat() }, Modifier.fillMaxWidth().padding(top = 6.dp))
@@ -213,12 +221,12 @@ private fun MixCard(mix: CollectionUi, onClick: () -> Unit) {
             CoverGrid(mix.coverUris, mix.id, cardSize, 0.dp)
             Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(color.copy(alpha = 0.35f), color.copy(alpha = 0.95f)))))
             Column(Modifier.fillMaxSize().padding(10.dp)) {
-                moodIcons[mix.id]?.let { Icon(it, null, Modifier.size(22.dp), tint = Color.White) }
+                moodIcons[mix.id]?.let { AppIcon(it, null, Modifier.size(22.dp), tint = Color.White) }
                 Spacer(Modifier.weight(1f))
                 Text(mix.name, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium, color = Color.White)
             }
         }
-        Text(mix.subtitle, Modifier.padding(top = 8.dp), maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(mix.subtitle, Modifier.padding(top = 8.dp), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -257,3 +265,44 @@ fun GenreGrid(songs: List<SongUi>, bottomPadding: Dp, onOpen: (Detail) -> Unit, 
         }
     }
 }
+
+private val previewHomeSongs = listOf(
+    SongUi("1", "Supermassive Black Hole", "Muse", "Black Holes and Revelations", genre = "Rock", durationSec = 209),
+    SongUi("2", "Starlight", "Muse", "Black Holes and Revelations", genre = "Rock", durationSec = 240),
+)
+
+private val previewActions = ListActions(play = { _, _ -> }, shuffle = {}, setFavorite = { _, _ -> }, addToPlaylist = {}, notice = {})
+
+@Preview
+@Composable
+private fun MediaCardPreview() {
+    MediaCard(coverUri = null, key = "preview_art", title = "Muse", subtitle = "Artist", circle = true, onClick = {})
+}
+
+@Preview
+@Composable
+private fun SongShelfPreview() {
+    SongShelf(title = "Recently Added", songs = previewHomeSongs, currentId = "1", actions = previewActions)
+}
+
+@Preview
+@Composable
+private fun GenreGridPreview() {
+    GenreGrid(songs = previewHomeSongs, bottomPadding = 0.dp, onOpen = {})
+}
+
+@Preview
+@Composable
+private fun HomeScreenPreview() {
+    HomeScreen(
+        lib = LibraryUi(songs = Load.Ready(previewHomeSongs)),
+        home = HomeUi(),
+        favorites = previewHomeSongs,
+        playback = PlaybackUiState(),
+        conn = ConnectionUi(ready = true),
+        actions = previewActions,
+        onOpen = {},
+        bottomPadding = 0.dp,
+    )
+}
+

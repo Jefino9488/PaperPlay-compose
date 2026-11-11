@@ -1,4 +1,6 @@
-package io.max.paperplay.ui.app
+﻿package io.max.paperplay.ui.app
+
+import io.max.paperplay.ui.components.AppIcon
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -47,7 +49,6 @@ import androidx.compose.material.icons.rounded.SkipPrevious
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.FilledIconButton
-import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
@@ -71,6 +72,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import org.jetbrains.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import io.max.paperplay.ui.PlatformBackHandler
 import io.max.paperplay.ui.components.CoverImage
@@ -107,7 +109,7 @@ fun FullPlayer(state: PlaybackUiState, error: String?, backend: CoreBackend, act
             when {
                 wide -> Row(Modifier.fillMaxSize()) {
                     Column(Modifier.weight(1f).fillMaxHeight()) {
-                        IconButton(onClose, Modifier.padding(8.dp)) { Icon(Icons.Rounded.KeyboardArrowDown, "Close player", Modifier.size(32.dp)) }
+                        IconButton(onClose, Modifier.padding(8.dp)) { AppIcon(Icons.Rounded.KeyboardArrowDown, "Close player", Modifier.size(32.dp)) }
                         PlayerBody(song, state, error, backend, actions, onClose, grabber = false, Modifier.weight(1f))
                     }
                     Column(Modifier.weight(1f).fillMaxHeight().padding(end = 16.dp)) {
@@ -117,7 +119,7 @@ fun FullPlayer(state: PlaybackUiState, error: String?, backend: CoreBackend, act
                 }
                 showQueue -> Column(Modifier.fillMaxSize()) {
                     Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        IconButton({ showQueue = false }) { Icon(Icons.Rounded.KeyboardArrowDown, "Back to the song", Modifier.size(32.dp)) }
+                        IconButton({ showQueue = false }) { AppIcon(Icons.Rounded.KeyboardArrowDown, "Back to the song", Modifier.size(32.dp)) }
                         Text("Queue", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
                         Text("${state.queue.size} songs", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.width(12.dp))
@@ -149,6 +151,7 @@ private fun PlayerBody(
                         onDragEnd = {
                             when {
                                 dy > 80f && dy > kotlin.math.abs(dx) -> onClose()
+                                dy < -80f && dy < -kotlin.math.abs(dx) -> onQueue?.invoke()
                                 dx < -80f -> backend.next()
                                 dx > 80f -> backend.previous()
                             }
@@ -172,7 +175,7 @@ private fun PlayerBody(
                         )
                     }
                     IconButton({ actions.setFavorite(song, !song.favorite) }) {
-                        Icon(
+                        AppIcon(
                             if (song.favorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
                             if (song.favorite) "Remove from favorites" else "Add to favorites",
                             tint = if (song.favorite) scheme.primary else scheme.onSurface,
@@ -185,23 +188,23 @@ private fun PlayerBody(
                     Progress(song, state, backend)
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(backend::previous, Modifier.size(64.dp)) { Icon(Icons.Rounded.SkipPrevious, "Previous", Modifier.size(44.dp)) }
+                    IconButton(backend::previous, Modifier.size(64.dp)) { AppIcon(Icons.Rounded.SkipPrevious, "Previous", Modifier.size(44.dp)) }
                     PlayPauseButton(state.playing, backend::togglePlay)
-                    IconButton(backend::next, Modifier.size(64.dp)) { Icon(Icons.Rounded.SkipNext, "Next", Modifier.size(44.dp)) }
+                    IconButton(backend::next, Modifier.size(64.dp)) { AppIcon(Icons.Rounded.SkipNext, "Next", Modifier.size(44.dp)) }
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    IconButton({ actions.notice("Lyrics are not built yet.") }) { Icon(Icons.Outlined.Lyrics, "Lyrics") }
+                    IconButton({ actions.notice("Lyrics are not built yet.") }) { AppIcon(Icons.Outlined.Lyrics, "Lyrics") }
                     IconButton(backend::toggleShuffle) {
-                        Icon(Icons.Rounded.Shuffle, "Shuffle", tint = if (state.shuffle) scheme.primary else scheme.onSurface)
+                        AppIcon(Icons.Rounded.Shuffle, "Shuffle", tint = if (state.shuffle) scheme.primary else scheme.onSurface)
                     }
                     IconButton(backend::cycleRepeat) {
-                        Icon(
+                        AppIcon(
                             if (state.repeat == RepeatUi.One) Icons.Rounded.RepeatOne else Icons.Rounded.Repeat, "Repeat",
                             tint = if (state.repeat != RepeatUi.Off) scheme.primary else scheme.onSurface,
                         )
                     }
-                    IconButton({ actions.notice("The sleep timer is not built yet.") }) { Icon(Icons.Outlined.Bedtime, "Sleep timer and speed") }
-                    if (onQueue != null) IconButton(onQueue) { Icon(Icons.Rounded.QueueMusic, "Queue") }
+                    IconButton({ actions.notice("The sleep timer is not built yet.") }) { AppIcon(Icons.Outlined.Bedtime, "Sleep timer and speed") }
+                    if (onQueue != null) IconButton(onQueue) { AppIcon(Icons.Rounded.QueueMusic, "Queue") }
                 }
             }
         }
@@ -223,7 +226,7 @@ private fun PlayPauseButton(playing: Boolean, onToggle: () -> Unit) {
         onToggle, Modifier.size(72.dp), shape = CircleShape,
         colors = IconButtonDefaults.filledIconButtonColors(containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary),
     ) {
-        Icon(if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (playing) "Pause" else "Play", Modifier.size(36.dp))
+        AppIcon(if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (playing) "Pause" else "Play", Modifier.size(36.dp))
     }
 }
 
@@ -235,7 +238,10 @@ private fun Progress(song: SongUi, state: PlaybackUiState, backend: CoreBackend)
     val total = if (state.durationMs > 0) state.durationMs else song.durationSec * 1000L
     WavySeek(
         value = state.progress, buffered = state.bufferedProgress, playing = state.playing,
-        onSeek = backend::seekTo, modifier = Modifier.fillMaxWidth(), label = formatDuration(state.positionMs / 1000),
+        onSeek = backend::seekTo,
+        modifier = Modifier.fillMaxWidth(),
+        label = formatDuration(state.positionMs / 1000),
+        longPressLabel = { fraction -> formatDuration((total * fraction / 1000L).toLong()) },
     )
     Spacer(Modifier.height(8.dp))
     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -320,7 +326,7 @@ fun NowPlayingPanel(state: PlaybackUiState, backend: CoreBackend, actions: ListA
                     if (song.album.isEmpty() || song.album.startsWith(song.title)) "Now playing" else song.album,
                     Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall,
                 )
-                IconButton(onHide) { Icon(Icons.Rounded.Close, "Hide this panel", Modifier.size(20.dp)) }
+                IconButton(onHide) { AppIcon(Icons.Rounded.Close, "Hide this panel", Modifier.size(20.dp)) }
             }
             BoxWithConstraints(Modifier.fillMaxWidth().padding(top = 4.dp)) {
                 CoverImage(song.coverUri, song.id, Modifier.clickable(onClick = onOpen), size = maxWidth, radius = 12.dp)
@@ -331,10 +337,10 @@ fun NowPlayingPanel(state: PlaybackUiState, backend: CoreBackend, actions: ListA
                     Text(song.artist, Modifier.padding(top = 2.dp), style = MaterialTheme.typography.bodyMedium, color = muted)
                 }
                 IconButton({ actions.setFavorite(song, !song.favorite) }) {
-                    Icon(if (song.favorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder, if (song.favorite) "Remove from favorites" else "Add to favorites")
+                    AppIcon(if (song.favorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder, if (song.favorite) "Remove from favorites" else "Add to favorites")
                 }
             }
-            val facts = listOfNotNull(song.qualityLabel, song.year?.toString(), song.genre).joinToString(" · ")
+            val facts = listOfNotNull(song.qualityLabel, song.year?.toString(), song.genre).joinToString(" Â· ")
             if (facts.isNotEmpty()) Text(facts, Modifier.padding(top = 6.dp), style = MaterialTheme.typography.bodySmall, color = muted)
             if (next.isNotEmpty()) Text("Next up", Modifier.padding(top = 20.dp, bottom = 6.dp), style = MaterialTheme.typography.titleSmall)
         }
@@ -353,3 +359,36 @@ fun NowPlayingPanel(state: PlaybackUiState, backend: CoreBackend, actions: ListA
         }
     }
 }
+
+private val previewPlayerSong = SongUi(
+    id = "1", title = "Knights of Cydonia", artist = "Muse", album = "Black Holes and Revelations",
+    durationSec = 366, sizeBytes = 14_000_000, qualityLabel = "FLAC 24/96", favorite = true,
+)
+
+private val previewPlayerState = PlaybackUiState(
+    current = previewPlayerSong, playing = true, positionMs = 120000, durationMs = 366000,
+    bufferedMs = 240000, queue = listOf(previewPlayerSong), queueIndex = 0,
+)
+
+private val previewPlayerActions = ListActions(play = { _, _ -> }, shuffle = {}, setFavorite = { _, _ -> }, addToPlaylist = {}, notice = {})
+
+@Preview
+@Composable
+private fun CoverTintedPreview() {
+    CoverTinted(uri = null) {
+        Text("Tinted Content", modifier = Modifier.padding(16.dp))
+    }
+}
+
+@Preview
+@Composable
+private fun PlayPauseButtonPreview() {
+    PlayPauseButton(playing = true, onToggle = {})
+}
+
+@Preview
+@Composable
+private fun SongInfoDialogPreview() {
+    SongInfoDialog(song = previewPlayerSong, onDismiss = {})
+}
+

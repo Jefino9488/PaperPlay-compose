@@ -74,3 +74,15 @@ private fun Main(env: AppEnv, onRestore: () -> Unit) {
         }
     }
 }
+
+@org.jetbrains.compose.ui.tooling.preview.Preview
+@Composable
+private fun AppPreview() {
+    val dummyRestore = RestoreHooks(pickBackup = {}, restore = { _, _ -> kotlinx.coroutines.flow.emptyFlow() })
+    val dummyEnv = AppEnv(
+        restore = dummyRestore,
+        libraryExists = { false },
+        createServices = { error("Not used in preview") },
+    )
+    App(env = dummyEnv)
+}

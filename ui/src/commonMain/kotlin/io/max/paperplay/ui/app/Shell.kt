@@ -1,4 +1,4 @@
-package io.max.paperplay.ui.app
+﻿package io.max.paperplay.ui.app
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -42,6 +42,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.text.font.FontWeight
+import org.jetbrains.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
@@ -139,7 +141,14 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
                         MiniPlayer(pb, { showPlayer = true }, backend::togglePlay, backend::next, backend::previous, if (prefs.floatingNav) Modifier else Modifier.padding(horizontal = 8.dp))
                         Box(Modifier.height(8.dp))
                     }
-                    NavBar(if (settings) 3 else tab, backdrop, prefs, bottomInset, { tab = it; detail = null; settings = false; settingsStack.clear() })
+                    NavBar(
+                        selected = if (settings) 3 else tab,
+                        backdrop = backdrop,
+                        prefs = prefs,
+                        inset = bottomInset,
+                        onSelect = { tab = it; detail = null; settings = false; settingsStack.clear() },
+                        taskRunning = conn.scanText != null,
+                    )
                 }
                 if (showPlayer) FullPlayer(pb, pbError, backend, actions, { showPlayer = false })
                 SnackbarHost(snack, Modifier.align(Alignment.TopCenter).padding(top = top))
@@ -237,3 +246,17 @@ private fun NameDialog(title: String, onDone: (String) -> Unit, onDismiss: () ->
         text = { OutlinedTextField(name, { name = it }, singleLine = true, label = { Text("Name") }) },
     )
 }
+
+@Preview
+@Composable
+private fun PlaylistPickerPreview() {
+    val samplePlaylists = listOf(io.max.paperplay.ui.state.GroupUi(id = "1", name = "Chill Vibes", subtitle = "10 songs"))
+    PlaylistPicker(playlists = samplePlaylists, onPick = {}, onNew = {}, onDismiss = {})
+}
+
+@Preview
+@Composable
+private fun NameDialogPreview() {
+    NameDialog(title = "New playlist", onDone = {}, onDismiss = {})
+}
+

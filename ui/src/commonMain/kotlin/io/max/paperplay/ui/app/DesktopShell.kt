@@ -1,4 +1,6 @@
-package io.max.paperplay.ui.app
+﻿package io.max.paperplay.ui.app
+
+import io.max.paperplay.ui.components.AppIcon
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -51,7 +53,6 @@ import androidx.compose.material.icons.rounded.ViewSidebar
 import androidx.compose.material.icons.rounded.VolumeOff
 import androidx.compose.material.icons.rounded.VolumeUp
 import androidx.compose.material3.FilledIconButton
-import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
@@ -123,10 +124,10 @@ fun Sidebar(
         }
     }
     LazyColumn(modifier.deskCard().padding(vertical = 8.dp)) {
-        items(mainPages, key = { it.id }) { p -> item(p.id, p.label, { Icon(p.icon, null, Modifier.size(22.dp)) }, page == p.id && playlistId == null) { onPage(p.id) } }
+        items(mainPages, key = { it.id }) { p -> item(p.id, p.label, { AppIcon(p.icon, null, Modifier.size(22.dp)) }, page == p.id && playlistId == null) { onPage(p.id) } }
         item { label("Your library") }
-        items(libraryPages, key = { it.id }) { p -> item(p.id, p.label, { Icon(p.icon, null, Modifier.size(22.dp)) }, page == p.id && playlistId == null) { onPage(p.id) } }
-        item { label("Playlists") { IconButton(onNewPlaylist, Modifier.size(32.dp)) { Icon(Icons.Rounded.Add, "New playlist", Modifier.size(20.dp)) } } }
+        items(libraryPages, key = { it.id }) { p -> item(p.id, p.label, { AppIcon(p.icon, null, Modifier.size(22.dp)) }, page == p.id && playlistId == null) { onPage(p.id) } }
+        item { label("Playlists") { IconButton(onNewPlaylist, Modifier.size(32.dp)) { AppIcon(Icons.Rounded.Add, "New playlist", Modifier.size(20.dp)) } } }
         items(playlists, key = { it.id }) { g -> item(g.id, g.name, { CoverGrid(g.coverUris, g.id, 28.dp, 6.dp) }, playlistId == g.id) { onPlaylist(g) } }
         item { Spacer(Modifier.height(8.dp)) }
     }
@@ -150,21 +151,21 @@ fun PlayerBar(
                     Text(song.artist, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
                 }
                 IconButton({ actions.setFavorite(song, !song.favorite) }) {
-                    Icon(if (song.favorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder, if (song.favorite) "Remove from favorites" else "Add to favorites", tint = if (song.favorite) scheme.primary else scheme.onSurface)
+                    AppIcon(if (song.favorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder, if (song.favorite) "Remove from favorites" else "Add to favorites", tint = if (song.favorite) scheme.primary else scheme.onSurface)
                 }
             }
         }
         Column(Modifier.weight(1.5f), horizontalAlignment = Alignment.CenterHorizontally) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                IconButton(backend::toggleShuffle) { Icon(Icons.Rounded.Shuffle, "Shuffle", tint = if (state.shuffle) scheme.primary else scheme.onSurface) }
-                IconButton(backend::previous) { Icon(Icons.Rounded.SkipPrevious, "Previous") }
+                IconButton(backend::toggleShuffle) { AppIcon(Icons.Rounded.Shuffle, "Shuffle", tint = if (state.shuffle) scheme.primary else scheme.onSurface) }
+                IconButton(backend::previous) { AppIcon(Icons.Rounded.SkipPrevious, "Previous") }
                 FilledIconButton(
                     backend::togglePlay, Modifier.size(44.dp), shape = CircleShape,
                     colors = IconButtonDefaults.filledIconButtonColors(containerColor = scheme.onSurface, contentColor = scheme.surface),
-                ) { Icon(if (state.playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (state.playing) "Pause" else "Play") }
-                IconButton(backend::next) { Icon(Icons.Rounded.SkipNext, "Next") }
+                ) { AppIcon(if (state.playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (state.playing) "Pause" else "Play") }
+                IconButton(backend::next) { AppIcon(Icons.Rounded.SkipNext, "Next") }
                 IconButton(backend::cycleRepeat) {
-                    Icon(if (state.repeat == RepeatUi.One) Icons.Rounded.RepeatOne else Icons.Rounded.Repeat, "Repeat", tint = if (state.repeat != RepeatUi.Off) scheme.primary else scheme.onSurface)
+                    AppIcon(if (state.repeat == RepeatUi.One) Icons.Rounded.RepeatOne else Icons.Rounded.Repeat, "Repeat", tint = if (state.repeat != RepeatUi.Off) scheme.primary else scheme.onSurface)
                 }
             }
             Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -174,15 +175,15 @@ fun PlayerBar(
             }
         }
         Row(Modifier.weight(1f), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onTogglePanel) { Icon(Icons.Rounded.ViewSidebar, if (panelOn) "Hide the now playing panel" else "Show the now playing panel", tint = if (panelOn) scheme.primary else scheme.onSurface) }
-            IconButton(onOpen) { Icon(Icons.Rounded.QueueMusic, "Queue") }
-            IconButton({ actions.notice("Playing on other devices is not built yet.") }) { Icon(Icons.Rounded.Devices, "Devices") }
-            IconButton({ backend.setVolume(if (volume > 0f) 0f else 1f) }) { Icon(if (volume > 0f) Icons.Rounded.VolumeUp else Icons.Rounded.VolumeOff, "Mute") }
+            IconButton(onTogglePanel) { AppIcon(Icons.Rounded.ViewSidebar, if (panelOn) "Hide the now playing panel" else "Show the now playing panel", tint = if (panelOn) scheme.primary else scheme.onSurface) }
+            IconButton(onOpen) { AppIcon(Icons.Rounded.QueueMusic, "Queue") }
+            IconButton({ actions.notice("Playing on other devices is not built yet.") }) { AppIcon(Icons.Rounded.Devices, "Devices") }
+            IconButton({ backend.setVolume(if (volume > 0f) 0f else 1f) }) { AppIcon(if (volume > 0f) Icons.Rounded.VolumeUp else Icons.Rounded.VolumeOff, "Mute") }
             Slider(
                 volume, backend::setVolume, Modifier.width(110.dp),
                 colors = SliderDefaults.colors(thumbColor = scheme.onSurface, activeTrackColor = scheme.onSurface, inactiveTrackColor = scheme.onSurface.copy(alpha = 0.2f)),
             )
-            IconButton(onOpen) { Icon(Icons.Rounded.OpenInFull, "Full screen player", Modifier.size(20.dp)) }
+            IconButton(onOpen) { AppIcon(Icons.Rounded.OpenInFull, "Full screen player", Modifier.size(20.dp)) }
         }
     }
 }
@@ -216,7 +217,7 @@ fun TasksPage(conn: ConnectionUi, modifier: Modifier = Modifier) {
     Column(modifier) {
         TopBar("Tasks")
         Row(Modifier.padding(horizontal = 20.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Rounded.TaskAlt, null)
+            AppIcon(Icons.Rounded.TaskAlt, null)
             Text(conn.scanText ?: "Nothing running", Modifier.padding(start = 12.dp), style = MaterialTheme.typography.bodyLarge)
         }
     }
@@ -234,7 +235,7 @@ fun DesktopSettings(
     Row(modifier) {
         Column(Modifier.width(300.dp).fillMaxHeight()) {
             Row(Modifier.padding(start = 4.dp, end = 8.dp, top = 12.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onExit) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back") }
+                IconButton(onExit) { AppIcon(Icons.AutoMirrored.Rounded.ArrowBack, "Back") }
                 Text("Settings", Modifier.padding(start = 4.dp), style = MaterialTheme.typography.headlineMedium)
             }
             LazyColumn(Modifier.fillMaxSize()) {
@@ -257,7 +258,7 @@ fun DesktopSettings(
                             .clickable { stack.clear(); stack.add(c.id) }.padding(horizontal = 12.dp, vertical = 9.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Icon(c.icon, null, Modifier.size(22.dp))
+                        AppIcon(c.icon, null, Modifier.size(22.dp))
                         Column(Modifier.padding(start = 12.dp)) {
                             Text(c.title, style = MaterialTheme.typography.bodyLarge, fontWeight = if (on) FontWeight.Bold else null)
                             Text(c.subtitle, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
@@ -277,3 +278,4 @@ fun DesktopSettings(
         }
     }
 }
+

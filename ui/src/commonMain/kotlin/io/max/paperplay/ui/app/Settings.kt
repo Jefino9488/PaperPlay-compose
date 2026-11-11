@@ -1,6 +1,8 @@
-@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+﻿@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 
 package io.max.paperplay.ui.app
+
+import io.max.paperplay.ui.components.AppIcon
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -22,7 +24,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.Button
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -37,6 +38,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import org.jetbrains.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.max.paperplay.ui.components.CoverImage
@@ -113,7 +115,7 @@ private fun SettingsList(prefs: UiPrefs, backend: CoreBackend, stack: MutableLis
             ) {
                 Avatar(prefs.profilePhoto, prefs.profileName, 60.dp)
                 Text(prefs.profileName, Modifier.weight(1f).padding(start = 16.dp), style = MaterialTheme.typography.titleLarge)
-                Icon(Icons.Rounded.ChevronRight, null)
+                AppIcon(Icons.Rounded.ChevronRight, null)
             }
         }
         shown.forEach { c -> SettingsCard(c.icon, c.title, c.subtitle, { stack.add(c.id) }) }
@@ -155,6 +157,9 @@ internal fun SettingsPage(
         "appearance" -> {
             SectionLabel("Theme")
             ChoiceRow(ThemeMode.entries, prefs.themeMode, { it.label }, prefs::putThemeMode)
+            SectionLabel("Icons")
+            ChoiceRow(IconSet.entries, prefs.iconSet, { it.label }, prefs::putIconSet)
+            Text("Applies to the app on Android and desktop. Only the icons used by PaperPlay are included.", Modifier.padding(horizontal = 20.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             SwitchRow("True black", prefs.amoled, prefs::putAmoled, Icons.Rounded.DarkMode, "Pure black surfaces on dark, easier on OLED screens")
             SectionLabel("Accent")
             androidx.compose.foundation.layout.FlowRow(Modifier.padding(horizontal = 16.dp)) {
@@ -165,6 +170,7 @@ internal fun SettingsPage(
             SectionLabel("Display")
             SwitchRow("Cover gradient", prefs.coverGradient, prefs::putCoverGradient, Icons.Rounded.Gradient, "The current cover's colours behind the app")
             SwitchRow("Now playing panel", prefs.nowPlayingPanel, prefs::putNowPlayingPanel, Icons.Rounded.MusicNote, "Shown beside the lists on wide screens")
+            SliderRow("Corner radius: ${prefs.cornerRadius.toInt()}%", prefs.cornerRadius, 0f..100f, { prefs.putCornerRadius(it) })
         }
         "nav" -> {
             SwitchRow("Floating bar", prefs.floatingNav, prefs::putFloatingNav, Icons.Rounded.ViewAgenda, "Off docks the bar to the screen edges")
@@ -173,8 +179,7 @@ internal fun SettingsPage(
             Text(prefs.navLayout.hint, Modifier.padding(horizontal = 20.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             SectionLabel("Selection")
             ChoiceRow(SelectionLook.entries, prefs.selectionLook, { it.label }, { prefs.setNav(look = it) })
-            SliderRow("Bar corners: ${prefs.barRadius.toInt()}%", prefs.barRadius, 0f..100f, { prefs.setNav(bar = it) })
-            SliderRow("Selection corners: ${prefs.selectionRadius.toInt()}%", prefs.selectionRadius, 0f..100f, { prefs.setNav(selection = it) })
+            SliderRow("Corner radius: ${prefs.cornerRadius.toInt()}%", prefs.cornerRadius, 0f..100f, { prefs.putCornerRadius(it) })
         }
         "glass" -> {
             Text("Applies to every glass part.", Modifier.padding(20.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -284,7 +289,7 @@ private fun ChannelsPage(conn: ConnectionUi, backend: CoreBackend) {
             when {
                 conn.ready -> "Connected as your bot."
                 conn.state.isEmpty() -> "Not connected."
-                else -> "Connecting… (${conn.state.removePrefix("authorizationState")})"
+                else -> "Connectingâ€¦ (${conn.state.removePrefix("authorizationState")})"
             },
         )
         if (conn.error != null) Text(conn.error, color = MaterialTheme.colorScheme.error)
@@ -304,3 +309,10 @@ private fun ChannelsPage(conn: ConnectionUi, backend: CoreBackend) {
         if (!conn.ready) Text("Connect first to add a chat.", style = MaterialTheme.typography.bodySmall)
     }
 }
+
+@Preview
+@Composable
+private fun AvatarPreview() {
+    Avatar(photo = null, name = "Alex", size = 80.dp)
+}
+

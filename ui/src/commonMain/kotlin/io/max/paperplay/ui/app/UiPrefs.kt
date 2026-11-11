@@ -1,18 +1,20 @@
-package io.max.paperplay.ui.app
+﻿package io.max.paperplay.ui.app
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.runtime.Composable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -31,6 +33,10 @@ enum class NavLayout(val label: String, val hint: String) {
     Dock("Dock", "Like Labels, but the bar spans the whole width."),
 }
 enum class SelectionLook(val label: String) { Fill("Fill"), Ring("Ring"), Soft("Soft"), Dot("Dot"), Text("Text") }
+enum class IconSet(val label: String) {
+    MaterialExpressive("Material 3 Expressive"),
+    Tabler("Tabler"),
+}
 enum class LookGroup(val label: String, val hint: String) {
     Nav("Navigation bar", "The bottom bar"),
     Bars("Top bars", "App bars at the top of pages"),
@@ -70,6 +76,8 @@ class UiPrefs(private val read: (String) -> String?, private val write: (String,
         private set
     var profilePhoto by mutableStateOf(read("profile_photo")?.takeIf { it.isNotEmpty() })
         private set
+    var iconSet by mutableStateOf(IconSet.entries.firstOrNull { it.name.lowercase() == read("icon_set") } ?: IconSet.MaterialExpressive)
+        private set
 
     private val nav0 = runCatching { Json.parseToJsonElement(read("nav_style").orEmpty()).jsonObject }.getOrNull()
     var navLayout by mutableStateOf(NavLayout.entries.firstOrNull { it.name.lowercase() == nav0?.str("layout") } ?: NavLayout.Pill)
@@ -80,6 +88,11 @@ class UiPrefs(private val read: (String) -> String?, private val write: (String,
         private set
     var selectionLook by mutableStateOf(SelectionLook.entries.firstOrNull { it.name.lowercase() == nav0?.str("look") } ?: SelectionLook.Fill)
         private set
+
+    var cornerRadius by mutableStateOf(read("nav_radius")?.toFloatOrNull() ?: nav0?.num("barRadius") ?: 100f)
+        private set
+
+    val cornerScale: Float get() = (cornerRadius / 100f).coerceIn(0f, 1f)
 
     private val glass0 = runCatching { Json.parseToJsonElement(read("glass_style").orEmpty()).jsonObject }.getOrNull()
     var glassBlur by mutableStateOf(glass0?.num("blur") ?: 8f)
@@ -98,6 +111,7 @@ class UiPrefs(private val read: (String) -> String?, private val write: (String,
 
     fun putProfileName(name: String) { profileName = name; write("profile_name", name) }
     fun putProfilePhoto(path: String?) { profilePhoto = path; write("profile_photo", path.orEmpty()) }
+    fun putIconSet(set: IconSet) { iconSet = set; write("icon_set", set.name.lowercase()) }
     fun putThemeMode(m: ThemeMode) { themeMode = m; write("theme_mode", m.name.lowercase()) }
     fun putAmoled(on: Boolean) { amoled = on; write("theme_amoled", "$on") }
     fun putAccent(id: String) { accent = id; write("theme_accent", id) }
@@ -105,6 +119,12 @@ class UiPrefs(private val read: (String) -> String?, private val write: (String,
     fun putCoverGradient(on: Boolean) { coverGradient = on; write("cover_gradient", "$on") }
     fun putNowPlayingPanel(on: Boolean) { nowPlayingPanel = on; write("now_playing_panel", "$on") }
     fun setLook(g: LookGroup, l: Look) { looks[g] = l; write("look_${g.name.lowercase()}", l.name.lowercase()) }
+
+    fun putCornerRadius(value: Float) {
+        cornerRadius = value
+        write("nav_radius", "$value")
+        setNav(bar = value, selection = value)
+    }
 
     fun setNav(layout: NavLayout = navLayout, bar: Float = barRadius, selection: Float = selectionRadius, look: SelectionLook = selectionLook) {
         navLayout = layout; barRadius = bar; selectionRadius = selection; selectionLook = look
@@ -135,6 +155,13 @@ val LocalUiPrefs = staticCompositionLocalOf<UiPrefs?> { null }
 @Composable
 fun glassLook(group: LookGroup): Boolean = LocalUiPrefs.current?.look(group) == Look.Glass
 
+/** Scaled rounded corner shape based on the unified corner radius preference setting. */
+@Composable
+fun appShape(base: Dp): RoundedCornerShape {
+    val scale = LocalUiPrefs.current?.cornerScale ?: 1f
+    return RoundedCornerShape(base * scale)
+}
+
 private val rimColor = Color.White.copy(alpha = 0.18f)
 
 /** A card or overlay surface: a veil with a faint light rim when the part is glass, solid tonal colour otherwise. */
@@ -151,3 +178,4 @@ fun overlayColor(base: Color = MaterialTheme.colorScheme.surfaceContainerHigh): 
 /** The light rim of a glass overlay; nothing for Material. */
 @Composable
 fun overlayRim(shape: Shape): Modifier = if (glassLook(LookGroup.Overlays)) Modifier.border(1.dp, rimColor, shape) else Modifier
+

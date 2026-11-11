@@ -28,6 +28,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import org.jetbrains.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
@@ -129,4 +130,14 @@ fun RestoreScreen(hooks: RestoreHooks, onContinue: () -> Unit, onSkip: (() -> Un
             }
         }
     }
+}
+
+@Preview
+@Composable
+private fun RestoreScreenPreview() {
+    val dummyHooks = RestoreHooks(
+        pickBackup = {},
+        restore = { _, _ -> kotlinx.coroutines.flow.emptyFlow() },
+    )
+    RestoreScreen(hooks = dummyHooks, onContinue = {}, onSkip = {})
 }

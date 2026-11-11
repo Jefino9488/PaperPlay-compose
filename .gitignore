@@ -4,4 +4,9 @@ local.properties
 *.iml
 .idea/
 key.properties
-*.jks
+# Local handoff and planning notes; README.md remains tracked.
+CHECKLIST.md
+CONTEXT.md
+HANDOFF_CHECKLIST.md
+HANDOVER.md
+IDEAS_FROM_OTHERS.md

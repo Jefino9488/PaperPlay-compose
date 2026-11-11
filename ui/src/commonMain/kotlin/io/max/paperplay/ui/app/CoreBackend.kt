@@ -1,4 +1,4 @@
-package io.max.paperplay.ui.app
+﻿package io.max.paperplay.ui.app
 
 import io.max.paperplay.core.app.AppServices
 import io.max.paperplay.core.app.NowPlaying
@@ -252,7 +252,7 @@ private fun covers(songs: List<Song>): List<String?> = songs.mapNotNull { it.cov
 
 private fun albumSubtitle(list: List<Song>): String {
     val artists = list.map { it.artist }.distinct()
-    return (if (artists.size == 1) artists[0] else "Various artists") + " · ${list.size} songs"
+    return (if (artists.size == 1) artists[0] else "Various artists") + " Â· ${list.size} songs"
 }
 
 private val LOSSLESS = setOf("flac", "alac", "wav", "aiff", "aif", "ape", "wv")
@@ -267,9 +267,10 @@ internal fun Song.toUi(): SongUi {
         else if (!lossless && kbps > 0) append(" ${kbps}k")
     }.trim().ifEmpty { null }
     return SongUi(
-        id = unique_id, title = title, artist = artist, album = album, genre = genre, coverUri = cover_path,
+        id = unique_id, title = title, artist = artist, album = album, genre = genre, coverUri = cover_path ?: cover_url,
         durationSec = duration_sec.toInt(), sizeBytes = size, year = year?.toInt(), plays = plays.toInt(),
         addedAt = date, qualityLabel = label, qualityRank = if (lossless) 100_000 + (bit_depth ?: 16).toInt() * 1000 else kbps.toInt(),
         lossless = lossless, favorite = favorite, pinned = pinned, offline = size > 0 && cached_bytes >= size,
     )
 }
+

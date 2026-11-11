@@ -1,4 +1,6 @@
-package io.max.paperplay.ui.app
+﻿package io.max.paperplay.ui.app
+
+import io.max.paperplay.ui.components.AppIcon
 
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateFloatAsState
@@ -37,8 +39,9 @@ import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
-import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -49,6 +52,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
+import org.jetbrains.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.kyant.backdrop.Backdrop
 import io.max.paperplay.ui.GlassSurface
@@ -66,7 +70,7 @@ private val entries = listOf(
 
 /** The bottom bar: floating glass or docked, laid out by the nav style prefs. */
 @Composable
-fun NavBar(selected: Int, backdrop: Backdrop, prefs: UiPrefs, inset: Dp, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
+fun NavBar(selected: Int, backdrop: Backdrop, prefs: UiPrefs, inset: Dp, onSelect: (Int) -> Unit, modifier: Modifier = Modifier, taskRunning: Boolean = false) {
     val layout = prefs.navLayout
     val labels = layout == NavLayout.Labels || layout == NavLayout.Dock
     val glass = prefs.look(LookGroup.Nav) == Look.Glass
@@ -75,7 +79,9 @@ fun NavBar(selected: Int, backdrop: Backdrop, prefs: UiPrefs, inset: Dp, onSelec
     val docked = !prefs.floatingNav
     val items: @Composable () -> Unit = {
         Row(Modifier.fillMaxSize().padding(6.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-            entries.forEachIndexed { i, e -> NavItem(e, i == selected, prefs, if (layout == NavLayout.Dock) Modifier.weight(1f) else Modifier) { onSelect(i) } }
+            entries.forEachIndexed { i, e ->
+                NavItem(e, i == selected, prefs, if (layout == NavLayout.Dock) Modifier.weight(1f) else Modifier, taskRunning = taskRunning && i == 3) { onSelect(i) }
+            }
         }
     }
     val bar = modifier.fillMaxWidth().height(height)
@@ -89,7 +95,7 @@ fun NavBar(selected: Int, backdrop: Backdrop, prefs: UiPrefs, inset: Dp, onSelec
 }
 
 @Composable
-private fun NavItem(e: NavEntry, on: Boolean, prefs: UiPrefs, modifier: Modifier, onClick: () -> Unit) {
+private fun NavItem(e: NavEntry, on: Boolean, prefs: UiPrefs, modifier: Modifier, taskRunning: Boolean, onClick: () -> Unit) {
     val layout = prefs.navLayout
     val look = prefs.selectionLook
     val scheme = MaterialTheme.colorScheme
@@ -102,7 +108,15 @@ private fun NavItem(e: NavEntry, on: Boolean, prefs: UiPrefs, modifier: Modifier
         else -> Color.Transparent
     }
     val ring = if (on && look == SelectionLook.Ring) Modifier.border(BorderStroke(1.5.dp, scheme.primary), shape) else Modifier
-    val icon: @Composable () -> Unit = { Icon(if (on) e.selected else e.icon, e.label, Modifier.size(27.dp).scale(scale), tint = ink) }
+    val icon: @Composable () -> Unit = {
+        if (taskRunning) {
+            BadgedBox(badge = { Badge() }) {
+                AppIcon(if (on) e.selected else e.icon, e.label, Modifier.size(27.dp).scale(scale), tint = ink)
+            }
+        } else {
+            AppIcon(if (on) e.selected else e.icon, e.label, Modifier.size(27.dp).scale(scale), tint = ink)
+        }
+    }
     val inner = Modifier.clip(shape).background(bg).then(ring).clickable(onClick = onClick).animateContentSize()
     when (layout) {
         NavLayout.Pill -> Row(modifier.then(inner).padding(horizontal = if (on) 20.dp else 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -139,9 +153,9 @@ fun MiniPlayer(
                     Text(song.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall, color = ink)
                     Text(song.artist, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = ink.copy(alpha = 0.75f))
                 }
-                IconButton(onPrevious) { Icon(Icons.Rounded.SkipPrevious, "Previous", tint = ink) }
-                IconButton(onToggle) { Icon(if (state.playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (state.playing) "Pause" else "Play", Modifier.size(32.dp), tint = ink) }
-                IconButton(onNext) { Icon(Icons.Rounded.SkipNext, "Next", tint = ink) }
+                IconButton(onPrevious) { AppIcon(Icons.Rounded.SkipPrevious, "Previous", tint = ink) }
+                IconButton(onToggle) { AppIcon(if (state.playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (state.playing) "Pause" else "Play", Modifier.size(32.dp), tint = ink) }
+                IconButton(onNext) { AppIcon(Icons.Rounded.SkipNext, "Next", tint = ink) }
             }
             Box(Modifier.padding(horizontal = 8.dp).fillMaxWidth().height(2.dp).clip(RoundedCornerShape(1.dp)).background(ink.copy(alpha = 0.2f))) {
                 Box(Modifier.fillMaxWidth(state.progress.coerceIn(0f, 1f)).height(2.dp).background(ink))
@@ -150,3 +164,20 @@ fun MiniPlayer(
         }
     }
 }
+
+@Preview
+@Composable
+private fun NavBarPreview() {
+    val backdrop = com.kyant.backdrop.backdrops.rememberLayerBackdrop()
+    val prefs = UiPrefs({ null }, { _, _ -> })
+    NavBar(selected = 0, backdrop = backdrop, prefs = prefs, inset = 0.dp, onSelect = {})
+}
+
+@Preview
+@Composable
+private fun MiniPlayerPreview() {
+    val sampleSong = io.max.paperplay.ui.state.SongUi(id = "1", title = "Starlight", artist = "Muse", durationSec = 240)
+    val state = PlaybackUiState(current = sampleSong, playing = true, positionMs = 60000, durationMs = 240000)
+    MiniPlayer(state = state, onOpen = {}, onToggle = {}, onNext = {}, onPrevious = {})
+}
+

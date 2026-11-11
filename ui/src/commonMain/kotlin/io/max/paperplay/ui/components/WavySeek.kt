@@ -7,7 +7,11 @@ import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -27,7 +31,12 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import org.jetbrains.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.Alignment
+import kotlinx.coroutines.delay
 import kotlin.math.PI
 import kotlin.math.min
 import kotlin.math.sin
@@ -44,8 +53,17 @@ fun WavySeek(
     onSeek: (Float) -> Unit,
     modifier: Modifier = Modifier,
     label: String? = null,
+    longPressLabel: ((Float) -> String)? = null,
 ) {
     var dragging by remember { mutableStateOf<Float?>(null) }
+    var longPressText by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(longPressText) {
+        if (longPressText != null) {
+            delay(1500)
+            longPressText = null
+            dragging = null
+        }
+    }
     var phase by remember { mutableFloatStateOf(0f) }
     val moving = playing && dragging == null
     val wave by animateFloatAsState(if (moving) 1f else 0f, tween(350))
@@ -64,14 +82,23 @@ fun WavySeek(
     val bufferedColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.34f)
     val shown = (dragging ?: value).coerceIn(0f, 1f)
 
-    Canvas(
-        modifier.fillMaxWidth().height(36.dp)
+    BoxWithConstraints(modifier.fillMaxWidth().height(52.dp)) {
+        Canvas(
+            Modifier.fillMaxSize()
             .semantics {
                 contentDescription = "Seek"
                 if (label != null) stateDescription = label
             }
             .pointerInput(Unit) {
-                detectTapGestures { onSeek((it.x / size.width).coerceIn(0f, 1f)) }
+                detectTapGestures(
+                    onTap = { onSeek((it.x / size.width).coerceIn(0f, 1f)) },
+                    onLongPress = {
+                        val fraction = (it.x / size.width).coerceIn(0f, 1f)
+                        dragging = fraction
+                        longPressText = longPressLabel?.invoke(fraction) ?: label
+                        onSeek(fraction)
+                    },
+                )
             }
             .pointerInput(Unit) {
                 detectHorizontalDragGestures(
@@ -80,12 +107,12 @@ fun WavySeek(
                     onDragCancel = { dragging = null },
                 ) { change, _ -> dragging = (change.position.x / size.width).coerceIn(0f, 1f) }
             },
-    ) {
+        ) {
         val stroke = 5.dp.toPx()
         val amplitude = 3.5.dp.toPx() * wave
         val wavelength = 34.dp.toPx()
         val gap = 6.dp.toPx()
-        val mid = size.height / 2
+        val mid = 20.dp.toPx()
         val x = shown * size.width
         val line = Stroke(stroke, cap = StrokeCap.Round)
 
@@ -114,5 +141,28 @@ fun WavySeek(
         drawRoundRect(
             active, Offset(x - thumbW / 2, mid - thumbH / 2), Size(thumbW, thumbH), CornerRadius(thumbW / 2),
         )
+        }
+        longPressText?.let { text ->
+            Text(
+                text = text,
+                color = active,
+                style = TextStyle(fontSize = 12.sp),
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .offset(x = (maxWidth * shown - 16.dp).coerceIn(0.dp, maxWidth - 32.dp), y = 32.dp),
+            )
+        }
     }
+}
+
+@Preview
+@Composable
+private fun WavySeekPlayingPreview() {
+    WavySeek(value = 0.4f, buffered = 0.7f, playing = true, onSeek = {}, label = "1:45")
+}
+
+@Preview
+@Composable
+private fun WavySeekPausedPreview() {
+    WavySeek(value = 0.6f, buffered = 0.85f, playing = false, onSeek = {}, label = "2:30")
 }

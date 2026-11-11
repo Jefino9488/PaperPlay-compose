@@ -1,4 +1,6 @@
-package io.max.paperplay.ui.app
+﻿package io.max.paperplay.ui.app
+
+import io.max.paperplay.ui.components.AppIcon
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -16,7 +18,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Search
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
@@ -25,6 +26,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import org.jetbrains.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.max.paperplay.ui.components.CoverImage
@@ -35,8 +37,8 @@ fun PillField(value: String, onChange: (String) -> Unit, hint: String, modifier:
     TextField(
         value, onChange, modifier.fillMaxWidth(), singleLine = true,
         placeholder = { Text(hint, color = MaterialTheme.colorScheme.onSurfaceVariant) },
-        leadingIcon = { Icon(Icons.Rounded.Search, null) },
-        shape = RoundedCornerShape(28.dp),
+        leadingIcon = { AppIcon(Icons.Rounded.Search, null) },
+        shape = appShape(28.dp),
         colors = TextFieldDefaults.colors(
             focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
             unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -80,3 +82,22 @@ fun CoverGrid(uris: List<String?>, key: String, size: Dp, radius: Dp, modifier: 
         }
     }
 }
+
+@Preview
+@Composable
+private fun PillFieldPreview() {
+    PillField(value = "Rock", onChange = {}, hint = "Search songs, artists...")
+}
+
+@Preview
+@Composable
+private fun ChipRowPreview() {
+    ChipRow(labels = listOf("Songs", "Albums", "Artists", "Playlists"), selected = 0, onSelect = {})
+}
+
+@Preview
+@Composable
+private fun CoverGridPreview() {
+    CoverGrid(uris = listOf(null, null, null, null), key = "preview_grid", size = 120.dp, radius = 12.dp)
+}
+

@@ -19,6 +19,8 @@ kotlin {
             implementation(compose.foundation)
             implementation(compose.material3)
             implementation(compose.components.resources)
+            // @Preview for commonMain; Android Studio and IntelliJ render it for the Android and desktop targets.
+            implementation(compose.components.uiToolingPreview)
             implementation("org.jetbrains.compose.material:material-icons-extended:1.7.3")
             implementation(libs.backdrop)
             implementation(project(":core"))
@@ -26,6 +28,7 @@ kotlin {
         }
         androidMain.dependencies {
             implementation(libs.androidx.activity.compose)
+            implementation(compose.uiTooling)
         }
     }
 }

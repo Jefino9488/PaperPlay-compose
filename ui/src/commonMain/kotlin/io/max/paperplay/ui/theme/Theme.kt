@@ -174,3 +174,11 @@ internal fun hsl(h: Float, s: Float, l: Float): Color {
     }
     return Color((r + m).coerceIn(0f, 1f), (g + m).coerceIn(0f, 1f), (b + m).coerceIn(0f, 1f))
 }
+
+@org.jetbrains.compose.ui.tooling.preview.Preview
+@Composable
+private fun PaperPlayThemePreview() {
+    PaperPlayTheme {
+        androidx.compose.material3.Text("PaperPlay Theme Preview")
+    }
+}

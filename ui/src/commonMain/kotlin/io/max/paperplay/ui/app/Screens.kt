@@ -1,4 +1,4 @@
-package io.max.paperplay.ui.app
+﻿package io.max.paperplay.ui.app
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -35,6 +36,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -42,6 +44,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
+import org.jetbrains.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.max.paperplay.ui.components.CoverImage
@@ -119,7 +122,7 @@ fun LibraryScreen(
         ChipRow(libraryTabs, tab, { tab = it })
         when (tab) {
             0 -> when (val s = lib.songs) {
-                is Load.Loading -> Text("Loading…", Modifier.padding(24.dp))
+                is Load.Loading -> Text("Loadingâ€¦", Modifier.padding(24.dp))
                 is Load.Error -> Text(s.message, Modifier.padding(24.dp), color = MaterialTheme.colorScheme.error)
                 is Load.Ready -> SongList(s.value, currentId, actions, Modifier.fillMaxSize(), bottomPadding, empty = "No songs yet. Add a chat in Settings.")
             }
@@ -204,19 +207,73 @@ fun SearchScreen(
 ) {
     var query by remember { mutableStateOf("") }
     var results by remember { mutableStateOf<List<SongUi>>(emptyList()) }
+    val recent = remember { mutableStateListOf<String>() }
     LaunchedEffect(Unit) {
         snapshotFlow { query }.debounce(150).collect { q ->
             if (q.isBlank()) results = emptyList()
-            else backend.search(q).collect { results = it }
+            else backend.search(q).collect {
+                results = it
+                if (it.isNotEmpty()) {
+                    recent.remove(q)
+                    recent.add(0, q)
+                    while (recent.size > 6) recent.removeAt(recent.lastIndex)
+                }
+            }
         }
     }
     Column(modifier) {
         TopBar("Search")
         PillField(query, { query = it }, "Songs, artists or albums", Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
-        if (query.isBlank()) GenreGrid(songs, bottomPadding, onOpen, Modifier.fillMaxSize())
+        if (query.isBlank()) {
+            if (recent.isNotEmpty()) {
+                LazyRow(
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    items(recent, key = { it }) { term ->
+                        AssistChip(onClick = { query = term }, label = { Text(term, maxLines = 1) })
+                    }
+                }
+            }
+            GenreGrid(songs, bottomPadding, onOpen, Modifier.fillMaxSize())
+        }
         else SongList(
             results, currentId, actions, Modifier.fillMaxSize(), bottomPadding, sortable = false, searchable = false,
             empty = "No songs match \"${query.trim()}\".",
         )
     }
 }
+
+private val previewScreenActions = ListActions(play = { _, _ -> }, shuffle = {}, setFavorite = { _, _ -> }, addToPlaylist = {}, notice = {})
+
+@Preview
+@Composable
+private fun CredentialsFormPreview() {
+    CredentialsForm(onSave = { _, _, _ -> null }, onDone = {})
+}
+
+@Preview
+@Composable
+private fun GroupListPreview() {
+    GroupList(
+        groups = listOf(GroupUi(id = "1", name = "Rock Hits", subtitle = "24 songs")),
+        bottomPadding = 0.dp,
+        empty = "No groups yet.",
+        onClick = {},
+    )
+}
+
+@Preview
+@Composable
+private fun LibraryScreenPreview() {
+    LibraryScreen(
+        lib = LibraryUi(songs = Load.Ready(emptyList())),
+        favorites = emptyList(),
+        currentId = null,
+        actions = previewScreenActions,
+        onOpen = {},
+        onNewPlaylist = {},
+        bottomPadding = 0.dp,
+    )
+}
+
