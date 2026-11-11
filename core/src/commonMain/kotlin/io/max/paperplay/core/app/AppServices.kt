@@ -30,7 +30,7 @@ class AppServices(
     val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
     clock: () -> Long = { Clock.System.now().toEpochMilliseconds() },
 ) {
-    private val driver = platform.openDriver("${platform.dataDir}/library.sqlite")
+    val driver = platform.openDriver("${platform.dataDir}/library.sqlite")
     val db = LibraryDatabase(driver)
     val library = LibraryRepository(LibraryRepo(db, clock), clock)
     val scanner = Scanner(library, scope)

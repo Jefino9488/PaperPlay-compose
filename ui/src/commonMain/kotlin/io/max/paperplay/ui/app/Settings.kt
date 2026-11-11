@@ -224,7 +224,7 @@ internal fun SettingsPage(
             var skip by remember { mutableStateOf(pref("upload_skip_known") != "false") }
             SwitchRow("Skip songs already in my library", skip, { skip = it; backend.setPref("upload_skip_known", "$it") }, Icons.Rounded.Rule, "Matches the file name and size")
         }
-        "spotify" -> NotBuilt("Spotify import")
+        "spotify" -> SpotifyPage(backend)
         "listening" -> {
             NotBuilt("ListenBrainz")
             NavRow("Equalizer", icon = Icons.Rounded.Equalizer) { stack.add("eq") }
@@ -269,6 +269,7 @@ internal fun SettingsPage(
         "weather" -> WeatherPage(backend)
         "conn" -> ConnectionPage(conn, backend)
         "log" -> LogPage(backend)
+        "dupes" -> DuplicatesPage(backend)
         else -> NotBuilt(subTitles[id] ?: id)
     }
     when (confirm) {
