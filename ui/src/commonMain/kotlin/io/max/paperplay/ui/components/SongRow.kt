@@ -100,24 +100,25 @@ fun SongRow(
                 ) {
                     if (song.pinned) Badge("Pinned")
                     else if (song.offline) Badge("Offline")
+                    song.qualityLabel?.substringBefore(' ')?.takeIf { it.isNotBlank() }?.let { Badge(it) }
                     Text(
-                        text = buildString {
-                            append(song.artist)
-                            if (song.qualityLabel != null) {
-                                append(" · ")
-                                append(song.qualityLabel.substringBefore(' '))
-                            }
-                        },
+                        text = song.artist,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         style = MaterialTheme.typography.bodyMedium,
                         color = scheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f, fill = false),
                     )
                 }
             }
-            if (song.sizeBytes > 0) {
+            val kbps = if (song.durationSec > 0) song.sizeBytes * 8 / song.durationSec / 1000 else 0L
+            val detail = listOfNotNull(
+                if (kbps > 0) "$kbps kbps" else null,
+                if (song.sizeBytes > 0) "${song.sizeBytes / 1_000_000} MB" else null,
+            ).joinToString(" · ")
+            if (detail.isNotEmpty()) {
                 Text(
-                    text = "${song.sizeBytes / 1_000_000} MB",
+                    text = detail,
                     style = MaterialTheme.typography.labelSmall,
                     color = scheme.onSurfaceVariant,
                     maxLines = 1,
@@ -155,6 +156,30 @@ private fun Badge(text: String) {
 @Composable
 fun SongMenu(song: SongUi, actions: SongActions, icon: ImageVector = Icons.Rounded.MoreVert) {
     var open by remember { mutableStateOf(false) }
+    var info by remember { mutableStateOf(false) }
+    val uri = androidx.compose.ui.platform.LocalUriHandler.current
+    if (info) androidx.compose.material3.AlertDialog(
+        onDismissRequest = { info = false },
+        title = { Text(song.title, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+        text = {
+            val kbps = if (song.durationSec > 0) song.sizeBytes * 8 / song.durationSec / 1000 else 0L
+            val rows = listOf(
+                "Artist" to song.artist, "Album" to song.album, "Genre" to song.genre.orEmpty(),
+                "Year" to (song.year?.toString() ?: ""),
+                "Length" to "${song.durationSec / 60}:${(song.durationSec % 60).toString().padStart(2, '0')}",
+                "Format" to song.qualityLabel.orEmpty(),
+                "Bitrate" to if (kbps > 0) "$kbps kbps" else "",
+                "Size" to if (song.sizeBytes > 0) "${song.sizeBytes / 100_000 / 10.0} MB" else "",
+                "Plays" to song.plays.toString(),
+            ).filter { it.second.isNotBlank() }
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                rows.forEach { (k, v) ->
+                    Row { Text(k, Modifier.weight(0.35f), color = MaterialTheme.colorScheme.onSurfaceVariant); Text(v, Modifier.weight(0.65f)) }
+                }
+            }
+        },
+        confirmButton = { androidx.compose.material3.TextButton({ info = false }) { Text("Close") } },
+    )
     Box {
         IconButton({ open = true }) { AppIcon(icon, "Song options") }
         DropdownMenu(
@@ -173,6 +198,13 @@ fun SongMenu(song: SongUi, actions: SongActions, icon: ImageVector = Icons.Round
             item(if (song.favorite) "Remove from favorites" else "Add to favorites") { actions.setFavorite(song, !song.favorite) }
             item(if (song.pinned) "Unpin" else "Pin for offline") { actions.setPinned(song, !song.pinned) }
             item("Add to playlist") { actions.addToPlaylist(song) }
+            actions.telegramLink(song)?.let { link ->
+                item("Open in Telegram") { runCatching { uri.openUri(link) }.onFailure { actions.notice("Could not open Telegram.") } }
+            }
+            item("Song info") { info = true }
+            item("Find metadata") { actions.findMetadata(song) }
+            item("Edit tags") { actions.notice("Editing tags is not built yet.") }
+            item("Change cover") { actions.notice("Changing a cover is not built yet.") }
             actions.removeLabel?.let { label -> item(label) { actions.remove(song) } }
         }
     }

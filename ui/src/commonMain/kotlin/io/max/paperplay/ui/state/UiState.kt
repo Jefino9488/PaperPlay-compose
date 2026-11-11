@@ -65,6 +65,12 @@ interface SongActions {
     /** Menu text for removing the song from the list it is shown in, or null when the list has no such action. */
     val removeLabel: String? get() = null
     fun remove(song: SongUi) {}
+    /** A tg:// link to the song's post, or null when it has none. */
+    fun telegramLink(song: SongUi): String? = null
+    /** A short message for things not built yet. */
+    fun notice(text: String) {}
+    /** Looks the song up online again; says what happened through [notice]. */
+    fun findMetadata(song: SongUi) { notice("Finding metadata is not available here.") }
 }
 
 /** Actions on all songs picked in multi-select. */

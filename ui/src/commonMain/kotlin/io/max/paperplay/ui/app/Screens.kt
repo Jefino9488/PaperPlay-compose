@@ -21,6 +21,18 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.Sort
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.PushPin
+import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.IconButton
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
+import io.max.paperplay.ui.components.AppIcon
 import androidx.compose.material3.Button
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.LinearProgressIndicator
@@ -116,7 +128,7 @@ private val libraryTabs = listOf("Songs", "Albums", "Artists", "Playlists", "Fav
 fun LibraryScreen(
     lib: LibraryUi, favorites: List<SongUi>, currentId: String?, actions: ListActions,
     onOpen: (Detail) -> Unit, onNewPlaylist: () -> Unit, bottomPadding: Dp, modifier: Modifier = Modifier,
-    selectedTab: Int? = null,
+    selectedTab: Int? = null, recents: List<SongUi> = emptyList(), onImportSpotify: () -> Unit = {},
 ) {
     var tab by remember(selectedTab) { mutableStateOf(selectedTab ?: 0) }
     Column(modifier) {
@@ -130,10 +142,7 @@ fun LibraryScreen(
             }
             1 -> GroupGrid(lib.albums, bottomPadding, "No albums yet.") { onOpen(Detail.Album(it.name)) }
             2 -> GroupList(lib.artists, bottomPadding, "No artists yet.", circle = true) { onOpen(Detail.Artist(it.name)) }
-            3 -> GroupList(
-                lib.playlists, bottomPadding, "No playlists yet.",
-                header = { TextButton(onNewPlaylist, Modifier.padding(horizontal = 8.dp)) { Text("New playlist") } },
-            ) { onOpen(Detail.Playlist(it.id, it.name)) }
+            3 -> PlaylistsTab(lib.playlists, favorites, recents, bottomPadding, onOpen, onNewPlaylist, onImportSpotify)
             else -> SongList(favorites, currentId, actions, Modifier.fillMaxSize(), bottomPadding, empty = "No favorites yet.")
         }
     }
@@ -190,22 +199,57 @@ fun DetailScreen(
             is Detail.Songs -> flowOf(detail.songs)
         }
     }
-    val songs by flow.collectAsState(emptyList())
+    val rawSongs by flow.collectAsState(emptyList())
     var name by remember(detail) { mutableStateOf(detail.title) }
     var dialog by remember(detail) { mutableStateOf<String?>(null) }
+    var sort by remember(detail) { mutableStateOf(PlaylistSort.Order) }
+    var sortMenu by remember(detail) { mutableStateOf(false) }
+    var missingSheet by remember(detail) { mutableStateOf(false) }
+    var refreshing by remember(detail) { mutableStateOf(false) }
+    var bump by remember(detail) { mutableStateOf(0) }
+    val scope = rememberCoroutineScope()
+    val songs = remember(rawSongs, sort) { sort.apply(rawSongs) }
+    val store = remember(backend) { backend.importStore() }
+    val libChanges by backend.services.library.changes.collectAsState()
+    val source = remember(detail) { if (detail is Detail.Playlist) backend.playlistSource(detail.id) else null }
+    val missing = remember(detail, libChanges, bump, refreshing) {
+        if (detail is Detail.Playlist) detail.id.toLongOrNull()?.let { store.missing(it) }.orEmpty() else emptyList()
+    }
     Column(modifier) {
         BackTopBar(name, onBack) {
             if (detail is Detail.Playlist) {
-                TextButton({ dialog = "rename" }) { Text("Rename") }
-                TextButton({ dialog = "delete" }) { Text("Delete") }
+                IconButton({ actions.notice("Pinning a playlist for offline is not built yet.") }) { AppIcon(Icons.Rounded.PushPin, "Pin for offline") }
+                Box {
+                    IconButton({ sortMenu = true }) { AppIcon(Icons.AutoMirrored.Rounded.Sort, "Sort") }
+                    DropdownMenu(sortMenu, { sortMenu = false }) {
+                        PlaylistSort.entries.forEach { o ->
+                            DropdownMenuItem(
+                                text = { Text(if (o == sort) "${o.label} (selected)" else o.label) },
+                                onClick = { sort = o; sortMenu = false },
+                            )
+                        }
+                    }
+                }
+                if (source != null) IconButton({
+                    if (!refreshing) {
+                        refreshing = true
+                        scope.launch { actions.notice(backend.refreshPlaylist(detail.id)); refreshing = false }
+                    }
+                }) { AppIcon(Icons.Rounded.Refresh, "Refresh from Spotify link") }
+                IconButton({ dialog = "rename" }) { AppIcon(Icons.Rounded.Edit, "Rename") }
+                IconButton({ dialog = "delete" }) { AppIcon(Icons.Rounded.Delete, "Delete") }
             }
         }
         SongList(
             songs, currentId, actions, Modifier.fillMaxSize(), bottomPadding, sortable = detail !is Detail.Playlist,
-            header = { DetailHero(detail, name, songs) },
+            header = {
+                DetailHero(detail, name, songs)
+                if (missing.isNotEmpty()) MissingRow(missing.size) { missingSheet = true }
+            },
             onRemove = if (detail is Detail.Playlist) { s -> backend.removeFromPlaylist(detail.id, s.id) } else null,
         )
     }
+    if (missingSheet && missing.isNotEmpty()) MissingSheet(backend, store, missing, name, { missingSheet = false }) { bump++ }
     if (detail is Detail.Playlist) {
         when (dialog) {
             "rename" -> {

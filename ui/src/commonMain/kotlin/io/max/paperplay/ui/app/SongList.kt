@@ -62,6 +62,8 @@ class ListActions(
     val addToPlaylist: (Set<String>) -> Unit,
     val notice: (String) -> Unit,
     val playNext: (SongUi) -> Unit = {},
+    val telegramLink: (SongUi) -> String? = { null },
+    val findMetadata: (SongUi) -> Unit = {},
 )
 
 internal fun ListActions.rowActions(onRemove: ((SongUi) -> Unit)? = null) = object : SongActions {
@@ -72,6 +74,9 @@ internal fun ListActions.rowActions(onRemove: ((SongUi) -> Unit)? = null) = obje
     override fun setFavorite(song: SongUi, favorite: Boolean) = this@rowActions.setFavorite(song, favorite)
     override fun setPinned(song: SongUi, pinned: Boolean) = notice("Pinning for offline is not built yet.")
     override fun addToPlaylist(song: SongUi) = this@rowActions.addToPlaylist(setOf(song.id))
+    override fun telegramLink(song: SongUi): String? = this@rowActions.telegramLink(song)
+    override fun notice(text: String) = this@rowActions.notice(text)
+    override fun findMetadata(song: SongUi) = this@rowActions.findMetadata(song)
 }
 
 /**
