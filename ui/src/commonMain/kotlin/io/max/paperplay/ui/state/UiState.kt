@@ -62,6 +62,9 @@ interface SongActions {
     fun setFavorite(song: SongUi, favorite: Boolean)
     fun setPinned(song: SongUi, pinned: Boolean)
     fun addToPlaylist(song: SongUi)
+    /** Menu text for removing the song from the list it is shown in, or null when the list has no such action. */
+    val removeLabel: String? get() = null
+    fun remove(song: SongUi) {}
 }
 
 /** Actions on all songs picked in multi-select. */

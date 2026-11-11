@@ -408,6 +408,12 @@ class CoreBackend(val services: AppServices) {
         scope.launch(Dispatchers.IO) { repo.removeFromPlaylist(id, s) }
     }
 
+    fun renamePlaylist(playlistId: String, name: String) {
+        val id = playlistId.toLongOrNull() ?: return
+        val n = name.trim().ifEmpty { return }
+        scope.launch(Dispatchers.IO) { repo.renamePlaylist(id, n) }
+    }
+
     fun deletePlaylist(playlistId: String) {
         val id = playlistId.toLongOrNull() ?: return
         scope.launch(Dispatchers.IO) { repo.deletePlaylist(id) }

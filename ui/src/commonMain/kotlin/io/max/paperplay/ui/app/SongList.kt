@@ -64,7 +64,9 @@ class ListActions(
     val playNext: (SongUi) -> Unit = {},
 )
 
-internal fun ListActions.rowActions() = object : SongActions {
+internal fun ListActions.rowActions(onRemove: ((SongUi) -> Unit)? = null) = object : SongActions {
+    override val removeLabel: String? get() = if (onRemove != null) "Remove from playlist" else null
+    override fun remove(song: SongUi) { onRemove?.invoke(song) }
     override fun play(songs: List<SongUi>, index: Int) = this@rowActions.play(songs, index)
     override fun playNext(song: SongUi) = this@rowActions.playNext(song)
     override fun setFavorite(song: SongUi, favorite: Boolean) = this@rowActions.setFavorite(song, favorite)
@@ -87,6 +89,7 @@ fun SongList(
     sortable: Boolean = true,
     searchable: Boolean = true,
     header: (@Composable () -> Unit)? = null,
+    onRemove: ((SongUi) -> Unit)? = null,
     empty: String = "No songs here yet.",
 ) {
     var query by remember { mutableStateOf("") }
@@ -99,7 +102,7 @@ fun SongList(
         val found = filterSongs(songs, query)
         if (sortable) sortSongs(found, sort, reverse) else found
     }
-    val rowActions = remember(actions) { actions.rowActions() }
+    val rowActions = remember(actions, onRemove) { actions.rowActions(onRemove) }
     val picked = selection.retain(songs.mapTo(HashSet()) { it.id })
 
     val songCovers = remember(shown) {

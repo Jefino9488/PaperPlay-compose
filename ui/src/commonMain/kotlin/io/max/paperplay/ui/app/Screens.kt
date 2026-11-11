@@ -26,6 +26,7 @@ import androidx.compose.material3.AssistChip
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.PrimaryScrollableTabRow
 import androidx.compose.material3.Tab
@@ -190,11 +191,65 @@ fun DetailScreen(
         }
     }
     val songs by flow.collectAsState(emptyList())
+    var name by remember(detail) { mutableStateOf(detail.title) }
+    var dialog by remember(detail) { mutableStateOf<String?>(null) }
     Column(modifier) {
-        BackTopBar(detail.title, onBack) {
-            if (detail is Detail.Playlist) TextButton({ backend.deletePlaylist(detail.id); onBack() }) { Text("Delete") }
+        BackTopBar(name, onBack) {
+            if (detail is Detail.Playlist) {
+                TextButton({ dialog = "rename" }) { Text("Rename") }
+                TextButton({ dialog = "delete" }) { Text("Delete") }
+            }
         }
-        SongList(songs, currentId, actions, Modifier.fillMaxSize(), bottomPadding, sortable = detail !is Detail.Playlist)
+        SongList(
+            songs, currentId, actions, Modifier.fillMaxSize(), bottomPadding, sortable = detail !is Detail.Playlist,
+            header = { DetailHero(detail, name, songs) },
+            onRemove = if (detail is Detail.Playlist) { s -> backend.removeFromPlaylist(detail.id, s.id) } else null,
+        )
+    }
+    if (detail is Detail.Playlist) {
+        when (dialog) {
+            "rename" -> {
+                var text by remember { mutableStateOf(name) }
+                AlertDialog(
+                    onDismissRequest = { dialog = null },
+                    title = { Text("Rename playlist") },
+                    text = { OutlinedTextField(text, { text = it }, singleLine = true) },
+                    confirmButton = { TextButton({ if (text.isNotBlank()) { backend.renamePlaylist(detail.id, text); name = text.trim() }; dialog = null }) { Text("Save") } },
+                    dismissButton = { TextButton({ dialog = null }) { Text("Cancel") } },
+                )
+            }
+            "delete" -> AlertDialog(
+                onDismissRequest = { dialog = null },
+                title = { Text("Delete this playlist?") },
+                text = { Text("The songs stay in your library.") },
+                confirmButton = { TextButton({ backend.deletePlaylist(detail.id); dialog = null; onBack() }) { Text("Delete") } },
+                dismissButton = { TextButton({ dialog = null }) { Text("Cancel") } },
+            )
+        }
+    }
+}
+
+/** Big cover, name, and what the list is. The play and shuffle bar sits below it in the list. */
+@Composable
+private fun DetailHero(detail: Detail, title: String, songs: List<SongUi>) {
+    val kind = when (detail) {
+        is Detail.Album -> "Album"
+        is Detail.Artist -> "Artist"
+        is Detail.Playlist -> "Playlist"
+        is Detail.Songs -> "Collection"
+    }
+    val extra = when (detail) {
+        is Detail.Album -> listOfNotNull(
+            songs.firstOrNull()?.artist?.takeIf { it.isNotBlank() },
+            songs.mapNotNull { it.year }.maxOrNull()?.toString(),
+        ).joinToString(" · ")
+        is Detail.Artist -> songs.map { it.album }.filter { it.isNotBlank() }.distinct().size.let { if (it == 0) "" else if (it == 1) "1 album" else "$it albums" }
+        else -> ""
+    }
+    Column(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        CoverGrid(songs.map { it.coverUri }, "hero:$title", 200.dp, if (detail is Detail.Artist) 100.dp else 20.dp)
+        Text(title, Modifier.padding(top = 12.dp), style = MaterialTheme.typography.headlineSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Text(listOf(kind, extra).filter { it.isNotEmpty() }.joinToString(" · "), color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 

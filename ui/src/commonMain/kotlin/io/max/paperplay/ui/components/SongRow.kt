@@ -173,6 +173,7 @@ fun SongMenu(song: SongUi, actions: SongActions, icon: ImageVector = Icons.Round
             item(if (song.favorite) "Remove from favorites" else "Add to favorites") { actions.setFavorite(song, !song.favorite) }
             item(if (song.pinned) "Unpin" else "Pin for offline") { actions.setPinned(song, !song.pinned) }
             item("Add to playlist") { actions.addToPlaylist(song) }
+            actions.removeLabel?.let { label -> item(label) { actions.remove(song) } }
         }
     }
 }
