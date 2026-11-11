@@ -8,6 +8,8 @@ import io.max.paperplay.core.integrations.HttpResponse
 import io.max.paperplay.core.library.LibraryChat
 import io.max.paperplay.core.library.LibraryRepo
 import io.max.paperplay.core.library.Song
+import io.max.paperplay.core.metadata.extraStorefronts
+import io.max.paperplay.core.metadata.firstArtist
 import io.max.paperplay.core.recs.TasteSettings
 import io.max.paperplay.core.telegram.FakeTdNative
 import io.max.paperplay.core.telegram.TdClient
@@ -358,5 +360,79 @@ class ScannerAndCoverTest {
         delay(100)
         assertEquals(0, httpCalls)
         assertNull(repo.songByUniqueId("u10")!!.cover_path)
+    }
+
+    @Test
+    fun coverServiceRetriesRateLimitedItunesAndMatchesCjkAndSlashArtists(): Unit = runBlocking {
+        assertEquals("Karen Aoki", firstArtist("Karen Aoki / Daisuke Hasegawa"))
+        assertEquals("AC/DC", firstArtist("AC/DC"))
+        assertEquals(listOf("TW", "IN"), extraStorefronts("分裂", "周杰倫"))
+        assertEquals(listOf("JP", "IN"), extraStorefronts("コネクト", "ClariS"))
+
+        val dataDir = Files.createTempDirectory("pp-retry").toFile().apply { deleteOnExit() }.absolutePath
+        val (db, repo) = newRepo()
+        insertSong(db, 20, title = "分裂", artist = "周杰倫", duration = 252L)
+
+        var itunesAttempts = 0
+        val urls = mutableListOf<String>()
+        val http = object : HttpFetcher {
+            override suspend fun send(request: HttpRequest): HttpResponse {
+                urls += request.url
+                return when {
+                    request.url.startsWith("https://api.deezer.com/search") ->
+                        HttpResponse(200, mapOf("content-type" to "application/json"), """{"data":[]}""".encodeToByteArray())
+                    request.url.startsWith("https://itunes.apple.com/search") -> {
+                        itunesAttempts++
+                        if (itunesAttempts == 1) {
+                            HttpResponse(429, emptyMap(), ByteArray(0))
+                        } else {
+                            val body = """{"results":[{"trackName":"分裂","artistName":"周杰倫","collectionName":"八度空間","trackTimeMillis":252000,"artworkUrl100":"https://cdn.example/tw_100x100bb.jpg"}]}"""
+                            HttpResponse(200, mapOf("content-type" to "application/json"), body.encodeToByteArray())
+                        }
+                    }
+                    request.url == "https://cdn.example/tw_600x600bb.jpg" ->
+                        HttpResponse(200, mapOf("content-type" to "image/jpeg"), jpegHeader)
+                    else -> HttpResponse(404, emptyMap(), ByteArray(0))
+                }
+            }
+        }
+        val fakeTd = FakeTdNative { _, req ->
+            if (req["@type"]!!.jsonPrimitive.content == "getMessage") {
+                listOf(
+                    buildJsonObject {
+                        put("@type", "message")
+                        req["@extra"]?.let { put("@extra", it) }
+                        put("id", req["message_id"]!!.jsonPrimitive.long)
+                        put("content", buildJsonObject {
+                            put("@type", "messageAudio")
+                            put("audio", buildJsonObject {})
+                        })
+                    },
+                )
+            } else {
+                emptyList()
+            }
+        }
+        val client = TdClient(TdRuntime(fakeTd, scope, Dispatchers.IO), config).also { it.start() }
+
+        val covers = CoverService(
+            dataDir = dataDir,
+            td = { client },
+            repo = repo,
+            http = http,
+            scope = scope,
+            maxWorkers = 1,
+            requestPauseMs = 0L,
+            backgroundPauseMs = 0L,
+            debounceMs = 0L,
+        )
+        covers.prioritize(listOf(repo.songByUniqueId("u20")!!))
+        await { repo.songByUniqueId("u20")?.cover_path != null }
+
+        val s20 = repo.songByUniqueId("u20")!!
+        assertEquals("八度空間", s20.album)
+        assertEquals("itunes", s20.metadata_source)
+        assertTrue(urls.first { "itunes.apple.com" in it }.contains("country=TW"))
+        assertEquals(2, itunesAttempts)
     }
 }

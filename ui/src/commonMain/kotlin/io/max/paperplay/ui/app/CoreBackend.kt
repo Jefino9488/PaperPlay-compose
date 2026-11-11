@@ -90,7 +90,6 @@ class CoreBackend(val services: AppServices) {
                 }
             }
             byGroupKey = groupsByKey
-            services.covers.prioritize(songs.take(30))
             LibraryUi(
                 songs = Load.Ready(songs.map(Song::toUi)),
                 albums = groups(songs, { it.album }) { name, list -> GroupUi(name, name, albumSubtitle(list), covers(list)) },
@@ -335,8 +334,8 @@ class CoreBackend(val services: AppServices) {
             val leadSongs = buildList {
                 plan.tiles.forEach { add(it.cover); addAll(it.songs.take(1)) }
                 plan.shelves.forEach { s ->
-                    addAll(s.songs.take(15))
-                    s.groups.take(15).forEach { add(it.cover) }
+                    addAll(s.songs.take(8))
+                    s.groups.take(8).forEach { add(it.cover) }
                 }
             }.distinctBy { it.unique_id }
             if (leadSongs.isNotEmpty()) services.covers.prioritize(leadSongs)

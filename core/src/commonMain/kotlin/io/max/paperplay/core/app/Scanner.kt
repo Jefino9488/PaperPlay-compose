@@ -120,7 +120,7 @@ class ScanProgress(val text: String, val fraction: Double?)
 class Scanner(
     private val repo: LibraryRepository,
     private val scope: CoroutineScope,
-    private val minPause: Duration = 1.seconds,
+    private val minPause: Duration = 1500.milliseconds,
     private val maxPause: Duration = 1.minutes,
 ) {
     private var td: TdClient? = null

@@ -16,9 +16,11 @@ import io.max.paperplay.core.metadata.searchTitle
 import io.max.paperplay.core.metadata.userAgent
 import io.max.paperplay.core.recs.TasteSettings
 import io.max.paperplay.core.telegram.TdClient
+import io.max.paperplay.core.telegram.TdError
 import io.max.paperplay.core.telegram.request
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
@@ -61,18 +63,24 @@ class CoverService(
     private val queueMutex = Mutex()
     private val deezerMutex = Mutex()
     private val itunesMutex = Mutex()
+    private val tdMutex = Mutex()
     private val highPriority = LinkedHashSet<String>()
     private val background = LinkedHashSet<String>()
     private val inFlight = HashSet<String>()
     private val attempted = HashSet<String>()
-    private val awaitingTd = HashSet<String>()
+    private val awaitingTd = LinkedHashSet<String>()
+    private val rateLimited = LinkedHashSet<String>()
     private val wake = Channel<Unit>(Channel.CONFLATED)
     private val notifyWake = Channel<Unit>(Channel.CONFLATED)
     private val json = Json { ignoreUnknownKeys = true }
 
     @Volatile private var started = false
-    @Volatile private var lastDeezerAt = 0L
-    @Volatile private var lastItunesAt = 0L
+    @Volatile private var nextDeezerAt = 0L
+    @Volatile private var nextItunesAt = 0L
+    @Volatile private var nextTdAt = 0L
+    @Volatile private var itunesBlockedUntil = 0L
+    @Volatile private var tdBlockedUntil = 0L
+    private var retryJob: Job? = null
 
     private fun coversDir(): String = "${dataDir.trimEnd('/')}/covers"
 
@@ -131,13 +139,16 @@ class CoverService(
             queueMutex.withLock {
                 if (retryTdMissing && awaitingTd.isNotEmpty()) {
                     for (uid in awaitingTd) {
-                        if (uid !in inFlight && uid !in attempted && background.add(uid)) enqueued = true
+                        if (uid !in inFlight && uid !in attempted && highPriority.add(uid)) {
+                            background.remove(uid)
+                            enqueued = true
+                        }
                     }
                     awaitingTd.clear()
                 }
                 for (song in missing) {
                     val uid = song.unique_id
-                    if (uid !in inFlight && uid !in attempted && uid !in highPriority && uid !in awaitingTd) {
+                    if (uid !in inFlight && uid !in attempted && uid !in highPriority && uid !in awaitingTd && uid !in rateLimited) {
                         if (background.add(uid)) enqueued = true
                     }
                 }
@@ -191,19 +202,58 @@ class CoverService(
         return if (rpm != null) 60_000L / rpm else backgroundPauseMs
     }
 
-    private suspend fun markDone(uid: String, tdConnected: Boolean, saved: Boolean) {
+    private enum class Outcome { Done, NeedsTd, RetryLater }
+
+    private sealed class LookupResult {
+        data class Found(val match: ExternalMatch) : LookupResult()
+        data object Missing : LookupResult()
+        data class RetryAfter(val delayMs: Long) : LookupResult()
+    }
+
+    private suspend fun markDone(uid: String, outcome: Outcome, retryDelayMs: Long = 0L) {
         queueMutex.withLock {
-            if (saved || tdConnected) attempted.add(uid) else awaitingTd.add(uid)
+            when (outcome) {
+                Outcome.Done -> {
+                    attempted.add(uid)
+                    awaitingTd.remove(uid)
+                    rateLimited.remove(uid)
+                }
+                Outcome.NeedsTd -> awaitingTd.add(uid)
+                Outcome.RetryLater -> {
+                    rateLimited.add(uid)
+                    val waitMs = retryDelayMs.coerceAtLeast(if (requestPauseMs > 0L) 1_000L else 40L)
+                    if (retryJob?.isActive != true) {
+                        retryJob = scope.launch {
+                            delay(waitMs)
+                            drainRateLimited()
+                        }
+                    }
+                }
+            }
         }
+    }
+
+    private suspend fun drainRateLimited() {
+        var drained = false
+        queueMutex.withLock {
+            if (rateLimited.isNotEmpty()) {
+                val items = rateLimited.toList()
+                rateLimited.clear()
+                for (uid in items) {
+                    if (uid !in inFlight && uid !in attempted && highPriority.add(uid)) drained = true
+                }
+            }
+        }
+        if (drained) wake.trySend(Unit)
     }
 
     private suspend fun resolveOne(uid: String) {
         val song = repo.songByUniqueId(uid) ?: run {
-            markDone(uid, tdConnected = true, saved = false)
+            markDone(uid, Outcome.Done)
             return
         }
         if (!needsCover(song)) {
-            markDone(uid, tdConnected = true, saved = true)
+            markDone(uid, Outcome.Done)
             return
         }
 
@@ -216,7 +266,7 @@ class CoverService(
                 if (outPath != null) {
                     repo.updateCover(uniqueId = uid, coverPath = outPath, notify = false)
                     notifyWake.trySend(Unit)
-                    markDone(uid, tdConnected = true, saved = true)
+                    markDone(uid, Outcome.Done)
                     return
                 }
             }
@@ -240,22 +290,25 @@ class CoverService(
                         notify = false,
                     )
                     notifyWake.trySend(Unit)
-                    markDone(uid, tdConnected = true, saved = true)
+                    markDone(uid, Outcome.Done)
                     return
                 }
             }
         }
 
-        // 3. Embedded Telegram album_cover_thumbnail / thumbnail via TDLib.
+        // 3. Embedded Telegram album_cover_thumbnail / thumbnail via TDLib (skipped while Scanner is active).
         val client = td()
+        var tdRateLimited = false
         if (client != null && song.chat_id != 0L && song.message_id != 0L) {
-            val thumbBytes = fetchTelegramThumbnail(client, song)
-            if (thumbBytes != null) {
-                val outPath = writeCoverFile(uid, thumbBytes)
+            val thumbResult = fetchTelegramThumbnail(client, song)
+            if (thumbResult.rateLimited) {
+                tdRateLimited = true
+            } else if (thumbResult.bytes != null) {
+                val outPath = writeCoverFile(uid, thumbResult.bytes)
                 if (outPath != null) {
                     repo.updateCover(uniqueId = uid, coverPath = outPath, notify = false)
                     notifyWake.trySend(Unit)
-                    markDone(uid, tdConnected = true, saved = true)
+                    markDone(uid, Outcome.Done)
                     return
                 }
             }
@@ -263,39 +316,79 @@ class CoverService(
 
         // 4. External catalog lookups (Deezer -> iTunes), when enabled.
         val taste = TasteSettings.parse(repo.pref(TasteSettings.PREF_KEY))
+        var httpRetryMs = 0L
         if (taste.lookups) {
-            val match = findExternalMatch(song)
-            val coverUrl = match?.coverUrl?.takeIf { it.isNotBlank() }
-            if (match != null && coverUrl != null) {
-                val bytes = fetchImageBytes(coverUrl)
-                if (bytes != null) {
-                    val outPath = writeCoverFile(uid, bytes)
-                    if (outPath != null) {
-                        saveExternalCover(song, match, coverUrl, outPath)
-                        notifyWake.trySend(Unit)
-                        markDone(uid, tdConnected = client != null, saved = true)
-                        return
+            when (val res = findExternalMatch(song)) {
+                is LookupResult.Found -> {
+                    val coverUrl = res.match.coverUrl?.takeIf { it.isNotBlank() }
+                    if (coverUrl != null) {
+                        val bytes = fetchImageBytes(coverUrl)
+                        if (bytes != null) {
+                            val outPath = writeCoverFile(uid, bytes)
+                            if (outPath != null) {
+                                saveExternalCover(song, res.match, coverUrl, outPath)
+                                notifyWake.trySend(Unit)
+                                markDone(uid, Outcome.Done)
+                                return
+                            }
+                        }
                     }
                 }
+                is LookupResult.RetryAfter -> httpRetryMs = res.delayMs
+                LookupResult.Missing -> Unit
             }
         }
 
-        markDone(uid, tdConnected = client != null, saved = false)
+        when {
+            client == null -> markDone(uid, Outcome.NeedsTd)
+            tdRateLimited -> markDone(uid, Outcome.RetryLater, maxOf(1_000L, tdBlockedUntil - clock()))
+            httpRetryMs > 0L -> markDone(uid, Outcome.RetryLater, httpRetryMs)
+            else -> markDone(uid, Outcome.Done)
+        }
     }
 
-    private suspend fun fetchTelegramThumbnail(client: TdClient, song: Song): ByteArray? {
-        val msg = withTimeoutOrNull(10.seconds) {
+    private class TdThumbResult(val bytes: ByteArray? = null, val rateLimited: Boolean = false)
+
+    private suspend fun fetchTelegramThumbnail(client: TdClient, song: Song): TdThumbResult {
+        if (!reserveTdSlot()) return TdThumbResult(rateLimited = true)
+        val msgRes = withTimeoutOrNull(10.seconds) {
             runCatchingCancellable {
                 client.call(request("getMessage") {
                     put("chat_id", song.chat_id)
                     put("message_id", song.message_id)
                 })
-            }.getOrNull()
-        } ?: return null
-        val thumb = thumbFileOfMessage(msg) ?: return null
-        val localPath = downloadTdFile(client, thumb) ?: return null
-        val bytes = readWholeFile(localPath) ?: return null
-        return bytes.takeIf { looksLikeImage(it, null) }
+            }
+        } ?: return TdThumbResult()
+        val msgErr = msgRes.exceptionOrNull()
+        if (msgErr is TdError && msgErr.code == 429) {
+            recordTdRateLimit(msgErr.message)
+            return TdThumbResult(rateLimited = true)
+        }
+        val msg = msgRes.getOrNull() ?: return TdThumbResult()
+        val thumb = thumbFileOfMessage(msg) ?: return TdThumbResult()
+        val localPath = downloadTdFile(client, thumb) ?: return TdThumbResult(rateLimited = clock() < tdBlockedUntil)
+        val bytes = readWholeFile(localPath) ?: return TdThumbResult()
+        return TdThumbResult(bytes = bytes.takeIf { looksLikeImage(it, null) })
+    }
+
+    private suspend fun reserveTdSlot(): Boolean {
+        if (clock() < tdBlockedUntil) return false
+        if (requestPauseMs <= 0L) return true
+        val minGap = maxOf(requestPauseMs * 2L, 400L)
+        val waitMs = tdMutex.withLock {
+            if (clock() < tdBlockedUntil) return@withLock -1L
+            val slotAt = maxOf(clock(), nextTdAt)
+            nextTdAt = slotAt + minGap
+            slotAt - clock()
+        }
+        if (waitMs < 0L) return false
+        if (waitMs > 0L) delay(waitMs)
+        return clock() >= tdBlockedUntil
+    }
+
+    private fun recordTdRateLimit(message: String) {
+        val sec = Regex("retry after (\\d+)").find(message)?.groupValues?.get(1)?.toLongOrNull() ?: 15L
+        tdBlockedUntil = maxOf(tdBlockedUntil, clock() + sec * 1000L)
     }
 
     private suspend fun downloadTdFile(client: TdClient, fileObj: JsonObject): String? {
@@ -305,7 +398,7 @@ class CoverService(
             return existingPath
         }
         val fileId = fileObj.long("id")?.toInt()?.takeIf { it != 0 } ?: return null
-        val downloaded = withTimeoutOrNull(12.seconds) {
+        val dlRes = withTimeoutOrNull(12.seconds) {
             runCatchingCancellable {
                 client.call(request("downloadFile") {
                     put("file_id", fileId)
@@ -314,8 +407,11 @@ class CoverService(
                     put("limit", 0)
                     put("synchronous", true)
                 })
-            }.getOrNull()
+            }
         } ?: return null
+        val dlErr = dlRes.exceptionOrNull()
+        if (dlErr is TdError && dlErr.code == 429) recordTdRateLimit(dlErr.message)
+        val downloaded = dlRes.getOrNull() ?: return null
 
         val afterLocal = downloaded.obj("local")
         val afterPath = afterLocal?.str("path")?.takeIf { it.isNotEmpty() }
@@ -332,13 +428,13 @@ class CoverService(
         return updated?.obj("local")?.str("path")?.takeIf { it.isNotEmpty() }
     }
 
-    private suspend fun findExternalMatch(song: Song): ExternalMatch? {
+    private suspend fun findExternalMatch(song: Song): LookupResult {
         val cleanT = searchTitle(cleanTitle(song.title, song.artist))
-        if (cleanT.isBlank()) return null
+        if (cleanT.isBlank()) return LookupResult.Missing
         val cleanA = if (song.artist == "Unknown artist") "" else firstArtist(song.artist)
         val term = "$cleanT $cleanA".trim()
 
-        searchDeezer(song, term)?.let { return it }
+        searchDeezer(song, term)?.let { return LookupResult.Found(it) }
         return searchItunes(song, term)
     }
 
@@ -354,10 +450,15 @@ class CoverService(
             ?.takeIf { !it.coverUrl.isNullOrBlank() }
     }
 
-    private suspend fun searchItunes(song: Song, term: String): ExternalMatch? {
-        val storefronts = listOf<String?>(null) + extraStorefronts(song.title, song.artist)
+    private suspend fun searchItunes(song: Song, term: String): LookupResult {
+        val extra = extraStorefronts(song.title, song.artist)
+        val primaryIsAsian = extra.firstOrNull() in setOf("JP", "TW")
+        val storefronts = if (primaryIsAsian) extra.map<String, String?> { it } + null else listOf<String?>(null) + extra
+        var sawError = false
         for (country in storefronts) {
-            paceItunes()
+            if (!reserveItunesSlot()) {
+                return LookupResult.RetryAfter((itunesBlockedUntil - clock()).coerceAtLeast(50L))
+            }
             val params = buildMap {
                 put("term", term)
                 put("media", "music")
@@ -366,35 +467,46 @@ class CoverService(
                 if (country != null) put("country", country)
             }
             val url = urlWith("https://itunes.apple.com/search", params)
-            val res = sendHttp(url) ?: continue
-            if (res.status != 200) continue
+            val res = sendHttp(url) ?: run { sawError = true; continue }
+            if (res.status == 403 || res.status == 429) {
+                val cooldown = if (requestPauseMs > 0L) 30_000L else 50L
+                itunesBlockedUntil = maxOf(itunesBlockedUntil, clock() + cooldown)
+                return LookupResult.RetryAfter(cooldown)
+            }
+            if (res.status != 200) { sawError = true; continue }
             val root = runCatching { json.parseToJsonElement(res.text) as? JsonObject }.getOrNull() ?: continue
             val items = (root["results"] as? JsonArray).orEmpty().filterIsInstance<JsonObject>()
             val matches = items.map { ExternalMatch.fromItunes(it) }
             val match = pickExternal(matches, song.title, song.artist, song.duration_sec.toInt())
                 ?.takeIf { !it.coverUrl.isNullOrBlank() }
-            if (match != null) return match
+            if (match != null) return LookupResult.Found(match)
         }
-        return null
+        return if (sawError) LookupResult.RetryAfter(if (requestPauseMs > 0L) 10_000L else 40L) else LookupResult.Missing
     }
 
     private suspend fun paceDeezer() {
         if (requestPauseMs <= 0L) return
-        deezerMutex.withLock {
-            val wait = (lastDeezerAt + requestPauseMs) - clock()
-            if (wait > 0L) delay(wait)
-            lastDeezerAt = clock()
+        val waitMs = deezerMutex.withLock {
+            val slotAt = maxOf(clock(), nextDeezerAt)
+            nextDeezerAt = slotAt + requestPauseMs
+            slotAt - clock()
         }
+        if (waitMs > 0L) delay(waitMs)
     }
 
-    private suspend fun paceItunes() {
-        if (requestPauseMs <= 0L) return
-        val minGap = maxOf(requestPauseMs * 6L, 1200L)
-        itunesMutex.withLock {
-            val wait = (lastItunesAt + minGap) - clock()
-            if (wait > 0L) delay(wait)
-            lastItunesAt = clock()
+    private suspend fun reserveItunesSlot(): Boolean {
+        if (clock() < itunesBlockedUntil) return false
+        if (requestPauseMs <= 0L) return true
+        val minGap = maxOf(requestPauseMs * 15L, 3100L)
+        val waitMs = itunesMutex.withLock {
+            if (clock() < itunesBlockedUntil) return@withLock -1L
+            val slotAt = maxOf(clock(), nextItunesAt)
+            nextItunesAt = slotAt + minGap
+            slotAt - clock()
         }
+        if (waitMs < 0L) return false
+        if (waitMs > 0L) delay(waitMs)
+        return clock() >= itunesBlockedUntil
     }
 
     private suspend fun fetchImageBytes(url: String): ByteArray? {
