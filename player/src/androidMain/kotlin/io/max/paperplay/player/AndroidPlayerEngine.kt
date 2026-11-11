@@ -1,8 +1,9 @@
 package io.max.paperplay.player
 
+import android.content.ComponentName
 import android.content.Context
-import android.content.Intent
 import android.net.Uri
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import androidx.media3.common.C
@@ -11,6 +12,11 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.datasource.DataSource
+import androidx.media3.session.MediaController
+import androidx.media3.session.SessionToken
+import com.google.common.util.concurrent.ListenableFuture
+import java.io.File
+import java.util.concurrent.Executor
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -23,11 +29,21 @@ fun initPlayer(context: Context, upstream: DataSource.Factory? = null) {
     PlaybackCore.upstream = upstream
 }
 
-/** Main-thread only. Playback runs in [PlaybackService]'s session on the shared player. */
+/** Main-thread Media3 [MediaController] client driving [PlaybackService]'s shared session. */
 class AndroidPlayerEngine : PlayerEngine {
-    private val context = PlaybackCore.appContext
-    private val player = PlaybackCore.player()
+    private val context = requireNotNull(PlaybackCore.appContext) { "Call initPlayer(context) before createPlayerEngine()" }
     private val handler = Handler(Looper.getMainLooper())
+    private val mainExecutor = Executor { runnable ->
+        if (Looper.myLooper() == Looper.getMainLooper()) runnable.run() else handler.post(runnable)
+    }
+
+    private var controllerFuture: ListenableFuture<MediaController>? = null
+    private var controller: MediaController? = null
+    private val pending = ArrayDeque<(MediaController) -> Unit>()
+    private var released = false
+    private var failed = false
+    private var tickerRunning = false
+    private var volumeLevel = 1f
 
     private val _state = MutableStateFlow(PlayerState.Idle)
     private val _positionMs = MutableStateFlow(0L)
@@ -38,60 +54,167 @@ class AndroidPlayerEngine : PlayerEngine {
     override val durationMs: StateFlow<Long> = _durationMs
     override val currentIndex: StateFlow<Int> = _currentIndex
 
-    private var failed = false
+    private val playerListener = object : Player.Listener {
+        override fun onEvents(player: Player, events: Player.Events) {
+            if (player.playerError == null && (player.playbackState == Player.STATE_READY || player.playbackState == Player.STATE_BUFFERING)) {
+                failed = false
+            }
+            sync()
+        }
 
-    private val listener = object : Player.Listener {
-        override fun onEvents(player: Player, events: Player.Events) = sync()
-        override fun onAudioSessionIdChanged(audioSessionId: Int) = applyEqualizer()
         override fun onPlayerError(error: PlaybackException) {
             failed = true
             sync()
         }
     }
 
+    private val controllerListener = object : MediaController.Listener {
+        override fun onDisconnected(mc: MediaController) {
+            if (controller === mc) {
+                mc.removeListener(playerListener)
+                controller = null
+                controllerFuture = null
+                stopTicker()
+                _state.value = PlayerState.Idle
+                _positionMs.value = 0L
+                _durationMs.value = 0L
+                _currentIndex.value = -1
+            }
+        }
+    }
+
     private val ticker = object : Runnable {
         override fun run() {
-            _positionMs.value = player.currentPosition
+            val mc = controller
+            if (mc == null || !mc.isConnected || released || !shouldTick(mc)) {
+                tickerRunning = false
+                return
+            }
+            _positionMs.value = mc.currentPosition.coerceAtLeast(0L)
             handler.postDelayed(this, POSITION_POLL_MS)
         }
     }
 
     init {
-        player.addListener(listener)
-        sync()
-        handler.post(ticker)
+        onMain { connect() }
+    }
+
+    private fun shouldTick(p: Player): Boolean =
+        p.isPlaying || p.playbackState == Player.STATE_BUFFERING
+
+    private fun updateTicker(p: Player?) {
+        val want = p != null && !released && shouldTick(p)
+        if (want && !tickerRunning) {
+            tickerRunning = true
+            handler.postDelayed(ticker, POSITION_POLL_MS)
+        } else if (!want && tickerRunning) {
+            stopTicker()
+        }
+    }
+
+    private fun stopTicker() {
+        tickerRunning = false
+        handler.removeCallbacks(ticker)
+    }
+
+    private fun connect() {
+        if (released || controllerFuture != null) return
+        val token = SessionToken(context, ComponentName(context, PlaybackService::class.java))
+        val future = MediaController.Builder(context, token)
+            .setApplicationLooper(Looper.getMainLooper())
+            .setListener(controllerListener)
+            .buildAsync()
+        controllerFuture = future
+        future.addListener({
+            if (released) {
+                pending.clear()
+                return@addListener
+            }
+            val mc = runCatching { future.get() }.getOrNull()
+            if (mc == null) {
+                if (controllerFuture === future) controllerFuture = null
+                failed = true
+                sync()
+                pending.clear()
+                return@addListener
+            }
+            controller = mc
+            mc.addListener(playerListener)
+            if (volumeLevel < 1f) mc.volume = volumeLevel
+            PlaybackCore.eqGains?.let { sendEqualizer(mc, it) }
+            while (pending.isNotEmpty()) {
+                pending.removeFirst().invoke(mc)
+            }
+            sync()
+        }, mainExecutor)
     }
 
     private fun sync() {
+        val mc = controller
+        if (mc == null || !mc.isConnected) {
+            _state.value = if (failed) PlayerState.Error else PlayerState.Idle
+            _durationMs.value = 0L
+            _currentIndex.value = -1
+            _positionMs.value = 0L
+            updateTicker(null)
+            return
+        }
+        val hasError = failed || mc.playerError != null
         _state.value = when {
-            failed -> PlayerState.Error
-            player.mediaItemCount == 0 -> PlayerState.Idle
-            else -> when (player.playbackState) {
+            hasError -> PlayerState.Error
+            mc.mediaItemCount == 0 -> PlayerState.Idle
+            else -> when (mc.playbackState) {
                 Player.STATE_BUFFERING -> PlayerState.Loading
-                Player.STATE_READY -> if (player.playWhenReady) PlayerState.Playing else PlayerState.Paused
+                Player.STATE_READY -> if (mc.playWhenReady) PlayerState.Playing else PlayerState.Paused
                 Player.STATE_ENDED -> PlayerState.Ended
                 else -> PlayerState.Idle
             }
         }
-        _durationMs.value = player.duration.takeIf { it != C.TIME_UNSET } ?: 0L
-        _currentIndex.value = if (player.mediaItemCount == 0) -1 else player.currentMediaItemIndex
-        _positionMs.value = player.currentPosition
+        _durationMs.value = mc.duration.takeIf { it != C.TIME_UNSET } ?: 0L
+        _currentIndex.value = if (mc.mediaItemCount == 0) -1 else mc.currentMediaItemIndex
+        _positionMs.value = mc.currentPosition.coerceAtLeast(0L)
+        updateTicker(mc)
     }
 
-    /** ExoPlayer may only be used from its own (main) thread; callers may be on any thread. */
+    /** MediaController may only be used from its application (main) thread; callers may be on any thread. */
     private fun onMain(block: () -> Unit) {
         if (Looper.myLooper() == Looper.getMainLooper()) block() else handler.post(block)
     }
 
-    override fun setQueue(items: List<QueueItem>, startIndex: Int) = onMain { setQueueNow(items, startIndex) }
+    private fun withController(block: (MediaController) -> Unit) = onMain {
+        if (released) return@onMain
+        val mc = controller
+        if (mc != null && mc.isConnected) {
+            block(mc)
+        } else {
+            pending.addLast(block)
+            connect()
+        }
+    }
 
-    private fun setQueueNow(items: List<QueueItem>, startIndex: Int) {
+    override fun setQueue(items: List<QueueItem>, startIndex: Int) = withController { mc ->
+        setQueueNow(mc, items, startIndex)
+    }
+
+    private fun setQueueNow(mc: MediaController, items: List<QueueItem>, startIndex: Int) {
         failed = false
-        PlaybackCore.sources.clear()
+        if (items.isEmpty()) {
+            PlaybackCore.sources.clear()
+            mc.stop()
+            mc.clearMediaItems()
+            sync()
+            return
+        }
+        val nextSources = HashMap<String, StreamSource>()
         val mediaItems = items.map { item ->
             val uri = if (item.source != null) {
-                "stream://${item.uri}".also { PlaybackCore.sources[it] = item.source }
-            } else item.uri
+                "stream://${item.uri}".also {
+                    nextSources[it] = item.source
+                    PlaybackCore.sources[it] = item.source
+                }
+            } else {
+                item.uri
+            }
             MediaItem.Builder()
                 .setMediaId(item.uri)
                 .setUri(uri)
@@ -99,57 +222,80 @@ class AndroidPlayerEngine : PlayerEngine {
                     MediaMetadata.Builder()
                         .setTitle(item.title)
                         .setArtist(item.artist)
-                        .setArtworkUri(item.artworkUri?.let(Uri::parse))
+                        .setArtworkUri(parseArtworkUri(item.artworkUri))
                         .build(),
                 )
                 .build()
         }
-        context.startService(Intent(context, PlaybackService::class.java))
-        player.setMediaItems(mediaItems, startIndex.coerceIn(0, maxOf(0, items.lastIndex)), 0L)
-        player.prepare()
-        player.play()
+        PlaybackCore.sources.keys.retainAll(nextSources.keys)
+        mc.setMediaItems(mediaItems, startIndex.coerceIn(items.indices), 0L)
+        mc.prepare()
+        mc.play()
     }
 
-    override fun play() = onMain { player.play() }
-    override fun pause() = onMain { player.pause() }
-    override fun next() = onMain { player.seekToNextMediaItem() }
-    override fun previous() = onMain { player.seekToPreviousMediaItem() }
-    override fun seek(positionMs: Long) = onMain { player.seekTo(positionMs) }
-    override fun setVolume(volume: Float) = onMain { player.volume = volume.coerceIn(0f, 1f) }
-
-    private var gains: List<Float>? = null
-    private var eq: android.media.audiofx.Equalizer? = null
-
-    override fun setEqualizer(gainsDb: List<Float>?) = onMain {
-        gains = gainsDb
-        applyEqualizer()
+    override fun play() = withController { mc ->
+        failed = false
+        if (mc.playbackState == Player.STATE_ENDED && mc.mediaItemCount > 0) {
+            mc.seekToDefaultPosition(mc.currentMediaItemIndex.coerceAtLeast(0))
+        } else if (mc.playbackState == Player.STATE_IDLE && mc.mediaItemCount > 0) {
+            mc.prepare()
+        }
+        mc.play()
     }
 
-    /** Device equalizers have a handful of bands, so each takes the gain of the nearest of the ten. */
-    private fun applyEqualizer() {
-        runCatching { eq?.release() }
-        eq = null
-        val g = gains ?: return
-        runCatching {
-            val e = android.media.audiofx.Equalizer(0, player.audioSessionId)
-            val range = e.bandLevelRange
-            for (b in 0 until e.numberOfBands) {
-                val hz = e.getCenterFreq(b.toShort()) / 1000.0
-                val i = EQ_BANDS_HZ.indices.minByOrNull { kotlin.math.abs(kotlin.math.ln(EQ_BANDS_HZ[it] / hz)) } ?: continue
-                val level = (g.getOrElse(i) { 0f } * 100).toInt().coerceIn(range[0].toInt(), range[1].toInt())
-                e.setBandLevel(b.toShort(), level.toShort())
-            }
-            e.enabled = true
-            eq = e
+    override fun pause() = withController { it.pause() }
+    override fun next() = withController { failed = false; it.seekToNextMediaItem() }
+    override fun previous() = withController { failed = false; it.seekToPrevious() }
+    override fun seek(positionMs: Long) = withController { failed = false; it.seekTo(positionMs.coerceAtLeast(0L)) }
+
+    override fun setVolume(volume: Float) {
+        val clamped = volume.coerceIn(0f, 1f)
+        onMain {
+            volumeLevel = clamped
+            controller?.takeIf { it.isConnected }?.volume = clamped
         }
     }
 
+    override fun setEqualizer(gainsDb: List<Float>?) {
+        PlaybackCore.eqGains = gainsDb
+        onMain {
+            val mc = controller ?: return@onMain
+            if (mc.isConnected) sendEqualizer(mc, gainsDb)
+        }
+    }
+
+    private fun sendEqualizer(mc: MediaController, gainsDb: List<Float>?) {
+        val args = Bundle().apply {
+            if (gainsDb != null) putFloatArray(PlaybackCore.EXTRA_EQ_GAINS, gainsDb.toFloatArray())
+        }
+        mc.sendCustomCommand(PlaybackCore.CMD_SET_EQUALIZER, args)
+    }
+
     override fun release() = onMain {
-        runCatching { eq?.release() }
-        handler.removeCallbacks(ticker)
-        player.removeListener(listener)
-        context.stopService(Intent(context, PlaybackService::class.java))
-        PlaybackCore.release()
+        released = true
+        stopTicker()
+        pending.clear()
+        controller?.let { mc ->
+            mc.removeListener(playerListener)
+            if (mc.isConnected) {
+                mc.stop()
+                mc.clearMediaItems()
+            }
+        }
+        controller = null
+        controllerFuture?.let(MediaController::releaseFuture)
+        controllerFuture = null
+        PlaybackCore.sources.clear()
+        _state.value = PlayerState.Idle
+        _positionMs.value = 0L
+        _durationMs.value = 0L
+        _currentIndex.value = -1
+    }
+
+    private fun parseArtworkUri(raw: String?): Uri? {
+        if (raw.isNullOrBlank()) return null
+        val parsed = Uri.parse(raw)
+        return if (parsed.scheme == null) Uri.fromFile(File(raw)) else parsed
     }
 
     private companion object {

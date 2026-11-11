@@ -1,6 +1,7 @@
 package io.max.paperplay.player
 
 import android.net.Uri
+import androidx.annotation.OptIn
 import androidx.media3.common.C
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.util.UnstableApi
@@ -10,8 +11,10 @@ import androidx.media3.datasource.DataSourceException
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.TransferListener
 import java.io.IOException
+import java.io.InterruptedIOException
 
 /** Range-reads a [StreamSource] looked up by the DataSpec uri. */
+@OptIn(UnstableApi::class)
 internal class StreamDataSource(private val sources: Map<String, StreamSource>) : BaseDataSource(false) {
     private var uri: Uri? = null
     private var source: StreamSource? = null
@@ -36,7 +39,16 @@ internal class StreamDataSource(private val sources: Map<String, StreamSource>) 
     override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
         if (length == 0) return 0
         if (remaining == 0L) return C.RESULT_END_OF_INPUT
-        val chunk = source!!.read(position, minOf(length.toLong(), remaining).toInt())
+        val chunk = try {
+            source!!.read(position, minOf(length.toLong(), remaining).toInt())
+        } catch (e: IOException) {
+            throw e
+        } catch (e: InterruptedException) {
+            Thread.currentThread().interrupt()
+            throw InterruptedIOException(e.message ?: "Stream read interrupted").apply { initCause(e) }
+        } catch (e: Exception) {
+            throw IOException(e.message ?: "Stream read failed", e)
+        }
         if (chunk.isEmpty()) return C.RESULT_END_OF_INPUT
         System.arraycopy(chunk, 0, buffer, offset, chunk.size)
         position += chunk.size
@@ -55,6 +67,7 @@ internal class StreamDataSource(private val sources: Map<String, StreamSource>) 
 }
 
 /** Sends registered stream keys to [StreamDataSource], everything else to [upstream]. */
+@OptIn(UnstableApi::class)
 internal class RoutingDataSource(
     private val sources: Map<String, StreamSource>,
     private val stream: StreamDataSource,
