@@ -44,7 +44,15 @@ class AppServices(
     val account: io.max.paperplay.core.account.AccountApi by lazy { io.max.paperplay.core.account.NoAccount() }
 
     /** The saved index of the account's chats. The real one replaces the stand-in. */
-    val chatIndex: io.max.paperplay.core.account.ChatIndexApi by lazy { io.max.paperplay.core.account.NoIndex() }
+    val chatIndex: io.max.paperplay.core.account.ChatIndexApi by lazy {
+        io.max.paperplay.core.account.ChatIndex(
+            account, io.max.paperplay.core.account.IndexStore(driver), library,
+            { io.max.paperplay.core.filing.parseMainChat(library.pref(io.max.paperplay.core.filing.MAIN_CHAT_KEY)) }, clock,
+        ).also { it.onRunFinished = { runCatching { indexCloud.save() } } }
+    }
+
+    /** Saves the index to Telegram (Saved Messages) and restores it after a login. */
+    val indexCloud: io.max.paperplay.core.account.IndexCloud by lazy { io.max.paperplay.core.account.IndexCloud(account, chatIndex, library) }
     val resolver = TrackResolver { client }
 
     /** Created on first use, so a screen that never plays does not load the audio stack. */
