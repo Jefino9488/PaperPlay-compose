@@ -57,7 +57,7 @@ class ListActions(
     val notice: (String) -> Unit,
 )
 
-private fun ListActions.rowActions() = object : SongActions {
+internal fun ListActions.rowActions() = object : SongActions {
     override fun play(songs: List<SongUi>, index: Int) = this@rowActions.play(songs, index)
     override fun playNext(song: SongUi) = notice("Play next is not built yet.")
     override fun setFavorite(song: SongUi, favorite: Boolean) = this@rowActions.setFavorite(song, favorite)

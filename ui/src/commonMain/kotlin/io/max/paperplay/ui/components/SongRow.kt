@@ -25,6 +25,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -104,10 +105,10 @@ private fun Badge(text: String) {
 }
 
 @Composable
-private fun SongMenu(song: SongUi, actions: SongActions) {
+fun SongMenu(song: SongUi, actions: SongActions, icon: ImageVector = Icons.Rounded.MoreVert) {
     var open by remember { mutableStateOf(false) }
     Box {
-        IconButton({ open = true }) { Icon(Icons.Rounded.MoreVert, "Song options") }
+        IconButton({ open = true }) { Icon(icon, "Song options") }
         DropdownMenu(open, { open = false }) {
             @Composable
             fun item(text: String, run: () -> Unit) = DropdownMenuItem(

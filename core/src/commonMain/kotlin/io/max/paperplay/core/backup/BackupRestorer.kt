@@ -118,7 +118,7 @@ class BackupRestorer {
             throw BackupException("This backup file can't be read. It may be damaged.")
         }
 
-        val manifest = parseManifest(scan.manifest ?: throw BackupException("This isn't a Paper Play backup."))
+        val manifest = parseManifest(scan.manifest ?: throw BackupException("This isn't a PaperPlay backup."))
 
         // Sealed data is opened first, so a wrong password stops the restore before anything changes.
         val pw = options.password
@@ -210,7 +210,7 @@ class BackupRestorer {
             throw BackupException("This backup is damaged.")
         }
         if (json["version"]?.jsonPrimitive?.intOrNull != VERSION) {
-            throw BackupException("This backup is from a different version of Paper Play.")
+            throw BackupException("This backup is from a different version of PaperPlay.")
         }
         try {
             for (k in listOf("chats", "songs", "playlists", "playlistSongs", "prefs")) json.getValue(k).jsonArray

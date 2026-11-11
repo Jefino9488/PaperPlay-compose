@@ -91,7 +91,7 @@ fun CredentialsForm(onSave: (apiId: String, apiHash: String, token: String) -> S
 @Composable
 fun SetupScreen(backend: CoreBackend, onSaved: () -> Unit, onRestore: () -> Unit) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.Center) {
-        Text("Paper Play", style = MaterialTheme.typography.displaySmall)
+        Text("PaperPlay", style = MaterialTheme.typography.displaySmall)
         Text(
             "Connect your own Telegram bot. The API id and hash come from my.telegram.org, the token from @BotFather. " +
                 "Everything stays on this device.",

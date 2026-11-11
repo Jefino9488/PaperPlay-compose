@@ -96,7 +96,7 @@ fun RestoreScreen(hooks: RestoreHooks, onContinue: () -> Unit, onSkip: (() -> Un
                 Modifier.padding(24.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                Text("Paper Play", color = Color.White, fontWeight = FontWeight.Bold)
+                Text("PaperPlay", color = Color.White, fontWeight = FontWeight.Bold)
                 when (val s = state) {
                     RestoreState.Idle, is RestoreState.Failed -> {
                         Text("Bring your library, playlists and settings over from a backup of the old app.", color = Color.White)

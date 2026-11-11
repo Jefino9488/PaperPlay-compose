@@ -1,4 +1,4 @@
-# Paper Play (Compose)
+# PaperPlay (Compose)
 
 A music player that uses your own Telegram bot and chats as storage. Kotlin Compose Multiplatform for Android and Desktop (JVM).
 

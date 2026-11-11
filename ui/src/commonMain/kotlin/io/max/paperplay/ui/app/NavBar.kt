@@ -125,8 +125,12 @@ fun MiniPlayer(
     modifier: Modifier = Modifier,
 ) {
     val song = state.current ?: return
-    val bg = MaterialTheme.colorScheme.secondaryContainer
-    val ink = MaterialTheme.colorScheme.onSecondaryContainer
+    val cover = coverScheme(song.coverUri)
+    val bg by androidx.compose.animation.animateColorAsState(
+        if (cover == null) MaterialTheme.colorScheme.secondaryContainer else androidx.compose.ui.graphics.lerp(cover.primaryContainer, Color.Black, 0.35f),
+        androidx.compose.animation.core.tween(400),
+    )
+    val ink = cover?.onSurface ?: MaterialTheme.colorScheme.onSecondaryContainer
     Box(modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(bg).clickable(onClick = onOpen)) {
         Column {
             Row(Modifier.padding(start = 8.dp, top = 8.dp, end = 4.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {

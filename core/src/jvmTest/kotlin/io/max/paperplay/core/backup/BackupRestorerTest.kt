@@ -162,7 +162,7 @@ class BackupRestorerTest {
     fun missingLibrary() {
         val env = Env()
         val e = assertFailsWith<BackupException> { run(env, zip(mapOf("covers/c.jpg" to byteArrayOf(1)))) }
-        assertTrue(e.message!!.contains("isn't a Paper Play backup"))
+        assertTrue(e.message!!.contains("isn't a PaperPlay backup"))
         assertFailsWith<BackupException> { run(env, zip(mapOf("library.json" to "not json".toByteArray()))) }
         assertFailsWith<BackupException> { run(env, zip(mapOf("library.json" to manifest(version = 2)))) }
         assertFalse(File(env.db).exists())

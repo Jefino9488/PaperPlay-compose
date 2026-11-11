@@ -34,6 +34,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.kyant.backdrop.backdrops.layerBackdrop
@@ -89,8 +91,16 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit) {
     val barsHeight = (if (pb.current != null) 70.dp + 8.dp else 0.dp) + navHeight + (if (prefs.floatingNav) 24.dp else 0.dp) + bottomInset
     val currentId = pb.current?.id
 
+    // Cover gradient: the current song's colours wash down from the top of every page.
+    val base = MaterialTheme.colorScheme.background
+    val dark = base.luminance() < 0.5f
+    val tint = (if (prefs.coverGradient) coverScheme(pb.current?.coverUri, dark) else null)?.primaryContainer ?: MaterialTheme.colorScheme.primaryContainer
+    val g0 by androidx.compose.animation.animateColorAsState(tint.copy(alpha = 0.85f).compositeOver(base), androidx.compose.animation.core.tween(700))
+    val g1 by androidx.compose.animation.animateColorAsState(tint.copy(alpha = 0.32f).compositeOver(base), androidx.compose.animation.core.tween(700))
+    val pageBg = if (prefs.coverGradient) Modifier.background(androidx.compose.ui.graphics.Brush.verticalGradient(0f to g0, 0.45f to g1, 1f to base)) else Modifier.background(base)
+
     CompositionLocalProvider(LocalCoverLoader provides loader) {
-        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+        Box(Modifier.fillMaxSize().then(pageBg)) {
             Box(Modifier.fillMaxSize().layerBackdrop(backdrop).padding(top = top)) {
                 val d = detail
                 when {
@@ -111,7 +121,7 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit) {
                 }
                 NavBar(if (settings) 3 else tab, backdrop, prefs, bottomInset, { tab = it; detail = null; settings = false; settingsStack.clear() })
             }
-            if (showPlayer) FullPlayer(pb, pbError, backend, { showPlayer = false }, Modifier.padding(top = top))
+            if (showPlayer) FullPlayer(pb, pbError, backend, actions, { showPlayer = false })
             SnackbarHost(snack, Modifier.align(Alignment.TopCenter).padding(top = top))
         }
 

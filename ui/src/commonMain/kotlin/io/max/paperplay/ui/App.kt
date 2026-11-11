@@ -1,6 +1,8 @@
 package io.max.paperplay.ui
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -54,7 +56,11 @@ private fun Main(env: AppEnv, onRestore: () -> Unit) {
         backend.services.close()
         onRestore()
     }
-    PaperPlayTheme(dark = dark, seed = prefs.seed, dynamic = prefs.accent == "dynamic", amoled = prefs.amoled) {
+    // Only the cover path is read here, so position ticks do not recompose the theme.
+    val pb = backend.playback.collectAsState()
+    val coverUri by remember { derivedStateOf { pb.value.current?.coverUri } }
+    val seed = if (prefs.accent == "cover") io.max.paperplay.ui.app.CoverSeeds.seed(coverUri) else prefs.seed
+    PaperPlayTheme(dark = dark, seed = seed, dynamic = prefs.accent == "dynamic", amoled = prefs.amoled) {
         if (hasCredentials) MainShell(backend, prefs, restore) else SetupScreen(backend, onSaved = { hasCredentials = true }, onRestore = restore)
     }
 }
