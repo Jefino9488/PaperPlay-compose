@@ -98,6 +98,11 @@ To create a single shareable Windows executable, run:
 .\build-and-install.bat
 ```
 
+Desktop packaging requires a full JDK with `jpackage.exe`, not the JRE bundled
+with some IDE extensions. The script uses `D:\jdk17` automatically when that
+standard local installation exists; otherwise set `JAVA_HOME` to your full
+JDK before running it.
+
 The script creates `%USERPROFILE%\Downloads\PaperPlay-bundled.exe`. It is a
 self-extracting portable executable: it contains the complete PaperPlay
 desktop distribution, including the JVM runtime, VLC resources, and TDLib
