@@ -32,6 +32,7 @@ class PlaylistAutoSync(
     private val scope: CoroutineScope,
     private val pause: suspend (Long) -> Unit = { delay(it) },
     private val log: (String) -> Unit = {},
+    private val official: (suspend (String) -> FetchedPlaylist?)? = null,
 ) {
     private val _progress = MutableStateFlow<String?>(null)
 
@@ -72,7 +73,7 @@ class PlaylistAutoSync(
         try {
             lists.forEachIndexed { i, p ->
                 _progress.value = "Refreshing Spotify playlists ${i + 1} of ${lists.size}"
-                runCatching { importPlaylist(store, "${p.source_url}", http) }.onFailure { log("${p.name}: ${it.message}") }
+                runCatching { importPlaylist(store, "${p.source_url}", http, official) }.onFailure { log("${p.name}: ${it.message}") }
             }
         } finally {
             _progress.value = null

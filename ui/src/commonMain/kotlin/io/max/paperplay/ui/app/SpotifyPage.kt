@@ -13,6 +13,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -22,6 +23,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import io.max.paperplay.core.integrations.ImportStore
+import io.max.paperplay.core.integrations.SpotifyLoginError
 import io.max.paperplay.core.integrations.acceptMatch
 import io.max.paperplay.core.integrations.importPlaylist
 import io.max.paperplay.core.integrations.reviewCandidates
@@ -33,7 +35,7 @@ import kotlinx.coroutines.withContext
 
 private const val SPOTIFY = "https://open.spotify.com"
 
-/** Settings > Spotify import. Reads a public playlist link; no Spotify login. */
+/** Settings > Spotify import. Reads a playlist link; with a Spotify login it reads every track. */
 @Composable
 internal fun SpotifyPage(backend: CoreBackend) {
     val store = remember { ImportStore(backend.services.library.repo, backend.services.driver) }
@@ -49,7 +51,7 @@ internal fun SpotifyPage(backend: CoreBackend) {
         message = null
         scope.launch {
             message = try {
-                val r = withContext(Dispatchers.Default) { importPlaylist(store, url, backend.http) }
+                val r = withContext(Dispatchers.Default) { importPlaylist(store, url, backend.http, backend.services.spotify::fetchPlaylist) }
                 val more = if (r.limited) " Spotify's public page lists only the first 100 tracks." else ""
                 "${r.name}: ${r.matched} in your library, ${r.missing} not yet.$more"
             } catch (e: Exception) {
@@ -60,9 +62,11 @@ internal fun SpotifyPage(backend: CoreBackend) {
         }
     }
 
+    SpotifyAccountSection(backend)
+
     Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(
-            "Paste a public Spotify playlist link. Songs you already have join a new playlist. The rest wait there and join when they show up in your library.",
+            "Paste a Spotify playlist link. Songs you already have join a new playlist. The rest wait there and join when they show up in your library.",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         OutlinedTextField(link, { link = it }, Modifier.fillMaxWidth(), label = { Text("Playlist link") }, singleLine = true)
@@ -112,5 +116,64 @@ private fun ReviewList(backend: CoreBackend, store: ImportStore, waiting: List<M
                 }
             }
         }
+    }
+}
+
+/** Client id, log in and log out. The login lets imports read every track, not the first 100. */
+@Composable
+private fun SpotifyAccountSection(backend: CoreBackend) {
+    val account = backend.services.spotify
+    val env = io.max.paperplay.ui.LocalAppEnv.current
+    val scope = rememberCoroutineScope()
+    var clientId by remember { mutableStateOf(account.clientId.orEmpty()) }
+    var connected by remember { mutableStateOf(account.connected) }
+    var user by remember { mutableStateOf<String?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    var message by remember { mutableStateOf<String?>(null) }
+    val redirect = env?.authRedirect
+    val redirectUri = env?.authRedirectUri.orEmpty()
+
+    LaunchedEffect(connected) {
+        user = if (connected) withContext(Dispatchers.Default) { runCatching { account.userName() }.getOrNull() } else null
+    }
+
+    SectionLabel("Spotify account")
+    Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(
+            "Log in with your own Spotify app to import whole playlists, not only the first 100 tracks. It works for playlists you own or share. " +
+                "Create an app in the Spotify developer dashboard and add this redirect link to it: $redirectUri",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        OutlinedTextField(
+            clientId, { clientId = it; account.clientId = it }, Modifier.fillMaxWidth(),
+            label = { Text("Client id") }, singleLine = true, enabled = !connected,
+        )
+        if (connected) {
+            Text(if (user != null) "Logged in as $user" else "Logged in", color = MaterialTheme.colorScheme.onSurface)
+            OutlinedButton({ account.disconnect(); connected = false; message = null }) { Text("Log out") }
+        } else {
+            Button(
+                {
+                    busy = true
+                    message = null
+                    scope.launch {
+                        message = try {
+                            account.clientId = clientId
+                            account.connect(redirect!!, redirectUri)
+                            connected = true
+                            null
+                        } catch (e: SpotifyLoginError) {
+                            e.message
+                        } catch (e: Exception) {
+                            "The login failed."
+                        }
+                        busy = false
+                    }
+                },
+                enabled = clientId.isNotBlank() && !busy && redirect != null,
+            ) { Text(if (busy) "Waiting for Spotify" else "Log in") }
+            if (redirect == null) Text("Logging in is not available here.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
     }
 }
