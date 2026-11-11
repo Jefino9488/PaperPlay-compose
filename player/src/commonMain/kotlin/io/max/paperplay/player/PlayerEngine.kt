@@ -28,6 +28,9 @@ class QueueItem(
     val source: StreamSource? = null,
 )
 
+/** Centre frequencies of the five equalizer bands every device can approximate. */
+val EQ_BANDS_HZ = listOf(60, 230, 910, 3600, 14000)
+
 interface PlayerEngine {
     val state: StateFlow<PlayerState>
     val positionMs: StateFlow<Long>
@@ -44,6 +47,8 @@ interface PlayerEngine {
     fun seek(positionMs: Long)
     /** 0 to 1. */
     fun setVolume(volume: Float)
+    /** Gains in dB for the five bands of [EQ_BANDS_HZ], or null to turn the equalizer off. */
+    fun setEqualizer(gainsDb: List<Float>?) {}
     fun release()
 
     fun play(uri: String) = setQueue(listOf(QueueItem(uri)))

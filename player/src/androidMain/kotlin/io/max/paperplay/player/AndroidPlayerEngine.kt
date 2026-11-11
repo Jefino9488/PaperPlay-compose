@@ -42,6 +42,7 @@ class AndroidPlayerEngine : PlayerEngine {
 
     private val listener = object : Player.Listener {
         override fun onEvents(player: Player, events: Player.Events) = sync()
+        override fun onAudioSessionIdChanged(audioSessionId: Int) = applyEqualizer()
         override fun onPlayerError(error: PlaybackException) {
             failed = true
             sync()
@@ -116,7 +117,35 @@ class AndroidPlayerEngine : PlayerEngine {
     override fun seek(positionMs: Long) = onMain { player.seekTo(positionMs) }
     override fun setVolume(volume: Float) = onMain { player.volume = volume.coerceIn(0f, 1f) }
 
+    private var gains: List<Float>? = null
+    private var eq: android.media.audiofx.Equalizer? = null
+
+    override fun setEqualizer(gainsDb: List<Float>?) = onMain {
+        gains = gainsDb
+        applyEqualizer()
+    }
+
+    /** Device equalizers have a handful of bands, so each takes the gain of the nearest of the ten. */
+    private fun applyEqualizer() {
+        runCatching { eq?.release() }
+        eq = null
+        val g = gains ?: return
+        runCatching {
+            val e = android.media.audiofx.Equalizer(0, player.audioSessionId)
+            val range = e.bandLevelRange
+            for (b in 0 until e.numberOfBands) {
+                val hz = e.getCenterFreq(b.toShort()) / 1000.0
+                val i = EQ_BANDS_HZ.indices.minByOrNull { kotlin.math.abs(kotlin.math.ln(EQ_BANDS_HZ[it] / hz)) } ?: continue
+                val level = (g.getOrElse(i) { 0f } * 100).toInt().coerceIn(range[0].toInt(), range[1].toInt())
+                e.setBandLevel(b.toShort(), level.toShort())
+            }
+            e.enabled = true
+            eq = e
+        }
+    }
+
     override fun release() = onMain {
+        runCatching { eq?.release() }
         handler.removeCallbacks(ticker)
         player.removeListener(listener)
         context.stopService(Intent(context, PlaybackService::class.java))

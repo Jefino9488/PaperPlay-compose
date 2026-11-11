@@ -94,6 +94,21 @@ class JvmPlayerEngine(vararg vlcArgs: String) : PlayerEngine {
     override fun seek(positionMs: Long) = cmd { player.controls().setTime(positionMs) }
     override fun setVolume(volume: Float) = cmd { player.audio().setVolume((volume.coerceIn(0f, 1f) * 100).toInt()) }
 
+    override fun setEqualizer(gainsDb: List<Float>?) = cmd {
+        if (gainsDb == null) {
+            player.audio().setEqualizer(null)
+        } else {
+            val eq = factory.equalizer().newEqualizer()
+            // VLC has ten bands; each takes the gain of the nearest of ours.
+            val vlcHz = listOf(60, 170, 310, 600, 1000, 3000, 6000, 12000, 14000, 16000)
+            vlcHz.forEachIndexed { b, hz ->
+                val i = EQ_BANDS_HZ.indices.minByOrNull { kotlin.math.abs(kotlin.math.ln(EQ_BANDS_HZ[it].toDouble() / hz)) } ?: 0
+                eq.setAmp(b, gainsDb.getOrElse(i) { 0f }.coerceIn(-12f, 12f))
+            }
+            player.audio().setEqualizer(eq)
+        }
+    }
+
     override fun release() {
         io.shutdown()
         io.awaitTermination(2, java.util.concurrent.TimeUnit.SECONDS)

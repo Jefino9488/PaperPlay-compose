@@ -99,7 +99,7 @@ fun SettingsHost(
 internal val subTitles = mapOf(
     "channels" to "Channels", "bots" to "Extra bots", "account" to "Your account", "log" to "Bot activity",
     "sort" to "Sort General", "dupes" to "Find duplicates", "mixlearn" to "Mixes and learning", "weather" to "Weather",
-    "conn" to "Connection", "eq" to "Equalizer", "credentials" to "Bot credentials", "profile" to "Profile",
+    "conn" to "Connection", "eq" to "Equalizer", "listenbrainz" to "ListenBrainz", "credentials" to "Bot credentials", "profile" to "Profile",
 )
 
 @Composable
@@ -226,9 +226,11 @@ internal fun SettingsPage(
         }
         "spotify" -> SpotifyPage(backend)
         "listening" -> {
-            NotBuilt("ListenBrainz")
+            NavRow("ListenBrainz", "Send what you listen to", Icons.Rounded.Sync) { stack.add("listenbrainz") }
             NavRow("Equalizer", icon = Icons.Rounded.Equalizer) { stack.add("eq") }
         }
+        "listenbrainz" -> ListenBrainzPage(backend)
+        "eq" -> EqualizerPage(backend)
         "devices" -> {
             if (isPhone) {
                 var keep by remember { mutableStateOf(pref("keep_running") != "false") }

@@ -89,6 +89,10 @@ class PlaybackController(
         }
     }
 
+    /** Called when a song stops, with how long it was heard. Set by the owner, for scrobbling. */
+    @kotlin.concurrent.Volatile
+    var onListened: ((Song, Long) -> Unit)? = null
+
     private fun finishListening() {
         val song = listening ?: return
         val ms = listenedMs
@@ -97,6 +101,7 @@ class PlaybackController(
         val full = song.duration_sec * 1000
         val finished = if (full > 0 && ms >= full * 9 / 10) true else if (ms >= 5_000) false else null
         runCatching { repo.recordListen(song, ms, finished) }
+        runCatching { onListened?.invoke(song, ms) }
     }
 
     /** Replaces the queue with [songs] and plays [startIndex]. */
@@ -112,6 +117,7 @@ class PlaybackController(
     fun pause() = engine.pause()
     fun seek(positionMs: Long) = engine.seek(positionMs)
     fun setVolume(volume: Float) = engine.setVolume(volume)
+    fun setEqualizer(gainsDb: List<Float>?) = engine.setEqualizer(gainsDb)
 
     fun next() = command {
         val m = meta.value

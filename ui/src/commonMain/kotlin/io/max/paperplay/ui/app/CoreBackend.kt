@@ -13,6 +13,7 @@ import io.max.paperplay.core.recs.WeatherKind
 import io.max.paperplay.core.recs.WeatherPlace
 import io.max.paperplay.core.recs.WeatherService
 import io.max.paperplay.core.integrations.HttpFetcher
+import io.max.paperplay.core.integrations.ListenBrainz
 import kotlinx.coroutines.flow.MutableStateFlow
 import io.max.paperplay.core.recs.ShelfKind
 import io.max.paperplay.core.filing.MAIN_CHAT_KEY
@@ -157,6 +158,62 @@ class CoreBackend(val services: AppServices) {
     }
 
     init { refreshWeather() }
+
+    // Equalizer: five bands in dB, saved as a JSON list like the Flutter app does.
+    val eqOn = MutableStateFlow(repo.pref("eq_on") == "true")
+    val eqGains = MutableStateFlow(
+        repo.pref("eq_gains")?.trim('[', ']', ' ')?.split(',')?.mapNotNull { it.trim().toFloatOrNull() }?.takeIf { it.size == 5 } ?: List(5) { 0f },
+    )
+
+    fun setEqualizer(on: Boolean = eqOn.value, gains: List<Float> = eqGains.value) {
+        eqOn.value = on
+        eqGains.value = gains
+        repo.setPref("eq_on", "$on")
+        repo.setPref("eq_gains", gains.joinToString(",", "[", "]"))
+        services.playback.setEqualizer(if (on) gains else null)
+    }
+
+    // ListenBrainz: the token lives in the secret store, never in a plain preference.
+    private val listenBrainz = ListenBrainz(http)
+    val lbUser = MutableStateFlow(
+        if (services.platform.secrets.get(io.max.paperplay.core.backup.SecretKeys.LISTENBRAINZ_TOKEN) == null) null
+        else repo.pref("listenbrainz_user")?.takeIf { it.isNotEmpty() } ?: "your account",
+    )
+
+
+    /** Checks the token with ListenBrainz and keeps it. Returns a problem as text, or null when it worked. */
+    suspend fun connectListenBrainz(token: String): String? {
+        val t = token.trim()
+        if (t.isEmpty()) return "Paste your ListenBrainz user token."
+        val user = try { listenBrainz.validate(t) } catch (e: Exception) { return "ListenBrainz could not be reached." }
+            ?: return "ListenBrainz does not accept that token."
+        services.platform.secrets.put(io.max.paperplay.core.backup.SecretKeys.LISTENBRAINZ_TOKEN, t)
+        repo.setPref("listenbrainz_user", user)
+        repo.setPref("listenbrainz_on", "true")
+        lbUser.value = user
+        return null
+    }
+
+    fun disconnectListenBrainz() {
+        services.platform.secrets.remove(io.max.paperplay.core.backup.SecretKeys.LISTENBRAINZ_TOKEN)
+        repo.setPref("listenbrainz_user", "")
+        repo.setPref("listenbrainz_on", "false")
+        lbUser.value = null
+    }
+
+    init {
+        if (eqOn.value) services.playback.setEqualizer(eqGains.value)
+        // A listen counts after half the song or four minutes, whichever comes first.
+        services.playback.onListened = { song, ms ->
+            val token = services.platform.secrets.get(io.max.paperplay.core.backup.SecretKeys.LISTENBRAINZ_TOKEN)
+            val full = song.duration_sec * 1000L
+            val counts = if (full > 0) ms >= minOf(full / 2, 240_000L) else ms >= 30_000L
+            if (token != null && repo.pref("listenbrainz_on") == "true" && counts) scope.launch {
+                val ok = runCatching { listenBrainz.submit(token, song, (nowMoment().epochMs - ms) / 1000) }.getOrDefault(false)
+                if (!ok) addLog("ListenBrainz", "Could not send \"${song.title}\".", error = true)
+            }
+        }
+    }
 
     /** What the app has been doing, newest last. Kept in memory; bot tokens are blanked out. */
     val log = MutableStateFlow<List<LogLine>>(emptyList())
