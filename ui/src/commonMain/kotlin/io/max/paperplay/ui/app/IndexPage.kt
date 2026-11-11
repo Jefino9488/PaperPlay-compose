@@ -134,6 +134,12 @@ internal fun ChatSongsPage(backend: CoreBackend, chatId: Long, stack: MutableLis
             },
             enabled = selection.picked.isNotEmpty() && !busy,
         ) { Text("Copy ${selection.picked.size} to main chat") }
+        val missing = songs.count { !it.inMainChat && !it.copied }
+        Text("$missing of ${songs.size} are not in your library", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        OutlinedButton({
+            val first = songs.firstOrNull { !it.inMainChat && !it.copied } ?: return@OutlinedButton
+            scope.launch { status = "Asking the bot about \"${first.post.title}\"..."; status = backend.services.botCheck(first.post.chatId, first.post.messageId) }
+        }, enabled = missing > 0) { Text("Check why the first missing song is missing") }
         status?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         OutlinedButton({ backend.chatIndex.forget(chatId); if (stack.isNotEmpty()) stack.removeAt(stack.lastIndex) }) { Text("Forget this chat") }
     }

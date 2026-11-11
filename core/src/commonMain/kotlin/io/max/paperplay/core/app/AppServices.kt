@@ -201,6 +201,17 @@ class AppServices(
         }
     }
 
+    /** Asks the bot for one post and says what it got, to find out why a song is missing from the library. */
+    suspend fun botCheck(chatId: Long, messageId: Long): String {
+        val c = client ?: return "The bot is not connected."
+        return try {
+            val m = c.call(request("getMessage") { put("chat_id", chatId); put("message_id", messageId) })
+            if (songFromMessage(m) != null) "The bot can read this post and sees a song." else "The bot reads this post, but it does not see a song in it."
+        } catch (e: TdError) {
+            "The bot cannot read this post: ${e.message}"
+        }
+    }
+
     /** Deletes the audio TDLib downloaded for streaming. Songs download again when played. False when not connected. */
     suspend fun clearDownloads(): Boolean {
         val c = client ?: return false
