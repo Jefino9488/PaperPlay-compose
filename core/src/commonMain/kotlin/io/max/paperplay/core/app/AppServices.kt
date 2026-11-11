@@ -39,6 +39,12 @@ class AppServices(
     val db = LibraryDatabase(driver)
     val library = LibraryRepository(LibraryRepo(db, clock), clock)
     val scanner = Scanner(library, scope)
+
+    /** The owner's own account (login, chats, copying). The real one replaces the stand-in. */
+    val account: io.max.paperplay.core.account.AccountApi by lazy { io.max.paperplay.core.account.NoAccount() }
+
+    /** The saved index of the account's chats. The real one replaces the stand-in. */
+    val chatIndex: io.max.paperplay.core.account.ChatIndexApi by lazy { io.max.paperplay.core.account.NoIndex() }
     val resolver = TrackResolver { client }
 
     /** Created on first use, so a screen that never plays does not load the audio stack. */
