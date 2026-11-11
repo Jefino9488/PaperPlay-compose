@@ -27,6 +27,8 @@ Telegram bot and chats as storage. It targets Android and desktop JVM.
   - curated Tabler outline icons
 - Only the Tabler icons used by PaperPlay are included; the complete Tabler
   library is not bundled.
+- Telegram channel settings let you choose one configured chat as the main
+  filing chat; the choice is persisted with the library.
 
 ## Build
 

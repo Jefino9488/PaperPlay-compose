@@ -284,6 +284,7 @@ private fun ChannelsPage(conn: ConnectionUi, backend: CoreBackend) {
     var chatId by remember { mutableStateOf("") }
     var chatTitle by remember { mutableStateOf("") }
     var chatError by remember { mutableStateOf<String?>(null) }
+    var mainChatId by remember { mutableStateOf(backend.mainChatId()) }
     Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
             when {
@@ -294,7 +295,29 @@ private fun ChannelsPage(conn: ConnectionUi, backend: CoreBackend) {
         )
         if (conn.error != null) Text(conn.error, color = MaterialTheme.colorScheme.error)
         if (!conn.ready) OutlinedButton(backend::connect) { Text("Reconnect") }
-        conn.chats.forEach { Text("${it.title}  (${it.id})", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        conn.chats.forEach { chat ->
+            Row(
+                Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(chat.title, style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        "${chat.id}${if (chat.id == mainChatId) "  • Main chat" else ""}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (chat.id == mainChatId) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (chat.id != mainChatId) {
+                    OutlinedButton({
+                        backend.setMainChat(chat.id)
+                        mainChatId = chat.id
+                    }) { Text("Set as main") }
+                }
+            }
+        }
         if (conn.scanText != null) Text(conn.scanText)
         OutlinedTextField(chatId, { chatId = it }, Modifier.fillMaxWidth(), label = { Text("Chat id, like -1001234567890") }, singleLine = true)
         OutlinedTextField(chatTitle, { chatTitle = it }, Modifier.fillMaxWidth(), label = { Text("Name (optional)") }, singleLine = true)

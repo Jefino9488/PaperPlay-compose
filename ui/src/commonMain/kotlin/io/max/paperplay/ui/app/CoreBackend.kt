@@ -8,6 +8,8 @@ import io.max.paperplay.core.library.Song
 import io.max.paperplay.core.recs.DailyMixes
 import io.max.paperplay.core.recs.HomeShelves
 import io.max.paperplay.core.recs.ShelfKind
+import io.max.paperplay.core.filing.MAIN_CHAT_KEY
+import io.max.paperplay.core.filing.parseMainChat
 import io.max.paperplay.ui.nowMoment
 import io.max.paperplay.ui.state.CollectionUi
 import io.max.paperplay.ui.state.HomeUi
@@ -231,6 +233,12 @@ class CoreBackend(val services: AppServices) {
 
     fun pref(key: String): String? = repo.pref(key)
     fun setPref(key: String, value: String) = repo.setPref(key, value)
+
+    fun mainChatId(): Long? = parseMainChat(repo.pref(MAIN_CHAT_KEY))
+
+    fun setMainChat(chatId: Long) {
+        repo.setPref(MAIN_CHAT_KEY, """{"id":$chatId,"at":${nowMoment().epochMs}}""")
+    }
 
     /** Adds a chat to read songs from. [id] is Telegram's chat id, for example -1001234567890. */
     fun addChat(id: String, title: String): String? {
