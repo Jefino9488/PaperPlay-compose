@@ -106,6 +106,7 @@ fun ProfileScreen(
                     NavRow(if (conn.chats.size == 1) "1 channel" else "${conn.chats.size} channels", icon = Icons.Rounded.Forum, subtitle = mainChatTitle?.let { "Main chat: $it" } ?: "No chat added yet") {
                         onSettings("channels")
                     }
+                    NavRow("Chats and channels", icon = Icons.Rounded.Forum, subtitle = "Index songs in your own chats") { onSettings("index") }
                     NavRow("Tasks", icon = Icons.Rounded.TaskAlt, subtitle = conn.scanText ?: "Nothing running", onClick = onTasks)
                     NavRow("Listening", icon = Icons.Rounded.BarChart, subtitle = "Time listened, top songs and artists") {
                         onSettings("stats")

@@ -195,10 +195,10 @@ internal fun SettingsPage(
             RateSlider("reading", backend, notice)
             RateSlider("accountCopy", backend, notice)
             NavRow("Channels", "See what's added, add more, and choose the main chat", Icons.Rounded.Forum) { stack.add("channels") }
+            NavRow("Chats and channels", "Index songs in your chats and copy them to the main chat", Icons.Rounded.Forum) { stack.add("index") }
             NavRow("Bot credentials", "API id, API hash and bot token", Icons.Rounded.Key) { stack.add("credentials") }
             NavRow("Extra bots", "More bots share the uploading", Icons.Rounded.SmartToy) { stack.add("bots") }
             NavRow("Your account (optional)", "Log in as yourself to read and copy from your chats", Icons.Rounded.Person) { stack.add("account") }
-            NavRow("Chats and channels", "Index songs in your chats and copy them to the main chat", Icons.Rounded.Forum) { stack.add("index") }
             NavRow("Bot activity since the app opened", "Message reads, downloads, uploads and rate limits", Icons.Rounded.MonitorHeart) { stack.add("log") }
             SettingsRow("Log out", icon = Icons.Rounded.Logout, subtitle = "Forgets the bot's credentials. Your library stays on this device", onClick = { confirm = "logout" })
         }
@@ -253,7 +253,7 @@ internal fun SettingsPage(
             SettingsRow("Save backup", icon = Icons.Rounded.SaveAlt, subtitle = "Not built in this app yet", enabled = false)
             SettingsRow("Restore backup", icon = Icons.Rounded.Restore, subtitle = "Replaces your current library", onClick = { confirm = "restore" })
         }
-        "channels" -> ChannelsPage(conn, backend)
+        "channels" -> ChannelsPage(conn, backend, stack)
         "credentials" -> Column(Modifier.padding(16.dp)) {
             Text("Saving reconnects the bot with the new details.", Modifier.padding(bottom = 12.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
             CredentialsForm(backend::saveCredentials, { stack.removeAt(stack.lastIndex) })
@@ -300,7 +300,7 @@ private fun RateSlider(key: String, backend: CoreBackend, notice: androidx.compo
 }
 
 @Composable
-private fun ChannelsPage(conn: ConnectionUi, backend: CoreBackend) {
+private fun ChannelsPage(conn: ConnectionUi, backend: CoreBackend, stack: MutableList<String>) {
     var mainChatId by remember { mutableStateOf(backend.mainChatId()) }
     var showAdd by remember { mutableStateOf(false) }
     val mainChat = conn.chats.firstOrNull { it.id == mainChatId }
@@ -320,6 +320,7 @@ private fun ChannelsPage(conn: ConnectionUi, backend: CoreBackend) {
             IconButton({ showAdd = true }) { AppIcon(Icons.Rounded.Add, "Add channel") }
             OutlinedButton(backend::rescan, enabled = conn.ready && conn.chats.isNotEmpty()) { Text("Scan") }
         }
+        NavRow("Your other chats and channels", "Index songs from chats the bot is not in", Icons.Rounded.Forum) { stack.add("index") }
         SectionLabel("Main chat")
         if (mainChat != null) {
             SettingsRow(
