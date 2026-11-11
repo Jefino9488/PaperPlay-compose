@@ -71,19 +71,37 @@ internal fun IndexPage(backend: CoreBackend, stack: MutableList<String>) {
         message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
     }
 
-    SectionLabel("Your chats and channels")
+    var search by remember { mutableStateOf("") }
+    OutlinedTextField(
+        search, { search = it }, Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
+        label = { Text("Search chats and channels") }, singleLine = true,
+    )
+    // Indexed chats are kept even when the account's chat list has not loaded yet.
+    val all = (list.orEmpty() + indexed.filterKeys { id -> list.orEmpty().none { it.id == id } }.map { (id, title) -> ChatInfo(id, title, true) })
+    val q = search.trim().lowercase()
+    val shown = if (q.isEmpty()) all else all.filter { it.title.lowercase().contains(q) }
+    val (done, rest) = shown.partition { it.id in indexed }
+
+    SectionLabel("Indexed (${done.size})")
+    if (done.isEmpty()) Text(if (q.isEmpty()) "Nothing indexed yet." else "No indexed chat matches.", Modifier.padding(horizontal = 20.dp, vertical = 8.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+    for (c in done) {
+        SettingsRow(
+            c.title, icon = if (c.isChannel) Icons.Rounded.Campaign else Icons.Rounded.Forum,
+            subtitle = if (c.isChannel) "Channel, indexed" else "Group, indexed",
+            onClick = { indexPageTitles["index:${c.id}"] = c.title; stack.add("index:${c.id}") },
+        ) { AppIcon(Icons.Rounded.ChevronRight, null) }
+    }
+
+    SectionLabel("Your other chats and channels (${rest.size})")
     when {
-        list == null -> Text("Reading your chats", Modifier.padding(20.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
-        list.isEmpty() -> Text("No groups or channels found.", Modifier.padding(20.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
-        else -> for (c in list) {
-            val isIndexed = c.id in indexed
+        list == null && indexed.isEmpty() -> Text("Reading your chats", Modifier.padding(20.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+        rest.isEmpty() -> Text(if (q.isEmpty()) "No other groups or channels." else "No other chat matches.", Modifier.padding(horizontal = 20.dp, vertical = 8.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+        else -> for (c in rest) {
             SettingsRow(
                 c.title, icon = if (c.isChannel) Icons.Rounded.Campaign else Icons.Rounded.Forum,
-                subtitle = if (isIndexed) "Indexed" else if (c.isChannel) "Channel" else "Group",
-                onClick = if (isIndexed) { { indexPageTitles["index:${c.id}"] = c.title; stack.add("index:${c.id}") } } else null,
+                subtitle = if (c.isChannel) "Channel" else "Group",
             ) {
-                if (isIndexed) AppIcon(Icons.Rounded.ChevronRight, null)
-                else OutlinedButton({ scope.launch { runCatching { backend.chatIndex.indexChat(c) }.onFailure { message = it.message } } }, enabled = progress == null) { Text("Index") }
+                OutlinedButton({ scope.launch { runCatching { backend.chatIndex.indexChat(c) }.onFailure { message = it.message } } }, enabled = progress == null) { Text("Index") }
             }
         }
     }
