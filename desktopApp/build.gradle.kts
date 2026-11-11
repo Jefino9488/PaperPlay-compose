@@ -29,6 +29,11 @@ compose.desktop {
             )
             packageName = "PaperPlay"
             packageVersion = "1.0.0"
+            windows {
+                iconFile.set(project.file("src/jvmMain/resources/app.ico"))
+                menu = true
+                shortcut = true
+            }
 
             // Bundle the curated libvlc runtime so the app plays FLAC, ALAC,
             // AAC, MP3, Opus, Vorbis, WAV, AIFF, and all other audio formats
