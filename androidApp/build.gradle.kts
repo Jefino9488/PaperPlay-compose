@@ -4,7 +4,7 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
-// Release signing reads the keystore details from the properties file named by signing.file in
+// Debug and release signing read the keystore details from the properties file named by signing.file in
 // local.properties (git-ignored), so no secret is stored in the project. Without it, release uses the debug key.
 val signing = rootProject.file("local.properties").takeIf { it.exists() }
     ?.let { f -> Properties().apply { f.inputStream().use(::load) } }
@@ -23,11 +23,16 @@ android {
         ndk { abiFilters += "arm64-v8a" }
     }
     signingConfigs {
-        if (signing != null) create("release") {
-            storeFile = file(signing.getProperty("keystore.path"))
-            storePassword = signing.getProperty("keystore.password")
-            keyAlias = signing.getProperty("key.alias")
-            keyPassword = signing.getProperty("key.password")
+        // Debug and release share one key, so a debug build installs over a release one and back.
+        if (signing != null) {
+            for (name in listOf("debug", "release")) {
+                maybeCreate(name).apply {
+                    storeFile = file(signing.getProperty("keystore.path"))
+                    storePassword = signing.getProperty("keystore.password")
+                    keyAlias = signing.getProperty("key.alias")
+                    keyPassword = signing.getProperty("key.password")
+                }
+            }
         }
     }
     buildTypes {
