@@ -14,3 +14,7 @@ internal actual fun readRange(path: String, offset: Long, length: Int): ByteArra
         }
         if (n == length) buf else buf.copyOf(n)
     }
+
+internal actual fun fileLength(path: String): Long = java.io.File(path).let { if (it.isFile) it.length() else -1L }
+
+internal actual fun deleteFile(path: String) { runCatching { java.io.File(path).delete() } }

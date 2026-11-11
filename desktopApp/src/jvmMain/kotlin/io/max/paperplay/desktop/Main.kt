@@ -58,6 +58,15 @@ fun main() {
                     chooser.selectedFile.copyTo(File(folder, "photo-${System.currentTimeMillis()}.${chooser.selectedFile.extension}")).path
                 }.getOrNull())
             },
+            pickAudio = { onPicked ->
+                val chooser = JFileChooser().apply {
+                    isMultiSelectionEnabled = true
+                    fileFilter = FileNameExtensionFilter("Audio", "mp3", "flac", "m4a", "aac", "ogg", "opus", "wav", "wma", "alac", "aiff", "ape", "wv", "mka")
+                }
+                if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) onPicked(chooser.selectedFiles.map { it.path }, false)
+            },
+            authRedirect = LoopbackAuth(),
+            authRedirectUri = SPOTIFY_REDIRECT,
         )
         Window(onCloseRequest = ::exitApplication, title = "Paper Play", state = rememberWindowState(width = 1320.dp, height = 840.dp), icon = androidx.compose.ui.res.painterResource("icon.png")) {
             App(env)

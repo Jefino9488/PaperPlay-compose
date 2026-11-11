@@ -184,6 +184,23 @@ class CoreBackend(val services: AppServices) {
 
     init { refreshWeather() }
 
+    /** tg://privatepost link of the song's channel post, or null for chats that are not channels or supergroups. */
+    /** Queues the song for another online lookup; says what happened. */
+    fun findMetadata(song: SongUi): String {
+        val s = byId[song.id] ?: return "Song not found"
+        if (s.user_edited) return "Edited songs are left alone"
+        return if (services.enricher.retrySongs(listOf(s)) > 0) "Looking up song info" else "Song not found"
+    }
+
+    fun telegramLink(song: SongUi): String? {
+        val s = byId[song.id] ?: return null
+        if (s.chat_id > -1_000_000_000_000L) return null
+        val channel = -s.chat_id - 1_000_000_000_000L
+        val post = s.message_id shr 20
+        if (post <= 0) return null
+        return "tg://privatepost?channel=$channel&post=$post"
+    }
+
     fun playNext(song: SongUi) {
         byId[song.id]?.let { services.playback.playNext(it) }
     }
@@ -315,6 +332,9 @@ class CoreBackend(val services: AppServices) {
     val log = MutableStateFlow<List<LogLine>>(emptyList())
     private var lastScanLog = 0L
 
+    /** Running background jobs and their history; features call tasks.start/update/finish. */
+    val tasks = io.max.paperplay.core.app.TaskQueue(scope).also { it.watchServices(services) }
+
     fun addLog(source: String, message: String, error: Boolean = false) {
         val clean = message.replace(Regex("\\b\\d{5,}:[A-Za-z0-9_-]{20,}\\b"), "<bot token>")
         log.value = (log.value + LogLine(nowMoment().epochMs, source, clean, error)).takeLast(1000)
@@ -360,13 +380,18 @@ class CoreBackend(val services: AppServices) {
             }.distinctBy { it.unique_id }
             if (leadSongs.isNotEmpty()) services.covers.prioritize(leadSongs)
             // Tiles and shelves show at once; the slower daily mixes join when they are ready.
-            emit(HomePlanState(plan = plan))
-            if (!input.taste.showMixes) return@transformLatest
+            if (!input.taste.showMixes) { emit(HomePlanState(plan = plan)); return@transformLatest }
+            // Saved mixes show at once, even from an older day or library; fresh ones replace them when computed.
+            val mixKey = "${now.dayKey}:${input.songs.size}:${input.favorites.size}:${input.taste.at}:${input.weather}"
+            val cached = runCatching { DailyMixCache.decode(repo.pref(DailyMixCache.PREF), input.songs.associateBy { it.unique_id }) }.getOrNull()
+            emit(HomePlanState(plan = plan, mixes = cached?.second.orEmpty()))
+            if (cached != null && cached.first == mixKey && cached.second.isNotEmpty()) return@transformLatest
             val daily = runCatching {
                 DailyMixes.build(input.songs, now, weather = input.weather, lists = tasteLists(input.favorites, input.taste), options = input.taste)
             }.getOrDefault(emptyList())
             val mixLead = daily.flatMap { it.songs.take(4) }.distinctBy { it.unique_id }
             if (mixLead.isNotEmpty()) services.covers.prioritize(mixLead)
+            if (daily.isNotEmpty()) runCatching { repo.setPref(DailyMixCache.PREF, DailyMixCache.encode(mixKey, daily)) }
             emit(HomePlanState(plan = plan, mixes = daily))
         }
 

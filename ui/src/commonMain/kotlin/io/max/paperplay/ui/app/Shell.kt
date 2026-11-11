@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
@@ -92,6 +93,8 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
             addToPlaylist = { pickFor = it },
             notice = { scope.launch { snack.showSnackbar(it) } },
             playNext = { s -> backend.playNext(s); scope.launch { snack.showSnackbar("Plays next") } },
+            telegramLink = backend::telegramLink,
+            findMetadata = { s -> scope.launch { snack.showSnackbar(backend.findMetadata(s)) } },
         )
     }
 
@@ -100,6 +103,7 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
     LaunchedEffect(openRequest) {
         when (openRequest) {
             "player" -> showPlayer = true
+            "upload" -> { page = "upload"; detail = null; settings = false; showPlayer = false }
             "tasks" -> { tab = 3; profilePage = "tasks"; page = "tasks"; detail = null; settings = false; showPlayer = false }
         }
         if (openRequest != null) open?.value = null
@@ -140,8 +144,9 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
                         d != null -> DetailScreen(d, backend, currentId, actions, { detail = null }, barsHeight)
                         tab == 0 -> HomeScreen(lib, home, favorites, pb, conn, actions, { detail = it }, barsHeight)
                         tab == 1 -> SearchScreen(backend, songs, currentId, actions, { detail = it }, barsHeight)
-                        tab == 2 -> LibraryScreen(lib, favorites, currentId, actions, { detail = it }, { newPlaylist = true }, barsHeight, selectedTab = libraryTab)
-                        tab == 3 && profilePage == "tasks" -> TasksPage(conn, Modifier.fillMaxSize().padding(bottom = barsHeight), onBack = { profilePage = null })
+                        tab == 2 -> LibraryScreen(lib, favorites, currentId, actions, { detail = it }, { newPlaylist = true }, barsHeight, selectedTab = libraryTab,
+                            recents = recents, onImportSpotify = { settings = true; settingsStack.clear(); settingsStack.add("spotify") })
+                        tab == 3 && profilePage == "tasks" -> TasksScreen(backend.tasks, Modifier.fillMaxSize().padding(bottom = barsHeight), onBack = { profilePage = null })
                         else -> ProfileScreen(
                             songs.size, favorites.size, lib.playlists.size, conn, prefs,
                             conn.chats.firstOrNull { it.id == backend.mainChatId() }?.title,
@@ -219,12 +224,13 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
                                     },
                                     pad,
                                 )
-                                page == "tasks" -> TasksPage(conn, onBack = { page = "profile" })
-                                page == "upload" -> Column { TopBar("Upload"); NotBuilt("Uploading songs to Telegram") }
+                                page == "tasks" -> TasksScreen(backend.tasks, onBack = { page = "profile" })
+                                page == "upload" -> Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState())) { TopBar("Upload"); UploadsPage(backend); androidx.compose.foundation.layout.Spacer(Modifier.height(120.dp)) }
                                 page == "songs" -> Column { TopBar("Songs"); SongList(songs, currentId, actions, Modifier.fillMaxSize(), pad, empty = "No songs yet. Add a chat in Settings.") }
                                 page == "playlists" -> Column {
                                     TopBar("Playlists")
-                                    GroupList(lib.playlists, pad, "No playlists yet.") { detail = Detail.Playlist(it.id, it.name) }
+                                    PlaylistsTab(lib.playlists, favorites, recents, pad, { detail = it }, { newPlaylist = true },
+                                        { settings = true; settingsStack.clear(); settingsStack.add("spotify") })
                                 }
                                 page == "albums" -> Column { TopBar("Albums"); GroupGrid(lib.albums, pad, "No albums yet.") { detail = Detail.Album(it.name) } }
                                 page == "artists" -> Column { TopBar("Artists"); GroupList(lib.artists, pad, "No artists yet.", circle = true) { detail = Detail.Artist(it.name) } }

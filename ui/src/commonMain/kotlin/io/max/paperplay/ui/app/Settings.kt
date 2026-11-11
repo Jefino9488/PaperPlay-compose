@@ -99,7 +99,7 @@ fun SettingsHost(
 
 internal val subTitles = mapOf(
     "channels" to "Channels", "bots" to "Extra bots", "account" to "Your account", "log" to "Bot activity",
-    "sort" to "Sort General", "dupes" to "Find duplicates", "mixlearn" to "Mixes and learning", "weather" to "Weather",
+    "sort" to "Sort General", "dupes" to "Find duplicates", "uploadhub" to "Upload songs", "mixlearn" to "Mixes and learning", "weather" to "Weather",
     "conn" to "Connection", "index" to "Chats and channels", "eq" to "Equalizer", "listenbrainz" to "ListenBrainz", "stats" to "Listening statistics", "credentials" to "Bot credentials", "profile" to "Profile",
 )
 
@@ -216,6 +216,7 @@ internal fun SettingsPage(
             NavRow("Weather", "Add your city for weather mixes", Icons.Rounded.Cloud) { stack.add("weather") }
         }
         "uploads" -> {
+            NavRow("Upload songs", "Pick songs, see the queue, retry failures", Icons.Rounded.Upload) { stack.add("uploadhub") }
             RateSlider("uploads", backend, notice)
             var parallel by remember { mutableStateOf((pref("upload_parallel")?.toIntOrNull() ?: 6).coerceIn(1, 10)) }
             SliderRow("Uploads at once: $parallel", parallel.toFloat(), 1f..10f, { parallel = it.toInt() }, steps = 8,
@@ -276,6 +277,7 @@ internal fun SettingsPage(
         "conn" -> ConnectionPage(conn, backend)
         "log" -> LogPage(backend)
         "dupes" -> DuplicatesPage(backend)
+        "uploadhub" -> UploadsPage(backend)
         "account" -> AccountPage(backend) { confirm = "accountout" }
         "index" -> IndexPage(backend, stack)
         else -> if (id.startsWith("index:")) ChatSongsPage(backend, id.removePrefix("index:").toLongOrNull() ?: 0L, stack) else NotBuilt(subTitles[id] ?: id)

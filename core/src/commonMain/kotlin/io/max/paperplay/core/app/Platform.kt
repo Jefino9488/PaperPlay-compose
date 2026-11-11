@@ -46,3 +46,8 @@ object Keys {
 
 /** Reads up to [length] bytes of the file at [path] from [offset]; fewer only at end of file. */
 internal expect fun readRange(path: String, offset: Long, length: Int): ByteArray
+
+/** Size of the file at [path] in bytes, or -1 when it is not a readable file. */
+internal expect fun fileLength(path: String): Long
+
+internal expect fun deleteFile(path: String)

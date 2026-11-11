@@ -30,6 +30,12 @@ class AppEnv(
     /** The error text of the last crash, if one was saved; null otherwise. */
     val lastCrash: () -> String? = { null },
     val clearCrash: () -> Unit = {},
+    /** Opens a multi-file audio picker; calls back with file paths and whether they are temporary copies. Null where unsupported. */
+    val pickAudio: ((onPicked: (List<String>, Boolean) -> Unit) -> Unit)? = null,
+    /** Opens Spotify's login page and returns the callback on [authRedirectUri]. Null where unsupported. */
+    val authRedirect: io.max.paperplay.core.integrations.AuthRedirect? = null,
+    /** The redirect link to add in the Spotify dashboard for this platform. */
+    val authRedirectUri: String = "",
 )
 
 val LocalAppEnv = androidx.compose.runtime.staticCompositionLocalOf<AppEnv?> { null }

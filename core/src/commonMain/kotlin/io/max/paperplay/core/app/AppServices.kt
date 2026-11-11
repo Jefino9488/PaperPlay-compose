@@ -47,6 +47,13 @@ class AppServices(
     val library = LibraryRepository(LibraryRepo(db, clock), clock)
     val scanner = Scanner(library, scope)
 
+    /** Sends audio files to a chat or topic as the bot. */
+    val uploader: Uploader by lazy {
+        Uploader(scope, { client }, library::pref) {
+            library.repo.db.songsQueries.allSongs().executeAsList().mapTo(HashSet()) { it.file_name to it.size }
+        }
+    }
+
     /** The owner's own account (login, chats, copying). The real one replaces the stand-in. */
     val account: io.max.paperplay.core.account.AccountApi by lazy {
         io.max.paperplay.core.account.UserSession(
@@ -64,10 +71,15 @@ class AppServices(
     }
 
     /** Refreshes imported Spotify playlists and the index in the background, and fetches songs from the index. */
+    /** The owner's own Spotify login, for reading whole playlists. */
+    val spotify: io.max.paperplay.core.integrations.SpotifyAccount by lazy {
+        io.max.paperplay.core.integrations.SpotifyAccount(platform.secrets, io.max.paperplay.core.integrations.defaultHttp())
+    }
+
     val playlistSync: io.max.paperplay.core.integrations.PlaylistAutoSync by lazy {
         io.max.paperplay.core.integrations.PlaylistAutoSync(
             library, io.max.paperplay.core.integrations.ImportStore(library.repo, driver), io.max.paperplay.core.integrations.defaultHttp(),
-            account, chatIndex, scope,
+            account, chatIndex, scope, official = spotify::fetchPlaylist,
         )
     }
 
@@ -89,6 +101,9 @@ class AppServices(
         scope,
         clock,
     )
+
+    /** Looks songs up on MusicBrainz, Deezer and iTunes and writes the result back. */
+    val enricher = MetadataEnricher(platform.dataDir, library, defaultHttpFetcher(), scope, clock)
 
     /** Created on first use, so a screen that never plays does not load the audio stack. */
     val playback: PlaybackController by lazy { PlaybackController(platform.createPlayer(), resolver, library, scope) }
@@ -183,6 +198,7 @@ class AppServices(
                     if (all) library.setPref("scan_verified", "2")
                 }
                 covers.start()
+                enricher.kick()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: TdError) {
@@ -208,6 +224,7 @@ class AppServices(
         scope.launch {
             library.chat(id)?.let { scanner.scanChat(it) }
             covers.kick()
+            enricher.kick()
         }
     }
 

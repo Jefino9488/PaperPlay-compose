@@ -23,6 +23,7 @@ import io.max.paperplay.player.initPlayer
 import io.max.paperplay.ui.App
 import io.max.paperplay.ui.AppEnv
 import io.max.paperplay.ui.RestoreHooks
+import io.max.paperplay.ui.app.IncomingShares
 import java.io.File
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -34,10 +35,43 @@ class MainActivity : ComponentActivity() {
     private var services: AppServices? = null
     /** Where a notification tap asked the app to open ("player" or "tasks"). */
     private val open = MutableStateFlow<String?>(null)
+    private val auth = BrowserAuth { startActivity(it) }
+
+    /** Copies audio shared to the app into the cache and hands the paths to the uploads page. */
+    private fun takeShared(intent: Intent) {
+        if (intent.action != Intent.ACTION_SEND && intent.action != Intent.ACTION_SEND_MULTIPLE) return
+        val uris = if (intent.action == Intent.ACTION_SEND) listOfNotNull(sharedUri(intent))
+        else (if (Build.VERSION.SDK_INT >= 33) intent.getParcelableArrayListExtra("android.intent.extra.STREAM", android.net.Uri::class.java)
+        else @Suppress("DEPRECATION") intent.getParcelableArrayListExtra<android.net.Uri>("android.intent.extra.STREAM")).orEmpty()
+        if (uris.isEmpty()) return
+        val dir = File(cacheDir, "uploads").apply { mkdirs() }
+        open.value = "upload"
+        Thread {
+            val files = uris.mapNotNull { copyToCache(it, dir) }
+            if (files.isNotEmpty()) IncomingShares.files.value = IncomingShares.files.value + files
+        }.start()
+    }
+
+    private fun sharedUri(intent: Intent): android.net.Uri? =
+        if (Build.VERSION.SDK_INT >= 33) intent.getParcelableExtra("android.intent.extra.STREAM", android.net.Uri::class.java)
+        else @Suppress("DEPRECATION") intent.getParcelableExtra("android.intent.extra.STREAM")
+
+    /** Copies one picked or shared document into [dir] under its display name; null when it cannot be read. */
+    private fun copyToCache(uri: android.net.Uri, dir: File): String? = runCatching {
+        val name = contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+            if (c.moveToFirst()) c.getString(0) else null
+        } ?: uri.lastPathSegment?.substringAfterLast('/') ?: "song"
+        val sub = File(dir, System.nanoTime().toString()).apply { mkdirs() }
+        val out = File(sub, name.replace('/', '_').replace('\\', '_'))
+        contentResolver.openInputStream(uri)!!.use { input -> out.outputStream().use { o -> input.copyTo(o) } }
+        out.path
+    }.getOrNull()
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         intent.getStringExtra(OPEN_EXTRA)?.let { open.value = it }
+        takeShared(intent)
+        auth.deliver(intent.data)
     }
 
     /** Runs the keep-alive notification while the pref allows it, following the scanner. */
@@ -71,6 +105,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         initPlayer(applicationContext)
+        takeShared(intent)
         // A crash leaves its error text in a file, shown in Settings > Telegram > Bot activity on the next start.
         val crashFile = File(filesDir, "crash.txt")
         val previous = Thread.getDefaultUncaughtExceptionHandler()
@@ -112,6 +147,16 @@ class MainActivity : ComponentActivity() {
                 }
                 photoPending[0]?.invoke(path)
             }
+            val audioPending = remember { arrayOfNulls<(List<String>, Boolean) -> Unit>(1) }
+            val audioPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+                val cb = audioPending[0]
+                if (uris.isNotEmpty() && cb != null) {
+                    Thread {
+                        val dir = File(cacheDir, "uploads").apply { mkdirs() }
+                        cb(uris.mapNotNull { copyToCache(it, dir) }, true)
+                    }.start()
+                }
+            }
             val env = remember {
                 AppEnv(
                     restore = RestoreHooks(
@@ -125,6 +170,9 @@ class MainActivity : ComponentActivity() {
                     pickPhoto = { onPicked -> photoPending[0] = onPicked; photoPicker.launch(arrayOf("image/*")) },
                     lastCrash = { crashFile.takeIf { it.exists() }?.readText() },
                     clearCrash = { crashFile.delete() },
+                    pickAudio = { onPicked -> audioPending[0] = onPicked; audioPicker.launch(arrayOf("audio/*", "application/ogg", "application/octet-stream")) },
+                    authRedirect = auth,
+                    authRedirectUri = SPOTIFY_REDIRECT,
                 )
             }
             App(env)
