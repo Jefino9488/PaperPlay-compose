@@ -108,5 +108,22 @@ class TaskQueue(private val scope: CoroutineScope, private val clock: () -> Long
         watch(TaskKind.Scan, "Reading chats", services.scanner.progress, { it.text }, { it.fraction?.toFloat() })
         watch(TaskKind.Index, "Indexing chats", services.chatIndex.progress, { "${it.chatTitle}: ${it.found} songs" })
         watch(TaskKind.Sync, "Refreshing playlists", services.playlistSync.progress, { it })
+        watchEnricher(services.enricher)
+    }
+
+    /** Song-info lookups become one stoppable task with a done/total count. */
+    fun watchEnricher(enricher: MetadataEnricher) {
+        scope.launch {
+            var id = 0L
+            enricher.progress.collect { p ->
+                if (p == null) {
+                    if (id != 0L) finish(id, detail = enricher.failure.value)
+                    id = 0L
+                } else {
+                    if (id == 0L) id = start(TaskKind.Info, "Looking up song info", onStop = { enricher.stop() })
+                    update(id, done = p.done, total = p.total, detail = p.current, fraction = if (p.total > 0) p.done.toFloat() / p.total else null)
+                }
+            }
+        }
     }
 }

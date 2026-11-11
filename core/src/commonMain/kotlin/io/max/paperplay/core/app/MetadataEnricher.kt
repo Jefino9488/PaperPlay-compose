@@ -36,6 +36,9 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlin.time.Clock
 
+/** Song-info run progress: [done] looked up so far of [total], and the song being looked up. */
+data class EnrichProgress(val done: Int, val total: Int, val current: String)
+
 /** A service answered "busy" (503 or 429); ask again later. */
 private class ServiceBusy : Exception()
 
@@ -68,6 +71,11 @@ class MetadataEnricher(
     /** True while the song-info run is going. */
     val running: StateFlow<Boolean> = _running
 
+    private val _progress = MutableStateFlow<EnrichProgress?>(null)
+
+    /** Progress of the current run, null when idle. The Tasks page shows it. */
+    val progress: StateFlow<EnrichProgress?> = _progress
+
     private val _failure = MutableStateFlow<String?>(null)
 
     /** Why the last run stopped early (offline, service busy); null otherwise. It retries by itself. */
@@ -93,16 +101,20 @@ class MetadataEnricher(
                 runPending()
             } finally {
                 _running.value = false
+                _progress.value = null
             }
         }
     }
 
     private suspend fun runPending() {
         var busy = 0
+        var done = 0
         while (!stopped) {
             val song = repo.nextToEnrich() ?: run { _failure.value = null; return }
+            _progress.value = EnrichProgress(done, done + waiting(), song.title)
             try {
                 enrich(song)
+                done++
                 busy = 0
                 _failure.value = null
             } catch (e: CancellationException) {
@@ -289,7 +301,7 @@ class MetadataEnricher(
     }
 
     private suspend fun deezer(term: String): List<ExternalMatch> {
-        val res = get(httpsUrl("api.deezer.com", "/search", mapOf("q" to term, "limit" to "10")))
+        val res = get(httpsUrl("api.deezer.com", "/search", mapOf("q" to term, "limit" to "8")))
         if (res.status != 200) return emptyList()
         return objects(parse(res), "data").map { ExternalMatch.fromDeezer(it) }
     }
@@ -297,7 +309,7 @@ class MetadataEnricher(
     private suspend fun itunes(term: String, country: String? = null): List<ExternalMatch> {
         val wait = reserve(itunesIntervalMs, true)
         if (wait > 0) delay(wait)
-        val res = get(httpsUrl("itunes.apple.com", "/search", mapOf("term" to term, "entity" to "song", "limit" to "10", "country" to country)))
+        val res = get(httpsUrl("itunes.apple.com", "/search", mapOf("term" to term, "media" to "music", "entity" to "song", "limit" to "8", "country" to country)))
         if (res.status != 200) return emptyList()
         return objects(parse(res), "results").map { ExternalMatch.fromItunes(it) }
     }
