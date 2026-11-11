@@ -8,9 +8,20 @@ import uk.co.caprica.vlcj.player.base.MediaPlayerEventAdapter
 import java.util.concurrent.Executors
 
 /**
- * VLCJ-backed engine; needs a system VLC install (libvlc). All libvlc calls run on one
- * executor thread because vlcj forbids calling the player from its event thread.
- * [vlcArgs] are extra libvlc options (tests pass "--aout=dummy").
+ * VLCJ-backed engine for desktop JVM playback.
+ *
+ * Supports every audio format and lossless container that libvlc provides:
+ * FLAC, ALAC (Apple Lossless), AAC / M4A, MP3, Opus, Vorbis (OGG), WAV, AIFF,
+ * WMA, TTA, Musepack, Matroska audio, and more — all decoded via the bundled
+ * libvlc runtime without requiring VLC to be installed by the end user.
+ *
+ * [VlcLoader.init] is called once per process (before the first factory) to
+ * locate the bundled libvlc and point libvlc at its own plugin directory.
+ * All libvlc calls run on one dedicated executor thread because vlcj forbids
+ * calling the player from its own event thread.
+ *
+ * [vlcArgs] are extra libvlc options; tests pass "--aout=dummy" to prevent
+ * real audio device access.
  */
 class JvmPlayerEngine(vararg vlcArgs: String) : PlayerEngine {
     private val _state = MutableStateFlow(PlayerState.Idle)
@@ -22,7 +33,11 @@ class JvmPlayerEngine(vararg vlcArgs: String) : PlayerEngine {
     override val durationMs: StateFlow<Long> = _durationMs
     override val currentIndex: StateFlow<Int> = _currentIndex
 
-    private val factory = MediaPlayerFactory("--no-video", *vlcArgs)
+    private val factory = run {
+        val loaderArgs = VlcLoader.init()
+        // Prepend plugin-path and no-video before any caller-supplied vlcArgs.
+        MediaPlayerFactory("--no-video", *loaderArgs.toTypedArray(), *vlcArgs)
+    }
     private val player = factory.mediaPlayers().newMediaPlayer()
     private val http = lazy { StreamHttpServer() }
     private val io = Executors.newSingleThreadExecutor { r -> Thread(r, "vlc-cmd").apply { isDaemon = true } }

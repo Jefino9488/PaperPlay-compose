@@ -24,6 +24,19 @@ compose.desktop {
         nativeDistributions {
             packageName = "PaperPlay"
             packageVersion = "1.0.0"
+
+            // Bundle the curated libvlc runtime so the app plays FLAC, ALAC,
+            // AAC, MP3, Opus, Vorbis, WAV, AIFF, and all other audio formats
+            // without requiring VLC to be installed on the user's machine.
+            //
+            // The resources directory layout mirrors src/jvmMain/resources/:
+            //   vlc/windows/   <- libvlc.dll, libvlccore.dll, plugins/
+            //   vlc/macos/     <- libvlc.dylib, libvlccore.dylib, plugins/   (future)
+            //   vlc/linux/     <- libvlc.so, libvlccore.so, plugins/         (future)
+            //
+            // VlcLoader in the player module reads compose.application.resources.dir
+            // at runtime to locate the correct platform sub-folder.
+            appResourcesRootDir = project.file("src/jvmMain/resources")
         }
     }
 }

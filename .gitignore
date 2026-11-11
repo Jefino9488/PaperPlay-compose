@@ -13,3 +13,7 @@ IDEAS_FROM_OTHERS.md
 .vscode/settings.json
 # TDLib is a platform-native runtime dependency; keep local binaries out of Git.
 native/
+# Bundled libvlc runtime (platform DLLs / dylibs) — large binaries, not in Git.
+# Copy from your local VLC install using the instructions in HANDOVER.md.
+desktopApp/src/jvmMain/resources/vlc/
+build-and-install.bat

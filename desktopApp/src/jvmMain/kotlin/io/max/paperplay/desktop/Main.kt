@@ -16,15 +16,26 @@ import java.io.File
 import javax.swing.JFileChooser
 import javax.swing.filechooser.FileNameExtensionFilter
 
-/** Where tdjson.dll (and the libraries beside it) are found: an override, a `native` folder next to the app, or the dev copy. */
+/**
+ * Where tdjson.dll (and the libraries beside it) are found.
+ *
+ * Priority: PAPERPLAY_TDLIB env var → `native/` next to the app resources →
+ * `native/` in the working directory → dev copy inside the Flutter tree.
+ *
+ * VLC loading is handled separately by VlcLoader inside JvmPlayerEngine; there
+ * is no need to mix VLC paths into jna.library.path here.
+ */
 private fun tdlibDir(): String? = listOfNotNull(
     System.getenv("PAPERPLAY_TDLIB"),
     File(System.getProperty("compose.application.resources.dir") ?: ".", "native").path,
     File("native").path,
     "D:/Teleplayer/windows/third_party/tdlib",
+    "D:/Git forks/Teleplayer/windows/third_party/tdlib",
 ).firstOrNull { File(it, if (System.getProperty("os.name").startsWith("Windows")) "tdjson.dll" else "libtdjson.so").exists() }
 
 fun main() {
+    // Set jna.library.path for TDLib only. VlcLoader will append the VLC path
+    // automatically when the first JvmPlayerEngine is created.
     tdlibDir()?.let { System.setProperty("jna.library.path", it) }
     application {
         val dir = File(System.getenv("APPDATA") ?: System.getProperty("user.home"), "PaperPlay")
