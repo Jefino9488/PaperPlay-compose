@@ -203,7 +203,20 @@ class Scanner(
     suspend fun rescanChat(chat: LibraryChat): Boolean {
         // A failed scan saw only part of the chat, so it proves nothing was deleted.
         val seen = scanChat(chat, full = true) ?: return false
-        for (s in repo.songsInChat(chat.id)) if (s.message_id !in seen) repo.removePost(s.chat_id, s.message_id)
+        val client = td ?: return false
+        for (s in repo.songsInChat(chat.id)) {
+            if (s.message_id in seen) continue
+            // The read can come back empty for a post that exists, so each one is asked for by itself. Only
+            // Telegram saying it is gone removes the song.
+            try {
+                val m = client.call(request("getMessage") { put("chat_id", s.chat_id); put("message_id", s.message_id) })
+                val song = songFromMessage(m)
+                if (song == null) repo.removePost(s.chat_id, s.message_id) else repo.upsertBotSong(song)
+            } catch (e: TdError) {
+                if (e.code == 404 || e.message.contains("not found", ignoreCase = true)) repo.removePost(s.chat_id, s.message_id)
+                else return false
+            }
+        }
         return true
     }
 
@@ -222,6 +235,7 @@ class Scanner(
         var empties = 0
         var added = 0
         var holes = 0
+        var recovered = 0
         val seen = mutableSetOf<Long>()
         _error.value = null
         try {
@@ -236,8 +250,21 @@ class Scanner(
                 }
                 if (pause > minPause) pause = maxOf(minPause, pause * 0.85)
                 val raw = (page["messages"] as? JsonArray).orEmpty()
-                val messages = raw.filterIsInstance<JsonObject>()
-                holes += raw.size - messages.size
+                val requested = idsFrom(next, WALK_BATCH)
+                val got = raw.filterIsInstance<JsonObject>().toMutableList()
+                // An id that came back empty and lies before the end may still exist: ask for those once more.
+                val empty = requested.filterIndexed { i, id -> id <= knownEnd && raw.getOrNull(i) !is JsonObject }
+                if (empty.isNotEmpty()) {
+                    delay(pause)
+                    val again = retrying {
+                        client.call(request("getMessages") { put("chat_id", chat.id); put("message_ids", JsonArray(empty.map(::JsonPrimitive))) })
+                    }
+                    val found = (again["messages"] as? JsonArray).orEmpty().filterIsInstance<JsonObject>()
+                    got += found
+                    recovered += found.size
+                }
+                val messages: List<JsonObject> = got
+                holes += requested.size - messages.size
                 for (m in messages) {
                     m.long("id")?.let { newest = maxOf(newest, it) }
                     saveTopicName(m)
@@ -259,7 +286,7 @@ class Scanner(
                 delay(pause)
             }
             repo.setScan(chat.id, newest, true)
-            _report.value = "${chat.title}: ${seen.size} song posts read up to message ${newest / MESSAGE_ID_STEP}, $added new, $holes ids held nothing"
+            _report.value = "${chat.title}: ${seen.size} song posts read up to message ${newest / MESSAGE_ID_STEP}, $added new, $recovered found on a second ask, $holes ids held nothing"
             if (!full) caughtUp.update { it + chat.id }
             return seen
         } catch (e: TdError) {

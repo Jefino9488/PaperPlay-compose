@@ -27,6 +27,9 @@ class AppEnv(
     val setKeepRunning: (Boolean) -> Unit = {},
     /** Opens an image picker and calls back with a copied file path, or null if cancelled. Null where unsupported. */
     val pickPhoto: ((onPicked: (String?) -> Unit) -> Unit)? = null,
+    /** The error text of the last crash, if one was saved; null otherwise. */
+    val lastCrash: () -> String? = { null },
+    val clearCrash: () -> Unit = {},
 )
 
 val LocalAppEnv = androidx.compose.runtime.staticCompositionLocalOf<AppEnv?> { null }

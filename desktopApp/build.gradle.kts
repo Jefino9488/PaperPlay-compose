@@ -40,6 +40,8 @@ compose.desktop {
             )
             packageName = "PaperPlay"
             packageVersion = "1.0.0"
+            // The packaged runtime only holds the modules named here: JDBC (the library database), naming and TLS.
+            modules("java.sql", "java.naming", "jdk.unsupported", "jdk.crypto.ec")
             windows {
                 iconFile.set(project.file("src/jvmMain/resources/app.ico"))
                 menu = true

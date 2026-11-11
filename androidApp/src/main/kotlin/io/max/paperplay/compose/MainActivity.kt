@@ -1,4 +1,4 @@
-package io.max.paperplay.compose
+﻿package io.max.paperplay.compose
 
 import android.Manifest
 import android.content.Intent
@@ -66,6 +66,13 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         initPlayer(applicationContext)
+        // A crash leaves its error text in a file, shown in Settings > Telegram > Bot activity on the next start.
+        val crashFile = File(filesDir, "crash.txt")
+        val previous = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { t, e ->
+            runCatching { crashFile.writeText(Thread.currentThread().name + ": " + e.stackTraceToString().take(6000)) }
+            previous?.uncaughtException(t, e)
+        }
         intent?.getStringExtra(OPEN_EXTRA)?.let { open.value = it }
         val library = File(filesDir, "library.sqlite")
         val target = RestoreTarget(
@@ -111,6 +118,8 @@ class MainActivity : ComponentActivity() {
                     open = open,
                     setKeepRunning = { on -> if (on) KeepAliveService.start(applicationContext) else KeepAliveService.stop(applicationContext) },
                     pickPhoto = { onPicked -> photoPending[0] = onPicked; photoPicker.launch(arrayOf("image/*")) },
+                    lastCrash = { crashFile.takeIf { it.exists() }?.readText() },
+                    clearCrash = { crashFile.delete() },
                 )
             }
             App(env)

@@ -98,7 +98,14 @@ internal fun ConnectionPage(conn: ConnectionUi, backend: CoreBackend) {
 @Composable
 internal fun LogPage(backend: CoreBackend) {
     val lines by backend.log.collectAsState()
+    val env = io.max.paperplay.ui.LocalAppEnv.current
+    var crash by remember { mutableStateOf(env?.lastCrash?.invoke()) }
     Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        crash?.let { text ->
+            Text("The app crashed last time", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.error)
+            Text(text, style = MaterialTheme.typography.bodySmall)
+            OutlinedButton({ env?.clearCrash?.invoke(); crash = null }) { Text("Clear crash") }
+        }
         OutlinedButton(backend::clearLog, enabled = lines.isNotEmpty()) { Text("Clear") }
         if (lines.isEmpty()) Text("Nothing yet. Connecting, scanning and problems show here.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         lines.asReversed().take(300).forEach { l ->
