@@ -28,6 +28,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -195,7 +197,9 @@ private fun PlayerBody(
                     IconButton(backend::next, Modifier.size(64.dp)) { AppIcon(Icons.Rounded.SkipNext, "Next", Modifier.size(44.dp)) }
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    IconButton({ actions.notice("Lyrics are not built yet.") }) { AppIcon(Icons.Outlined.Lyrics, "Lyrics") }
+                    var showLyrics by remember { mutableStateOf(false) }
+                    IconButton({ showLyrics = true }, enabled = state.current != null) { AppIcon(Icons.Outlined.Lyrics, "Lyrics") }
+                    if (showLyrics) state.current?.let { LyricsDialog(it.id, it.title, state.positionMs, backend) { showLyrics = false } }
                     IconButton(backend::toggleShuffle) {
                         AppIcon(Icons.Rounded.Shuffle, "Shuffle", tint = if (state.shuffle) scheme.primary else scheme.onSurface)
                     }
@@ -410,3 +414,36 @@ private fun SongInfoDialogPreview() {
     SongInfoDialog(song = previewPlayerSong, onDismiss = {})
 }
 
+
+/** The song's lyrics. Timed lyrics follow the song; plain ones just scroll. */
+@Composable
+private fun LyricsDialog(id: String, title: String, positionMs: Long, backend: CoreBackend, onClose: () -> Unit) {
+    var text by remember(id) { mutableStateOf<String?>(null) }
+    var loaded by remember(id) { mutableStateOf(false) }
+    androidx.compose.runtime.LaunchedEffect(id) { text = backend.lyricsFor(id); loaded = true }
+    val lines = remember(text) { text?.let { io.max.paperplay.core.metadata.parseLrc(it) }.orEmpty() }
+    val current = lines.indexOfLast { it.timeMs <= positionMs }
+    val list = androidx.compose.foundation.lazy.rememberLazyListState()
+    androidx.compose.runtime.LaunchedEffect(current) { if (current >= 0) list.animateScrollToItem(maxOf(0, current - 2)) }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onClose,
+        title = { Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        text = {
+            when {
+                !loaded -> Text("Looking for lyrics")
+                text == null -> Text("No lyrics found for this song.")
+                lines.isEmpty() -> Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState())) { Text(text.orEmpty()) }
+                else -> androidx.compose.foundation.lazy.LazyColumn(state = list, modifier = Modifier.heightIn(max = 360.dp)) {
+                    itemsIndexed(lines) { i, l ->
+                        Text(
+                            l.text.ifBlank { " " }, Modifier.padding(vertical = 4.dp),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = if (i == current) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = { androidx.compose.material3.TextButton(onClose) { Text("Close") } },
+    )
+}

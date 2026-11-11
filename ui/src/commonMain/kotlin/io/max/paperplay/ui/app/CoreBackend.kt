@@ -163,6 +163,20 @@ class CoreBackend(val services: AppServices) {
         byId[song.id]?.let { services.playback.playNext(it) }
     }
 
+    /** Lyrics for a song: the saved ones, else looked up on LRCLIB (unless lookups are off) and saved. Null when none. */
+    suspend fun lyricsFor(songId: String): String? {
+        val song = byId[songId] ?: return null
+        song.lyrics?.takeIf { it.isNotBlank() }?.let { return it }
+        if (!taste.value.lookups) return null
+        val found = runCatching {
+            io.max.paperplay.core.integrations.fetchLyrics(http, song.title, song.artist, song.album, song.duration_sec.toInt())
+        }.getOrNull() ?: return null
+        runCatching {
+            services.driver.execute(null, "UPDATE songs SET lyrics = ? WHERE unique_id = ?", 2) { bindString(0, found); bindString(1, songId) }
+        }
+        return found
+    }
+
     /** Sleep timer: pauses at [sleepAt] (epoch ms). Null when none is set. */
     val sleepAt = MutableStateFlow<Long?>(null)
     private var sleepJob: kotlinx.coroutines.Job? = null
