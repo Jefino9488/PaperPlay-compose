@@ -212,8 +212,16 @@ class CoreBackend(val services: AppServices) {
         if (apiHash.isBlank()) return "Enter the API hash."
         if (botToken.isBlank()) return "Enter the bot token."
         services.saveCredentials(id, apiHash.trim(), botToken.trim())
+        hasCredentials.value = true
         services.connect()
         return null
+    }
+
+    /** True while the bot's credentials are stored; false after [logOut], which shows setup again. */
+    val hasCredentials = kotlinx.coroutines.flow.MutableStateFlow(services.hasCredentials)
+
+    fun logOut() {
+        scope.launch { services.logOut(); hasCredentials.value = false }
     }
 
     fun connect() = services.connect()

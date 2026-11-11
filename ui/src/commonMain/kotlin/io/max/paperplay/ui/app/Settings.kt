@@ -137,6 +137,7 @@ private fun SettingsPage(
 ) {
     var confirm by remember { mutableStateOf<String?>(null) }
     val notice = remember { mutableStateOf<String?>(null) }
+    val env = io.max.paperplay.ui.LocalAppEnv.current
     fun pref(k: String) = backend.pref(k)
     when (id) {
         "style" -> {
@@ -189,7 +190,7 @@ private fun SettingsPage(
             NavRow("Extra bots", "More bots share the uploading", Icons.Rounded.SmartToy) { stack.add("bots") }
             NavRow("Your account (optional)", "Deletes old posts the bot isn't allowed to", Icons.Rounded.Person) { stack.add("account") }
             NavRow("Bot activity since the app opened", "Message reads, downloads, uploads and rate limits", Icons.Rounded.MonitorHeart) { stack.add("log") }
-            SettingsRow("Log out", icon = Icons.Rounded.Logout, subtitle = "Not built in this app yet", enabled = false)
+            SettingsRow("Log out", icon = Icons.Rounded.Logout, subtitle = "Forgets the bot's credentials. Your library stays on this device", onClick = { confirm = "logout" })
         }
         "library" -> {
             RateSlider("filing", backend, notice)
@@ -221,6 +222,11 @@ private fun SettingsPage(
             NavRow("Equalizer", icon = Icons.Rounded.Equalizer) { stack.add("eq") }
         }
         "devices" -> {
+            if (isPhone) {
+                var keep by remember { mutableStateOf(pref("keep_running") != "false") }
+                SwitchRow("Keep running in the background", keep, { keep = it; backend.setPref("keep_running", "$it"); env?.setKeepRunning?.invoke(it) },
+                    Icons.Rounded.Sync, "Syncing carries on after you leave. A notification shows what the app is doing")
+            }
             NavRow("Connection", "No devices connected. Addresses and encryption.", Icons.Rounded.SettingsEthernet) { stack.add("conn") }
         }
         "storage" -> {
@@ -242,6 +248,11 @@ private fun SettingsPage(
             var name by remember { mutableStateOf(prefs.profileName) }
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Avatar(prefs.profilePhoto, prefs.profileName, 96.dp)
+                val pick = env?.pickPhoto
+                if (pick != null) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton({ pick { path -> if (path != null) prefs.putProfilePhoto(path) } }) { Text("Change photo") }
+                    if (prefs.profilePhoto != null) OutlinedButton({ prefs.putProfilePhoto(null) }) { Text("Remove photo") }
+                }
                 OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), label = { Text("Name") }, singleLine = true)
                 Button({ prefs.putProfileName(name.trim().ifEmpty { "Listener" }) }) { Text("Save name") }
             }
@@ -251,6 +262,7 @@ private fun SettingsPage(
     when (confirm) {
         "rescan" -> ConfirmDialog("Run a full rescan?", "Re-reads every message in your music chats. Takes a few minutes and sends Telegram a lot of requests.", "Rescan", backend::rescan) { confirm = null }
         "restore" -> ConfirmDialog("Restore a backup?", "This replaces your library, playlists and favorites with the backup.", "Restore", onRestore) { confirm = null }
+        "logout" -> ConfirmDialog("Log out?", "The bot's API id, hash and token are forgotten and the setup screen shows again. Songs, playlists and settings stay.", "Log out", backend::logOut) { confirm = null }
     }
 }
 

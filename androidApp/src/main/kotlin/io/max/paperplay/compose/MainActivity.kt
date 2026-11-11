@@ -43,8 +43,8 @@ class MainActivity : ComponentActivity() {
     /** Runs the keep-alive notification while the pref allows it, following the scanner. */
     @OptIn(FlowPreview::class)
     private fun watchActivity(s: AppServices) {
-        if (s.library.pref("keep_running") == "false") return
-        KeepAliveService.start(applicationContext)
+        if (s.library.pref("keep_running") != "false") KeepAliveService.start(applicationContext)
+        // Updates are dropped while the service is off, so the collector can run either way.
         s.scope.launch {
             combine(s.scanner.progress, s.ready, s.error) { scan, ready, error -> Triple(scan, ready, error) }
                 .debounce(1000)
@@ -86,6 +86,20 @@ class MainActivity : ComponentActivity() {
             LaunchedEffect(Unit) {
                 if (Build.VERSION.SDK_INT >= 33) notifications.launch(Manifest.permission.POST_NOTIFICATIONS)
             }
+            // Profile photo: copied into the app's files, so the picked document can be released.
+            val photoPending = remember { arrayOfNulls<(String?) -> Unit>(1) }
+            val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+                val path = uri?.let {
+                    runCatching {
+                        val dir = File(filesDir, "profile").apply { mkdirs() }
+                        dir.listFiles()?.filter { f -> f.name.startsWith("photo-") }?.forEach { f -> f.delete() }
+                        val out = File(dir, "photo-${System.currentTimeMillis()}.jpg")
+                        contentResolver.openInputStream(it)!!.use { input -> out.outputStream().use { o -> input.copyTo(o) } }
+                        out.path
+                    }.getOrNull()
+                }
+                photoPending[0]?.invoke(path)
+            }
             val env = remember {
                 AppEnv(
                     restore = RestoreHooks(
@@ -95,6 +109,8 @@ class MainActivity : ComponentActivity() {
                     libraryExists = { library.exists() },
                     createServices = { AppServices(AndroidPlatform(applicationContext)).also { services = it; watchActivity(it) } },
                     open = open,
+                    setKeepRunning = { on -> if (on) KeepAliveService.start(applicationContext) else KeepAliveService.stop(applicationContext) },
+                    pickPhoto = { onPicked -> photoPending[0] = onPicked; photoPicker.launch(arrayOf("image/*")) },
                 )
             }
             App(env)

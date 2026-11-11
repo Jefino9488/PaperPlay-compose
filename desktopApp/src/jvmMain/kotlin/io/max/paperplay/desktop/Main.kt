@@ -39,6 +39,15 @@ fun main() {
             ),
             libraryExists = { File(dir, "library.sqlite").exists() },
             createServices = { AppServices(DesktopPlatform(dir)) },
+            pickPhoto = { onPicked ->
+                val chooser = JFileChooser().apply { fileFilter = FileNameExtensionFilter("Pictures", "jpg", "jpeg", "png", "webp") }
+                if (chooser.showOpenDialog(null) != JFileChooser.APPROVE_OPTION) onPicked(null)
+                else onPicked(runCatching {
+                    val folder = File(dir, "profile").apply { mkdirs() }
+                    folder.listFiles()?.filter { it.name.startsWith("photo-") }?.forEach { it.delete() }
+                    chooser.selectedFile.copyTo(File(folder, "photo-${System.currentTimeMillis()}.${chooser.selectedFile.extension}")).path
+                }.getOrNull())
+            },
         )
         Window(onCloseRequest = ::exitApplication, title = "PaperPlay", state = rememberWindowState(width = 1000.dp, height = 760.dp), icon = androidx.compose.ui.res.painterResource("icon.png")) {
             App(env)

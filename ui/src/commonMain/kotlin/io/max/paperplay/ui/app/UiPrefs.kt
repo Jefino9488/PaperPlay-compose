@@ -97,6 +97,7 @@ class UiPrefs(private val read: (String) -> String?, private val write: (String,
     fun look(g: LookGroup): Look = looks[g] ?: Look.Material
 
     fun putProfileName(name: String) { profileName = name; write("profile_name", name) }
+    fun putProfilePhoto(path: String?) { profilePhoto = path; write("profile_photo", path.orEmpty()) }
     fun putThemeMode(m: ThemeMode) { themeMode = m; write("theme_mode", m.name.lowercase()) }
     fun putAmoled(on: Boolean) { amoled = on; write("theme_amoled", "$on") }
     fun putAccent(id: String) { accent = id; write("theme_accent", id) }

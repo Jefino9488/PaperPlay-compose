@@ -23,12 +23,18 @@ class AppEnv(
     val createServices: () -> AppServices,
     /** Where a notification tap asked the app to go: "player" or "tasks". The shell clears it once handled. */
     val open: kotlinx.coroutines.flow.MutableStateFlow<String?> = kotlinx.coroutines.flow.MutableStateFlow(null),
+    /** Starts or stops the background keep-alive notification; nothing on desktop. */
+    val setKeepRunning: (Boolean) -> Unit = {},
+    /** Opens an image picker and calls back with a copied file path, or null if cancelled. Null where unsupported. */
+    val pickPhoto: ((onPicked: (String?) -> Unit) -> Unit)? = null,
 )
+
+val LocalAppEnv = androidx.compose.runtime.staticCompositionLocalOf<AppEnv?> { null }
 
 @Composable
 fun App(env: AppEnv) {
     var restoring by remember { mutableStateOf(!env.libraryExists()) }
-    PaperPlayTheme {
+    androidx.compose.runtime.CompositionLocalProvider(LocalAppEnv provides env) { PaperPlayTheme {
         if (restoring) {
             RestoreScreen(
                 env.restore, onContinue = { restoring = false }, onSkip = { restoring = false },
@@ -37,13 +43,13 @@ fun App(env: AppEnv) {
         } else {
             Main(env, onRestore = { restoring = true })
         }
-    }
+    } }
 }
 
 @Composable
 private fun Main(env: AppEnv, onRestore: () -> Unit) {
     val backend = remember { CoreBackend(env.createServices()) }
-    var hasCredentials by remember { mutableStateOf(backend.services.hasCredentials) }
+    val hasCredentials by backend.hasCredentials.collectAsState()
     LaunchedEffect(hasCredentials) {
         if (hasCredentials) backend.connect()
     }
@@ -64,7 +70,7 @@ private fun Main(env: AppEnv, onRestore: () -> Unit) {
     val seed = if (prefs.accent == "cover") io.max.paperplay.ui.app.CoverSeeds.seed(coverUri) else prefs.seed
     PaperPlayTheme(dark = dark, seed = seed, dynamic = prefs.accent == "dynamic", amoled = prefs.amoled) {
         androidx.compose.runtime.CompositionLocalProvider(io.max.paperplay.ui.app.LocalUiPrefs provides prefs) {
-            if (hasCredentials) MainShell(backend, prefs, restore, env.open) else SetupScreen(backend, onSaved = { hasCredentials = true }, onRestore = restore)
+            if (hasCredentials) MainShell(backend, prefs, restore, env.open) else SetupScreen(backend, onSaved = {}, onRestore = restore)
         }
     }
 }

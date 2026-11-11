@@ -123,6 +123,14 @@ class AppServices(
         scope.launch { library.chat(id)?.let { scanner.scanChat(it) } }
     }
 
+    /** Disconnects and forgets the bot's credentials, so setup shows again. The library and prefs stay. */
+    suspend fun logOut() {
+        disconnect()
+        platform.settings.put(Keys.API_ID, "")
+        platform.settings.put(Keys.API_HASH, "")
+        platform.secrets.remove(Keys.BOT_TOKEN)
+    }
+
     /** Disconnects; the session stays on disk, so [connect] logs in again without a code. */
     suspend fun disconnect() {
         val c = client ?: return
