@@ -37,7 +37,7 @@ object IndexPrefs {
 }
 
 /** A [Song] row built from a post, so the shared matching rules can be applied to it. */
-internal fun ChatPost.asSong(): Song = Song(
+fun ChatPost.asSong(): Song = Song(
     chat_id = chatId, message_id = messageId, unique_id = uniqueId, remote_id = "", title = title, artist = artist, album = "",
     duration_sec = durationSec.toLong(), size = size, mime = mime, file_name = fileName, date = date,
     cover_path = null, release_id = null, cover_url = null, genre = null, year = null, metadata_source = null,
@@ -118,6 +118,10 @@ class ChatIndex(
     }
 
     private class Main(val ids: Set<String>, val byKey: Map<String, List<Song>>) {
+        /** The library's copy of the same recording, if any. */
+        fun match(p: ChatPost): Song? =
+            byKey[looseTitleKey(p.title, p.artist)].orEmpty().firstOrNull { matchKind(it, p.title, p.artist, p.durationSec) == MatchKind.Sure }
+
         fun has(p: ChatPost): Boolean = p.uniqueId in ids ||
             byKey[looseTitleKey(p.title, p.artist)].orEmpty().any { matchKind(it, p.title, p.artist, p.durationSec) == MatchKind.Sure }
     }
@@ -133,7 +137,17 @@ class ChatIndex(
         combine(store.changes, library.changes) { _, _ ->
             val main = main()
             val copied = store.copiedIds()
-            store.posts(chatId).map { IndexedSong(it, inMainChat = main?.has(it) == true, copied = it.uniqueId in copied) }
+            // Tracks that imported Spotify playlists still wait for, by loose title and artist.
+            val lists = library.repo.db.playlistsQueries
+            val wantedKeys = lists.livePlaylists().executeAsList()
+                .flatMap { pl -> lists.missingTracks(pl.id).executeAsList() }
+                .map { looseTitleKey(it.title, it.artist) }.toSet()
+            store.posts(chatId).map { p ->
+                val have = main?.has(p) == true
+                val mine = if (have && p.uniqueId !in (main?.ids ?: emptySet())) main?.match(p) else null
+                val better = mine != null && io.max.paperplay.core.dupes.DefaultSongRules.compareQuality(p.asSong(), mine) < 0
+                IndexedSong(p, inMainChat = have, copied = p.uniqueId in copied, better = better, wanted = looseTitleKey(p.title, p.artist) in wantedKeys)
+            }
         }.flowOn(Dispatchers.Default)
 
     private var keyed: Pair<Long, Map<String, List<ChatPost>>>? = null

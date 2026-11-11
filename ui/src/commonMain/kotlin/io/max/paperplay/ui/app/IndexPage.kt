@@ -28,6 +28,7 @@ import io.max.paperplay.core.account.ChatInfo
 import io.max.paperplay.core.account.ChatPost
 import io.max.paperplay.core.account.IndexSelection
 import io.max.paperplay.core.account.IndexedSong
+import io.max.paperplay.core.account.asSong
 import io.max.paperplay.ui.components.AppIcon
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -110,6 +111,14 @@ internal fun IndexPage(backend: CoreBackend, stack: MutableList<String>) {
     }
 }
 
+private val reviewFilters = listOf("All", "New", "Better than yours", "Already have", "In your Spotify playlists")
+
+private fun sizeText(b: Long) = if (b >= 1L shl 30) "${b / (1L shl 30)} GB" else "${b / (1L shl 20)} MB"
+
+private fun formatOf(p: ChatPost) = io.max.paperplay.core.dupes.DefaultSongRules.format(
+    p.asSong(),
+)
+
 /** The songs of one indexed chat, live while it is still being read. Nothing is picked until tapped. */
 @Composable
 internal fun ChatSongsPage(backend: CoreBackend, chatId: Long, stack: MutableList<String>) {
@@ -117,31 +126,45 @@ internal fun ChatSongsPage(backend: CoreBackend, chatId: Long, stack: MutableLis
     val progress by backend.chatIndex.progress.collectAsState()
     val scope = rememberCoroutineScope()
     var query by remember { mutableStateOf("") }
+    var filter by remember { mutableStateOf(0) }
     var selection by remember { mutableStateOf(IndexSelection()) }
     var limit by remember { mutableStateOf(100) }
     var status by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
-    val shown = remember(songs, query) {
+
+    fun inFilter(s: IndexedSong, f: Int) = when (f) {
+        1 -> !s.inMainChat && !s.copied
+        2 -> s.better
+        3 -> s.inMainChat
+        4 -> s.wanted
+        else -> true
+    }
+    val counts = remember(songs) { reviewFilters.indices.map { f -> songs.count { inFilter(it, f) } } }
+    val shown = remember(songs, query, filter) {
         val q = query.trim().lowercase()
-        val found = if (q.isEmpty()) songs else songs.filter { "${it.post.title} ${it.post.artist}".lowercase().contains(q) }
+        val found = songs.filter { inFilter(it, filter) && (q.isEmpty() || "${it.post.title} ${it.post.artist}".lowercase().contains(q)) }
         // Songs that are not in the library come first; each group keeps its newest-first order.
         found.sortedBy { it.inMainChat || it.copied }
     }
     val live = progress?.takeIf { it.chatId == chatId }
 
     Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(
-            if (live != null) "Indexing: ${live.found} songs read so far" else "${songs.size} songs",
-            color = if (live != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+            Text(
+                if (live != null) "Indexing: ${live.found} songs read so far" else "${songs.size} songs",
+                color = if (live != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            IconButton({ scope.launch { runCatching { backend.chatIndex.refresh() } } }, enabled = live == null) { AppIcon(Icons.Rounded.Refresh, "Refresh index") }
+        }
+        ChipRow(reviewFilters.mapIndexed { i, l -> "$l ${counts[i]}" }, filter, { filter = it; limit = 100 })
         OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth(), label = { Text("Search") }, singleLine = true)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton({ selection = selection.pickNew(shown) }) { Text("Pick new") }
+            OutlinedButton({ selection = IndexSelection(shown.map { it.post.messageId }.toSet()) }, enabled = shown.isNotEmpty()) { Text("Select all") }
             OutlinedButton({ selection = selection.clear() }, enabled = selection.picked.isNotEmpty()) { Text("Clear") }
         }
         Button(
             {
-                val todo = selection.toCopy(songs)
+                val todo = if (selection.picked.isNotEmpty()) selection.toCopy(songs) else shown.filter { !it.inMainChat && !it.copied }.map { it.post }
                 busy = true
                 scope.launch {
                     todo.forEach { runCatching { backend.chatIndex.addToLibrary(it) } }
@@ -150,8 +173,11 @@ internal fun ChatSongsPage(backend: CoreBackend, chatId: Long, stack: MutableLis
                     busy = false
                 }
             },
-            enabled = selection.picked.isNotEmpty() && !busy,
-        ) { Text("Add ${selection.picked.size} to library") }
+            enabled = !busy && (selection.picked.isNotEmpty() || shown.any { !it.inMainChat && !it.copied }),
+        ) {
+            val n = if (selection.picked.isNotEmpty()) selection.picked.size else shown.count { !it.inMainChat && !it.copied }
+            Text(if (selection.picked.isNotEmpty()) "Add $n picked to library" else "Add all shown ($n new)")
+        }
         OutlinedButton(
             {
                 val todo = selection.toCopy(songs)
@@ -181,22 +207,24 @@ internal fun ChatSongsPage(backend: CoreBackend, chatId: Long, stack: MutableLis
         OutlinedButton({ backend.chatIndex.forget(chatId); if (stack.isNotEmpty()) stack.removeAt(stack.lastIndex) }) { Text("Forget this chat") }
     }
 
-    for (s in shown.take(limit)) SongPostRow(backend, s, s.post.messageId in selection.picked,
+    for (s in shown.take(limit)) SongPostRow(s, s.post.messageId in selection.picked,
         onToggle = { selection = selection.toggle(s.post.messageId) },
         onCopy = { scope.launch { status = runCatching { backend.chatIndex.addToLibrary(s.post) }.fold({ "Added ${s.post.title} to your library" }, { "Could not add ${s.post.title}: ${it.message}" }) } })
     if (shown.size > limit) Column(Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) { OutlinedButton({ limit += 100 }) { Text("Show more") } }
 }
 
 @Composable
-private fun SongPostRow(backend: CoreBackend, s: IndexedSong, picked: Boolean, onToggle: () -> Unit, onCopy: () -> Unit) {
+private fun SongPostRow(s: IndexedSong, picked: Boolean, onToggle: () -> Unit, onCopy: () -> Unit) {
     val label = when {
         s.copied -> "Copied"
-        s.inMainChat -> "In your library"
+        s.better -> "Better than yours"
+        s.inMainChat -> "Already have"
+        s.wanted -> "In your Spotify playlists"
         else -> null
     }
     SettingsRow(
         s.post.title.ifBlank { s.post.fileName }, onClick = onToggle,
-        subtitle = listOfNotNull(s.post.artist.ifBlank { null }, label).joinToString(" · ").ifEmpty { null },
+        subtitle = listOfNotNull(s.post.artist.ifBlank { null }, formatOf(s.post), if (s.post.size > 0) sizeText(s.post.size) else null, label).joinToString(" \u00b7 "),
     ) {
         Checkbox(picked, { onToggle() })
         IconButton(onCopy, enabled = !s.copied && !s.inMainChat) { AppIcon(Icons.Rounded.Add, "Add to library") }

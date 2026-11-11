@@ -81,6 +81,10 @@ data class IndexedSong(
     val inMainChat: Boolean,
     /** The user moved (copied) it from here before. */
     val copied: Boolean,
+    /** The main chat already has this song, but this file is better quality. */
+    val better: Boolean = false,
+    /** An imported Spotify playlist still waits for this song. */
+    val wanted: Boolean = false,
 )
 
 /** Progress of an index run, for screens and the notification. */
