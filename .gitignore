@@ -17,3 +17,6 @@ native/
 # Copy from your local VLC install using the instructions in HANDOVER.md.
 desktopApp/src/jvmMain/resources/vlc/
 build-and-install.bat
+
+CLAUDE.md
+.claude/
