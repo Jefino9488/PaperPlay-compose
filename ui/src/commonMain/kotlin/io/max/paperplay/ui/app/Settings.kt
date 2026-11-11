@@ -265,11 +265,16 @@ internal fun SettingsPage(
                 Button({ prefs.putProfileName(name.trim().ifEmpty { "Listener" }) }) { Text("Save name") }
             }
         }
+        "mixlearn" -> MixLearnPage(backend) { confirm = "clearlearned" }
+        "weather" -> WeatherPage(backend)
+        "conn" -> ConnectionPage(conn, backend)
+        "log" -> LogPage(backend)
         else -> NotBuilt(subTitles[id] ?: id)
     }
     when (confirm) {
         "rescan" -> ConfirmDialog("Run a full rescan?", "Re-reads every message in your music chats. Takes a few minutes and sends Telegram a lot of requests.", "Rescan", backend::rescan) { confirm = null }
         "restore" -> ConfirmDialog("Restore a backup?", "This replaces your library, playlists and favorites with the backup.", "Restore", onRestore) { confirm = null }
+        "clearlearned" -> ConfirmDialog("Clear what mixes have learned?", "Forgets play and skip counts and your \"doesn't fit this mix\" choices. Songs and playlists stay.", "Clear", backend::clearLearned) { confirm = null }
         "logout" -> ConfirmDialog("Log out?", "The bot's API id, hash and token are forgotten and the setup screen shows again. Songs, playlists and settings stay.", "Log out", backend::logOut) { confirm = null }
     }
 }

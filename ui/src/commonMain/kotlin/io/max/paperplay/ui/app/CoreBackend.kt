@@ -7,6 +7,13 @@ import io.max.paperplay.core.library.LibraryChat
 import io.max.paperplay.core.library.Song
 import io.max.paperplay.core.recs.DailyMixes
 import io.max.paperplay.core.recs.HomeShelves
+import io.max.paperplay.core.recs.TasteList
+import io.max.paperplay.core.recs.TasteSettings
+import io.max.paperplay.core.recs.WeatherKind
+import io.max.paperplay.core.recs.WeatherPlace
+import io.max.paperplay.core.recs.WeatherService
+import io.max.paperplay.core.integrations.HttpFetcher
+import kotlinx.coroutines.flow.MutableStateFlow
 import io.max.paperplay.core.recs.ShelfKind
 import io.max.paperplay.core.filing.MAIN_CHAT_KEY
 import io.max.paperplay.core.filing.parseMainChat
@@ -33,6 +40,8 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+
+data class LogLine(val at: Long, val source: String, val message: String, val error: Boolean = false)
 
 /** What the connection screen shows. */
 data class ConnectionUi(
@@ -82,22 +91,113 @@ class CoreBackend(val services: AppServices) {
     val recents: StateFlow<List<SongUi>> = repo.recents(30).map { it.map(Song::toUi) }
         .flowOn(Dispatchers.Default).stateIn(scope, SharingStarted.Eagerly, emptyList())
 
-    private class HomeInput(val songs: List<Song>, val recent: List<Song>, val favorites: List<Song>, val reserved: Int)
+    private class HomeInput(
+        val songs: List<Song>, val recent: List<Song>, val favorites: List<Song>, val reserved: Int,
+        val taste: TasteSettings, val weather: WeatherKind?,
+    )
+
+    /** What mixes may learn from. Saved with the other preferences. */
+    val taste = MutableStateFlow(TasteSettings.parse(repo.pref(TasteSettings.PREF_KEY)))
+
+    fun updateTaste(change: (TasteSettings) -> TasteSettings) {
+        val next = change(taste.value).copy(at = nowMoment().epochMs)
+        taste.value = next
+        repo.setPref(TasteSettings.PREF_KEY, next.encode())
+    }
+
+    /** Forgets plays, skips and "doesn't fit" votes, and ignores older counts synced from elsewhere. */
+    fun clearLearned() {
+        scope.launch(Dispatchers.Default) {
+            repo.repo.clearLearnedRows()
+            updateTaste { it.copy(resetAt = nowMoment().epochMs) }
+            repo.invalidate()
+        }
+    }
+
+    /** Playlists with their uuid, for choosing what mixes learn from. */
+    fun playlistKeys(): List<Pair<String, String>> =
+        repo.repo.db.playlistsQueries.livePlaylists().executeAsList().map { TasteSettings.playlistKey(it.uuid) to it.name }
+
+    private fun tasteLists(favorites: List<Song>, t: TasteSettings): List<TasteList> = buildList {
+        if (t.learnsFrom(TasteSettings.FAVORITES_KEY)) add(TasteList("Favorites", favorites.map { it.unique_id }.toSet()))
+        for (p in repo.repo.db.playlistsQueries.livePlaylists().executeAsList()) {
+            if (!t.learnsFrom(TasteSettings.playlistKey(p.uuid))) continue
+            add(TasteList(p.name, repo.repo.db.playlistsQueries.playlistSongs(p.id).executeAsList().map { it.unique_id }.toSet()))
+        }
+    }
+
+    val http: HttpFetcher = io.max.paperplay.core.integrations.JavaHttp()
+    private val weatherService = WeatherService(http)
+
+    val weatherPlace = MutableStateFlow(
+        repo.pref("weather_city")?.takeIf { it.isNotEmpty() }?.let { name ->
+            val lat = repo.pref("weather_lat")?.toDoubleOrNull()
+            val lon = repo.pref("weather_lon")?.toDoubleOrNull()
+            if (lat != null && lon != null) WeatherPlace(name, lat, lon) else null
+        },
+    )
+    val weather = MutableStateFlow<WeatherKind?>(null)
+
+    suspend fun searchPlaces(query: String): List<WeatherPlace> =
+        runCatching { weatherService.searchPlaces(query) }.getOrDefault(emptyList())
+
+    /** Chooses the city to get the weather for, or turns weather off with null. */
+    fun setPlace(p: WeatherPlace?) {
+        weatherPlace.value = p
+        weather.value = null
+        repo.setPref("weather_city", p?.name.orEmpty())
+        repo.setPref("weather_lat", p?.latitude?.toString().orEmpty())
+        repo.setPref("weather_lon", p?.longitude?.toString().orEmpty())
+        refreshWeather()
+    }
+
+    fun refreshWeather() {
+        val p = weatherPlace.value ?: return
+        scope.launch { weather.value = runCatching { weatherService.kindAt(p) }.getOrNull() }
+    }
+
+    init { refreshWeather() }
+
+    /** What the app has been doing, newest last. Kept in memory; bot tokens are blanked out. */
+    val log = MutableStateFlow<List<LogLine>>(emptyList())
+    private var lastScanLog = 0L
+
+    fun addLog(source: String, message: String, error: Boolean = false) {
+        val clean = message.replace(Regex("\\b\\d{5,}:[A-Za-z0-9_-]{20,}\\b"), "<bot token>")
+        log.value = (log.value + LogLine(nowMoment().epochMs, source, clean, error)).takeLast(1000)
+    }
+
+    fun clearLog() { log.value = emptyList() }
+
+    init {
+        scope.launch { services.auth.collect { if (it.isNotEmpty()) addLog("Telegram", it.removePrefix("authorizationState")) } }
+        scope.launch { services.error.collect { if (it != null) addLog("Telegram", it, error = true) } }
+        scope.launch {
+            services.scanner.progress.collect { p ->
+                val t = nowMoment().epochMs
+                if (p != null && t - lastScanLog > 10_000) { lastScanLog = t; addLog("Scan", p.text) }
+            }
+        }
+    }
 
     /**
      * The Home page plan: quick tiles, shelves and daily mixes. Replanned when the library, the favorites or the
      * day changes, not on every play, so rows stay put while listening.
      */
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-    val home: StateFlow<HomeUi> = combine(repo.allSongs(), repo.recents(30), repo.favorites(), library) { songs, recent, fav, lib ->
-        HomeInput(songs, recent, fav, minOf(lib.playlists.size, 3) + if (fav.isEmpty()) 0 else 1)
+    val home: StateFlow<HomeUi> = combine(
+        repo.allSongs(), repo.recents(30), repo.favorites(), library, taste.combine(weather) { t, w -> t to w },
+    ) { songs, recent, fav, lib, tw ->
+        HomeInput(songs, recent, fav, minOf(lib.playlists.size, 3) + if (fav.isEmpty()) 0 else 1, tw.first, tw.second)
     }
-        .distinctUntilChangedBy { "${it.songs.size}:${it.favorites.size}:${it.reserved}:${nowMoment().dayKey}" }
+        .distinctUntilChangedBy { "${it.songs.size}:${it.favorites.size}:${it.reserved}:${it.taste.at}:${it.weather}:${nowMoment().dayKey}" }
         .mapLatest { input ->
             if (input.songs.isEmpty()) return@mapLatest HomeUi()
             val now = nowMoment()
             val plan = HomeShelves.plan(input.songs, input.recent, input.favorites, now, tileCount = 6 - input.reserved)
-            val daily = runCatching { DailyMixes.build(input.songs, now) }.getOrDefault(emptyList())
+            val daily = if (!input.taste.showMixes) emptyList() else runCatching {
+                DailyMixes.build(input.songs, now, weather = input.weather, lists = tasteLists(input.favorites, input.taste), options = input.taste)
+            }.getOrDefault(emptyList())
             HomeUi(
                 tiles = plan.tiles.map { CollectionUi(it.title, it.title, "${it.songs.size} songs", it.cover.cover_path, it.songs.map(Song::toUi)) },
                 shelves = plan.shelves.map { s ->
