@@ -56,6 +56,7 @@ class PlaybackController(
     // Listen counting for the song that is currently playing.
     private var listening: Song? = null
     private var listenedMs = 0L
+    private var prefetchedFor: String? = null
 
     private val timing = combine(engine.positionMs, engine.durationMs, engine.bufferedMs) { pos, dur, buf ->
         Triple(pos, dur, buf)
@@ -79,13 +80,32 @@ class PlaybackController(
                     finishListening()
                     listening = song
                 }
-                runCatching { resolver.window(song, meta.value.queue.getOrNull(idx + 1)) }
+                prefetchedFor = null
+                val active = engine.state.value == PlayerState.Playing || engine.state.value == PlayerState.Loading
+                runCatching { resolver.window(song, meta.value.queue.getOrNull(idx + 1), playing = active) }
                 if (song != null) launch { learnAudioDetails(song) }
             }
         }
-        scope.launch { engine.positionMs.collect { listenedMs = maxOf(listenedMs, it) } }
+        scope.launch {
+            engine.positionMs.collect { pos ->
+                listenedMs = maxOf(listenedMs, pos)
+                if (engine.state.value != PlayerState.Playing) return@collect
+                val idx = engine.currentIndex.value
+                val cur = meta.value.queue.getOrNull(idx) ?: return@collect
+                val next = meta.value.queue.getOrNull(idx + 1) ?: return@collect
+                if (prefetchedFor == cur.unique_id) return@collect
+                val dur = engine.durationMs.value.takeIf { it > 0 } ?: (cur.duration_sec * 1000L)
+                if (dur > 0 && pos > 0 && dur - pos <= resolver.windowSeconds * 1000L) {
+                    prefetchedFor = cur.unique_id
+                    launch { runCatching { resolver.prefetch(next) } }
+                }
+            }
+        }
         scope.launch {
             engine.state.collect { state ->
+                if (state == PlayerState.Paused || state == PlayerState.Idle || state == PlayerState.Ended || state == PlayerState.Error) {
+                    launch { runCatching { resolver.pauseAll() } }
+                }
                 if (state != PlayerState.Ended) return@collect
                 when (meta.value.repeat) {
                     Repeat.ONE -> engine.play()
@@ -137,7 +157,10 @@ class PlaybackController(
     }
 
     fun play() = engine.play()
-    fun pause() = engine.pause()
+    fun pause() {
+        engine.pause()
+        scope.launch { runCatching { resolver.pauseAll() } }
+    }
     fun seek(positionMs: Long) = engine.seek(positionMs)
     fun setVolume(volume: Float) = engine.setVolume(volume)
     fun setEqualizer(gainsDb: List<Float>?) = engine.setEqualizer(gainsDb)

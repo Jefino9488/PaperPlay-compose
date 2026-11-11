@@ -7,42 +7,88 @@ import io.max.paperplay.core.telegram.request
 import io.max.paperplay.player.QueueItem
 import io.max.paperplay.player.StreamSource
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
-import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.put
+import kotlin.concurrent.Volatile
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
 
 /**
- * Serves byte ranges of a song out of TDLib's partially downloaded file. Each read moves the
- * download to the requested offset, so seeking works on files that are not downloaded yet.
- * Nothing is requested until the first read or [prefetch]. [read] blocks, as [StreamSource] requires.
+ * Serves byte ranges of a song out of TDLib's local file. Already-downloaded files are read
+ * directly from disk with zero download requests. Otherwise, reads request a sliding byte
+ * window sized to the track's own bitrate and the player's read demand (`limit > 0`) rather
+ * than downloading the entire file at once, and pause/skip cancel active non-pinned downloads.
  */
-class TdStreamSource(private val td: () -> TdClient?, val song: Song) : StreamSource {
+class TdStreamSource(
+    private val td: () -> TdClient?,
+    val song: Song,
+    private val windowSeconds: Long = DEFAULT_WINDOW_SECONDS,
+) : StreamSource {
     override val size: Long get() = song.size
 
-    private var fileId = 0
-    private var path = ""
+    @Volatile private var fileId = 0
+    @Volatile private var path = ""
+    @Volatile private var completed = false
+    @Volatile private var requestedUntil = 0L
+    @Volatile private var paused = false
 
-    /** TDLib file ids do not outlive a session, so the file is looked up through its message. */
+    /** TDLib file ids do not outlive a session, so the file is looked up through its message (with offline fallback). */
     private suspend fun client(): TdClient = td() ?: throw TdError(0, "Not logged in")
 
-    /** Looks the file up (getMessage); a deleted post throws a 404 [TdError]. */
+    private fun applyFile(file: JsonObject) {
+        file.long("id")?.toInt()?.let { if (it != 0) fileId = it }
+        val local = file.obj("local")
+        local?.str("path")?.takeIf { it.isNotEmpty() }?.let { path = it }
+        if ((local?.get("is_downloading_completed") as? JsonPrimitive)?.booleanOrNull == true) {
+            completed = true
+            requestedUntil = song.size
+        }
+    }
+
+    /** Updates cached file state from TDLib `updateFile` events. */
+    fun onFileUpdate(file: JsonObject) {
+        val uid = file.obj("remote")?.str("unique_id")
+        val id = file.long("id")?.toInt() ?: 0
+        if (uid == song.unique_id || (fileId != 0 && id == fileId)) {
+            applyFile(file)
+        }
+    }
+
+    /** Looks the file up (getMessage, falling back to getRemoteFile when offline); a deleted post throws 404. */
     suspend fun resolve() {
-        if (fileId != 0) return
-        val message = client().call(request("getMessage") {
-            put("chat_id", song.chat_id)
-            put("message_id", song.message_id)
-        })
-        val file = fileOfMessage(message) ?: throw TdError(404, "Message holds no audio")
-        fileId = file.long("id")?.toInt() ?: throw TdError(0, "No file id")
-        path = file.obj("local")?.str("path").orEmpty()
+        if (fileId != 0 && (completed || path.isNotEmpty())) return
+        val c = client()
+        val file = try {
+            val message = c.call(request("getMessage") {
+                put("chat_id", song.chat_id)
+                put("message_id", song.message_id)
+            })
+            fileOfMessage(message) ?: throw TdError(404, "Message holds no audio")
+        } catch (e: TdError) {
+            if (e.code == 404 || song.remote_id.isEmpty()) throw e
+            c.call(request("getRemoteFile") { put("remote_file_id", song.remote_id) })
+        }
+        applyFile(file)
+        if (fileId == 0) throw TdError(0, "No file id")
+    }
+
+    private fun windowBytes(offset: Long, length: Int): Long {
+        val remaining = (song.size - offset).coerceAtLeast(0L)
+        if (remaining <= 0L || song.pinned) return 0L
+        val demand = maxOf(length.toLong(), 1L)
+        val fromBitrate = if (song.duration_sec > 0 && song.size > 0) {
+            ((song.size + song.duration_sec - 1) / song.duration_sec) * windowSeconds
+        } else {
+            demand * UNKNOWN_DURATION_MULTIPLIER
+        }
+        return minOf(remaining, maxOf(demand, fromBitrate))
     }
 
     private suspend fun requestDownload(offset: Long, limit: Long, priority: Int): JsonObject {
@@ -53,14 +99,27 @@ class TdStreamSource(private val td: () -> TdClient?, val song: Song) : StreamSo
             put("limit", limit)
             put("synchronous", false)
         })
-        r.obj("local")?.str("path")?.takeIf { it.isNotEmpty() }?.let { path = it }
+        applyFile(r)
+        requestedUntil = if (limit <= 0L) song.size else minOf(song.size, maxOf(requestedUntil, offset + limit))
         return r
     }
 
-    /** Starts downloading the first [bytes] so the track can start at once. */
-    suspend fun prefetch(bytes: Long = PREFETCH_BYTES) {
+    private suspend fun requestWindow(offset: Long, length: Int, priority: Int): JsonObject =
+        requestDownload(offset, windowBytes(offset, length), priority)
+
+    /** Starts fetching the opening sliding window when the song is not already downloaded. */
+    suspend fun prefetch() {
         resolve()
-        requestDownload(0, bytes, PREFETCH_PRIORITY)
+        if (completed) return
+        val window = windowBytes(0L, 0)
+        val have = client().call(request("getFileDownloadedPrefixSize") {
+            put("file_id", fileId)
+            put("offset", 0)
+        }).long("size") ?: 0L
+        if (!song.pinned && window > 0L && have >= window) return
+        paused = false
+        val limit = if (song.pinned) 0L else maxOf(0L, window - have)
+        requestDownload(have, limit, PREFETCH_PRIORITY)
     }
 
     /**
@@ -77,9 +136,11 @@ class TdStreamSource(private val td: () -> TdClient?, val song: Song) : StreamSo
         return readRange(path, 0, minOf(have, maxBytes.toLong()).toInt()).takeIf { it.isNotEmpty() }
     }
 
-    /** Stops any download this source started. */
+    /** Stops any active download for non-pinned songs. Partial bytes stay on disk. */
     suspend fun cancel() {
-        if (fileId == 0) return
+        paused = true
+        requestedUntil = 0L
+        if (fileId == 0 || completed || song.pinned) return
         runCatching { client().call(request("cancelDownloadFile") { put("file_id", fileId); put("only_if_pending", false) }) }
     }
 
@@ -89,8 +150,32 @@ class TdStreamSource(private val td: () -> TdClient?, val song: Song) : StreamSo
         val end = minOf(song.size, offset + length)
         if (offset < 0 || offset >= end) return ByteArray(0)
         resolve()
-        var file = requestDownload(offset, 0, READ_PRIORITY)
+        val want = end - offset
+        if (completed && path.isNotEmpty()) {
+            val localBytes = readRange(path, offset, want.toInt())
+            if (localBytes.isNotEmpty()) return localBytes
+            completed = false
+        }
         val c = client()
+        val prefix = c.call(request("getFileDownloadedPrefixSize") {
+            put("file_id", fileId)
+            put("offset", offset)
+        }).long("size") ?: 0L
+        if (prefix > 0 && path.isNotEmpty()) {
+            val bytes = readRange(path, offset, minOf(prefix, want).toInt())
+            if (bytes.isNotEmpty()) {
+                val bufferedEnd = offset + prefix
+                if (!completed && !paused && !song.pinned && bufferedEnd < song.size &&
+                    bufferedEnd >= requestedUntil - want && prefix <= want * 2
+                ) {
+                    runCatching { requestWindow(bufferedEnd, length, READ_PRIORITY) }
+                }
+                return bytes
+            }
+        }
+
+        paused = false
+        var file = requestWindow(offset, length, READ_PRIORITY)
         var progressAt = TimeSource.Monotonic.markNow()
         while (true) {
             val available = c.call(request("getFileDownloadedPrefixSize") {
@@ -98,9 +183,9 @@ class TdStreamSource(private val td: () -> TdClient?, val song: Song) : StreamSo
                 put("offset", offset)
             }).long("size") ?: 0L
             if (available > 0) {
-                if (path.isEmpty()) requestDownload(offset, 0, READ_PRIORITY)
+                if (path.isEmpty()) requestWindow(offset, length, READ_PRIORITY)
                 if (path.isNotEmpty()) {
-                    val bytes = readRange(path, offset, minOf(available, end - offset, MAX_READ).toInt())
+                    val bytes = readRange(path, offset, minOf(available, want).toInt())
                     if (bytes.isNotEmpty()) return bytes
                 }
             }
@@ -110,48 +195,51 @@ class TdStreamSource(private val td: () -> TdClient?, val song: Song) : StreamSo
             }?.obj("file")
             if (update != null) {
                 file = update
+                applyFile(update)
                 val local = update.obj("local")
                 if ((local?.long("downloaded_size") ?: 0L) > 0L) progressAt = TimeSource.Monotonic.markNow()
-                local?.str("path")?.takeIf { it.isNotEmpty() }?.let { path = it }
             }
-            // Another request may have moved or stopped this download.
-            if ((file.obj("local")?.get("is_downloading_active") as? JsonPrimitive)?.booleanOrNull == false) {
-                requestDownload(offset, 0, READ_PRIORITY)
+            if (!completed && !paused && (file.obj("local")?.get("is_downloading_active") as? JsonPrimitive)?.booleanOrNull == false) {
+                requestWindow(offset, length, READ_PRIORITY)
             }
         }
     }
 
-    private companion object {
-        val STALL = 20.seconds
-        const val MAX_READ = 256L * 1024
-        const val HEAD_BYTES = 256 * 1024
-        const val PREFETCH_BYTES = 512L * 1024
-        const val READ_PRIORITY = 32
-        const val PREFETCH_PRIORITY = 16
+    companion object {
+        const val DEFAULT_WINDOW_SECONDS = 12L
+        private val STALL = 20.seconds
+        private const val HEAD_BYTES = 256 * 1024
+        private const val UNKNOWN_DURATION_MULTIPLIER = 8L
+        private const val READ_PRIORITY = 32
+        private const val PREFETCH_PRIORITY = 16
     }
 }
 
 /**
- * Turns songs into [QueueItem]s backed by [TdStreamSource]s, one per song, and limits downloading
- * to the current and next track.
+ * Turns songs into lazy [QueueItem]s backed by [TdStreamSource]s created only when opened,
+ * keeping active downloads strictly to the current playback window.
  */
-class TrackResolver(private val td: () -> TdClient?) {
+class TrackResolver(
+    private val td: () -> TdClient?,
+    val windowSeconds: Long,
+) {
+    constructor(td: () -> TdClient?) : this(td, TdStreamSource.DEFAULT_WINDOW_SECONDS)
     private val sources = MutableStateFlow<Map<String, TdStreamSource>>(emptyMap())
 
     private fun sourceOf(song: Song): TdStreamSource {
         sources.value[song.unique_id]?.let { return it }
-        val fresh = TdStreamSource(td, song)
+        val fresh = TdStreamSource(td, song, windowSeconds)
         sources.update { it + (song.unique_id to (it[song.unique_id] ?: fresh)) }
         return sources.value.getValue(song.unique_id)
     }
 
-    /** No network until the player reads. */
+    /** Creates a lazy [QueueItem]; no TDLib calls or stream sources are created until opened. */
     fun resolve(song: Song) = QueueItem(
         uri = "tg-${song.unique_id}",
         title = song.title,
         artist = song.artist,
         artworkUri = song.cover_path,
-        source = sourceOf(song),
+        sourceFactory = { sourceOf(song) },
     )
 
     /** Looks up the file so playback can start without a round trip. */
@@ -160,14 +248,34 @@ class TrackResolver(private val td: () -> TdClient?) {
     /** The start of [song]'s file, once playback has fetched it; see [TdStreamSource.head]. */
     suspend fun headOf(song: Song): ByteArray? = sources.value[song.unique_id]?.head()
 
-    /** Keeps downloads only for [current] and [next]; starts [next]'s head. */
-    suspend fun window(current: Song?, next: Song?) {
+    /** Keeps active downloads strictly to [current] and [next] (or pauses all when not playing). */
+    suspend fun window(current: Song?, next: Song?, playing: Boolean = true) {
         val keep = setOfNotNull(current?.unique_id, next?.unique_id)
-        sources.value.filterKeys { it !in keep }.values.forEach { it.cancel() }
-        if (next != null) runCatching { sourceOf(next).prefetch() }
+        val stale = sources.value.filterKeys { it !in keep }
+        if (stale.isNotEmpty()) {
+            sources.update { it - stale.keys }
+            stale.values.forEach { it.cancel() }
+        }
+        if (!playing) pauseAll()
     }
 
-    /** Cancels and forgets the sources of songs not in [songs], e.g. after the queue changed. */
+    /** Prefetches the opening sliding window of [song] when it is not already downloaded. */
+    suspend fun prefetch(song: Song) = sourceOf(song).prefetch()
+
+    /** Cancels all active non-pinned downloads (e.g., on pause or stop). */
+    suspend fun pauseAll() {
+        sources.value.values.forEach { it.cancel() }
+    }
+
+    /** Updates active stream sources when TDLib emits `updateFile`. */
+    fun onFileUpdate(file: JsonObject) {
+        sources.value.values.forEach { it.onFileUpdate(file) }
+    }
+
+    /** Unique ids currently held by active stream sources (protected from cache eviction). */
+    fun activeIds(): Set<String> = sources.value.keys
+
+    /** Cancels and forgets sources for songs not in [songs], e.g. after the queue changed. */
     suspend fun retain(songs: List<Song>) {
         val ids = songs.map { it.unique_id }.toSet()
         val gone = sources.value.filterKeys { it !in ids }

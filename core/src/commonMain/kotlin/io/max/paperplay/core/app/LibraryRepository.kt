@@ -1,4 +1,4 @@
-﻿package io.max.paperplay.core.app
+package io.max.paperplay.core.app
 
 import io.max.paperplay.core.library.LibraryChat
 import io.max.paperplay.core.library.LibraryRepo
@@ -68,6 +68,11 @@ class LibraryRepository(val repo: LibraryRepo, private val clock: () -> Long) {
     }
 
     fun songByUniqueId(uniqueId: String): Song? = songs.songByUniqueId(uniqueId).executeAsOneOrNull()
+    fun setCachedBytes(uniqueId: String, bytes: Long, notify: Boolean = false) {
+        if (notify) write { songs.setCachedBytes(bytes, uniqueId) } else songs.setCachedBytes(bytes, uniqueId)
+    }
+    fun cachedSongs(): List<Song> = songs.cachedSongs().executeAsList()
+    fun cacheLimit(): Long = repo.cacheLimit()
     fun songsInChat(chatId: Long): List<Song> = songs.songsInChat(chatId).executeAsList()
     fun chatList(): List<LibraryChat> = misc.chats().executeAsList()
     fun chat(id: Long): LibraryChat? = chatList().firstOrNull { it.id == id }
