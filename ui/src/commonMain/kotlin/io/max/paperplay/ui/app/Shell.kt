@@ -49,7 +49,7 @@ import io.max.paperplay.ui.state.Load
 import kotlinx.coroutines.launch
 
 @Composable
-fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit) {
+fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open: kotlinx.coroutines.flow.MutableStateFlow<String?>? = null) {
     val lib by backend.library.collectAsState()
     val favorites by backend.favorites.collectAsState()
     val home by backend.home.collectAsState()
@@ -81,6 +81,15 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit) {
         )
     }
 
+    // A notification tap: the player, or Profile (where tasks are listed) for the background notification.
+    val openRequest = open?.collectAsState()?.value
+    androidx.compose.runtime.LaunchedEffect(openRequest) {
+        when (openRequest) {
+            "player" -> showPlayer = true
+            "tasks" -> { tab = 3; detail = null; settings = false; showPlayer = false }
+        }
+        if (openRequest != null) open?.value = null
+    }
     PlatformBackHandler(showPlayer) { showPlayer = false }
     PlatformBackHandler(!showPlayer && settings) { if (settingsStack.isEmpty()) settings = false else settingsStack.removeAt(settingsStack.lastIndex) }
     PlatformBackHandler(!showPlayer && !settings && detail != null) { detail = null }

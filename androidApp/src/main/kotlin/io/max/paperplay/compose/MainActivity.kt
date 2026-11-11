@@ -1,6 +1,7 @@
 package io.max.paperplay.compose
 
 import android.Manifest
+import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -23,14 +24,49 @@ import io.max.paperplay.ui.App
 import io.max.paperplay.ui.AppEnv
 import io.max.paperplay.ui.RestoreHooks
 import java.io.File
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private var services: AppServices? = null
+    /** Where a notification tap asked the app to open ("player" or "tasks"). */
+    private val open = MutableStateFlow<String?>(null)
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        intent.getStringExtra(OPEN_EXTRA)?.let { open.value = it }
+    }
+
+    /** Runs the keep-alive notification while the pref allows it, following the scanner. */
+    @OptIn(FlowPreview::class)
+    private fun watchActivity(s: AppServices) {
+        if (s.library.pref("keep_running") == "false") return
+        KeepAliveService.start(applicationContext)
+        s.scope.launch {
+            combine(s.scanner.progress, s.ready, s.error) { scan, ready, error -> Triple(scan, ready, error) }
+                .debounce(1000)
+                .collect { (scan, ready, error) ->
+                    when {
+                        error != null -> KeepAliveService.update(applicationContext, "Paper Play is running", error, null, null, false)
+                        scan != null -> {
+                            val f = scan.fraction
+                            KeepAliveService.update(applicationContext, scan.text, "", f?.let { (it * 1000).toInt() }, f?.let { 1000 }, f == null)
+                        }
+                        !ready -> KeepAliveService.update(applicationContext, "Paper Play is running", "Connecting to Telegram", null, null, true)
+                        else -> KeepAliveService.update(applicationContext, "Paper Play is running", "Everything is up to date", null, null, false)
+                    }
+                }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         initPlayer(applicationContext)
+        intent?.getStringExtra(OPEN_EXTRA)?.let { open.value = it }
         val library = File(filesDir, "library.sqlite")
         val target = RestoreTarget(
             library.path.replace(File.separatorChar, '/'),
@@ -57,10 +93,15 @@ class MainActivity : ComponentActivity() {
                         restore = { source, pw -> BackupRestorer().restore(source, target, RestoreOptions(password = pw)) },
                     ),
                     libraryExists = { library.exists() },
-                    createServices = { AppServices(AndroidPlatform(applicationContext)).also { services = it } },
+                    createServices = { AppServices(AndroidPlatform(applicationContext)).also { services = it; watchActivity(it) } },
+                    open = open,
                 )
             }
             App(env)
         }
+    }
+
+    companion object {
+        const val OPEN_EXTRA = "open"
     }
 }

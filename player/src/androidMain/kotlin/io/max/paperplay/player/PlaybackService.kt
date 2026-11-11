@@ -10,7 +10,15 @@ class PlaybackService : MediaSessionService() {
 
     override fun onCreate() {
         super.onCreate()
-        session = MediaSession.Builder(this, PlaybackCore.player()).build()
+        // A tap on the notification opens the app on the player.
+        val open = packageManager.getLaunchIntentForPackage(packageName)
+            ?.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            ?.putExtra("open", "player")
+        val builder = MediaSession.Builder(this, PlaybackCore.player())
+        if (open != null) builder.setSessionActivity(
+            android.app.PendingIntent.getActivity(this, 1, open, android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT),
+        )
+        session = builder.build()
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo) = session

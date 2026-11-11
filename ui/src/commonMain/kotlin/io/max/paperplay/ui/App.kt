@@ -21,6 +21,8 @@ class AppEnv(
     val restore: RestoreHooks,
     val libraryExists: () -> Boolean,
     val createServices: () -> AppServices,
+    /** Where a notification tap asked the app to go: "player" or "tasks". The shell clears it once handled. */
+    val open: kotlinx.coroutines.flow.MutableStateFlow<String?> = kotlinx.coroutines.flow.MutableStateFlow(null),
 )
 
 @Composable
@@ -62,7 +64,7 @@ private fun Main(env: AppEnv, onRestore: () -> Unit) {
     val seed = if (prefs.accent == "cover") io.max.paperplay.ui.app.CoverSeeds.seed(coverUri) else prefs.seed
     PaperPlayTheme(dark = dark, seed = seed, dynamic = prefs.accent == "dynamic", amoled = prefs.amoled) {
         androidx.compose.runtime.CompositionLocalProvider(io.max.paperplay.ui.app.LocalUiPrefs provides prefs) {
-            if (hasCredentials) MainShell(backend, prefs, restore) else SetupScreen(backend, onSaved = { hasCredentials = true }, onRestore = restore)
+            if (hasCredentials) MainShell(backend, prefs, restore, env.open) else SetupScreen(backend, onSaved = { hasCredentials = true }, onRestore = restore)
         }
     }
 }
