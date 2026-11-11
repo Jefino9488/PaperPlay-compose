@@ -79,6 +79,7 @@ import io.max.paperplay.ui.state.GroupUi
 import io.max.paperplay.ui.state.PlaybackUiState
 import io.max.paperplay.ui.state.RepeatUi
 import io.max.paperplay.ui.state.SongUi
+import org.jetbrains.compose.ui.tooling.preview.Preview
 
 /** Desktop pages reachable from the sidebar. */
 internal class SidePage(val id: String, val label: String, val icon: ImageVector)
@@ -283,3 +284,25 @@ fun DesktopSettings(
     }
 }
 
+
+@Preview
+@Composable
+private fun SidebarPreview() {
+    Sidebar(
+        page = "home", playlistId = null,
+        playlists = listOf(GroupUi("1", "Chill Vibes", "10 songs"), GroupUi("2", "Workout", "25 songs")),
+        onPage = {}, onPlaylist = {}, onNewPlaylist = {}, modifier = Modifier.width(240.dp).height(640.dp),
+    )
+}
+
+@Preview
+@Composable
+private fun ThinSeekPreview() {
+    ThinSeek(progress = 0.4f, onSeek = {}, modifier = Modifier.width(320.dp))
+}
+
+@Preview
+@Composable
+private fun TasksPagePreview() {
+    TasksPage(ConnectionUi(ready = true, scanText = "Reading channel 3 of 5"))
+}
