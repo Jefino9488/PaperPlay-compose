@@ -29,7 +29,6 @@ private fun tdlibDir(): String? = listOfNotNull(
     System.getenv("PAPERPLAY_TDLIB"),
     File(System.getProperty("compose.application.resources.dir") ?: ".", "native").path,
     File("native").path,
-    "D:/Teleplayer/windows/third_party/tdlib",
     "D:/Git forks/Teleplayer/windows/third_party/tdlib",
 ).firstOrNull { File(it, if (System.getProperty("os.name").startsWith("Windows")) "tdjson.dll" else "libtdjson.so").exists() }
 
