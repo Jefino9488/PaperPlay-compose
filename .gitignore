@@ -11,3 +11,5 @@ HANDOFF_CHECKLIST.md
 HANDOVER.md
 IDEAS_FROM_OTHERS.md
 .vscode/settings.json
+# TDLib is a platform-native runtime dependency; keep local binaries out of Git.
+native/

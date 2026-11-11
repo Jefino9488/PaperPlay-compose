@@ -78,6 +78,16 @@ Run the desktop application:
 .\gradlew.bat :desktopApp:run
 ```
 
+Desktop Telegram support needs a matching TDLib native runtime. Put
+`tdjson.dll`, `libcrypto-3-x64.dll`, `libssl-3-x64.dll`, and `z.dll` in the
+repository's local `native\` folder, or set `PAPERPLAY_TDLIB` to the folder
+that contains them before running:
+
+```powershell
+$env:PAPERPLAY_TDLIB = "D:\path\to\tdlib"
+.\gradlew.bat :desktopApp:run
+```
+
 The current desktop Gradle configuration exposes `run` and
 `packageDistributionForCurrentOS`; it does not expose a `packageMsi` task.
 The desktop app requires VLC to be installed.
