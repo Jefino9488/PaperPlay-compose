@@ -2,15 +2,27 @@ package io.max.paperplay.ui
 
 import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
-import androidx.activity.compose.BackHandler
+import androidx.activity.BackEventCompat
+import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import java.io.File
 import java.net.URI
+import kotlin.coroutines.cancellation.CancellationException
+import kotlinx.coroutines.flow.Flow
 
 @Composable
-actual fun PlatformBackHandler(enabled: Boolean, onBack: () -> Unit) = BackHandler(enabled, onBack)
+actual fun PlatformBackHandler(enabled: Boolean, onBack: () -> Unit) {
+    PredictiveBackHandler(enabled = enabled) { progress: Flow<BackEventCompat> ->
+        try {
+            progress.collect { }
+            onBack()
+        } catch (_: CancellationException) {
+            // Back gesture cancelled by user
+        }
+    }
+}
 
 actual fun decodeImageFile(path: String, maxSide: Int): ImageBitmap? = runCatching {
     if (path.startsWith("http://") || path.startsWith("https://")) {

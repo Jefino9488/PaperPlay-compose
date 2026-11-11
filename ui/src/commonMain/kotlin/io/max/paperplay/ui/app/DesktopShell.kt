@@ -213,9 +213,13 @@ fun ThinSeek(progress: Float, onSeek: (Float) -> Unit, modifier: Modifier = Modi
 
 /** What the app is doing right now; the full task list comes with the tasks work. */
 @Composable
-fun TasksPage(conn: ConnectionUi, modifier: Modifier = Modifier) {
+fun TasksPage(conn: ConnectionUi, modifier: Modifier = Modifier, onBack: (() -> Unit)? = null) {
     Column(modifier) {
-        TopBar("Tasks")
+        if (onBack != null) {
+            BackTopBar("Tasks", onBack)
+        } else {
+            TopBar("Tasks")
+        }
         Row(Modifier.padding(horizontal = 20.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             AppIcon(Icons.Rounded.TaskAlt, null)
             Text(conn.scanText ?: "Nothing running", Modifier.padding(start = 12.dp), style = MaterialTheme.typography.bodyLarge)

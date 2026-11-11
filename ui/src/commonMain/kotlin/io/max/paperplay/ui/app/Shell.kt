@@ -134,7 +134,7 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
                         tab == 0 -> HomeScreen(lib, home, favorites, pb, conn, actions, { detail = it }, barsHeight)
                         tab == 1 -> SearchScreen(backend, songs, currentId, actions, { detail = it }, barsHeight)
                         tab == 2 -> LibraryScreen(lib, favorites, currentId, actions, { detail = it }, { newPlaylist = true }, barsHeight, selectedTab = libraryTab)
-                        tab == 3 && profilePage == "tasks" -> TasksPage(conn, Modifier.fillMaxSize().padding(bottom = barsHeight))
+                        tab == 3 && profilePage == "tasks" -> TasksPage(conn, Modifier.fillMaxSize().padding(bottom = barsHeight), onBack = { profilePage = null })
                         else -> ProfileScreen(
                             songs.size, favorites.size, lib.playlists.size, conn, prefs,
                             conn.chats.firstOrNull { it.id == backend.mainChatId() }?.title,
@@ -212,7 +212,7 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
                                     },
                                     pad,
                                 )
-                                page == "tasks" -> TasksPage(conn)
+                                page == "tasks" -> TasksPage(conn, onBack = { page = "profile" })
                                 page == "upload" -> Column { TopBar("Upload"); NotBuilt("Uploading songs to Telegram") }
                                 page == "songs" -> Column { TopBar("Songs"); SongList(songs, currentId, actions, Modifier.fillMaxSize(), pad, empty = "No songs yet. Add a chat in Settings.") }
                                 page == "playlists" -> Column {
