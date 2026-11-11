@@ -1,4 +1,4 @@
-package io.max.paperplay.core.app
+﻿package io.max.paperplay.core.app
 
 import io.max.paperplay.core.library.LibraryChat
 import io.max.paperplay.core.library.LibraryRepo
@@ -62,6 +62,11 @@ class LibraryRepository(val repo: LibraryRepo, private val clock: () -> Long) {
     }
 
     fun song(chatId: Long, messageId: Long): Song? = songs.song(chatId, messageId).executeAsOneOrNull()
+    /** Saves what the start of a song's file said about its sound. A shown list refreshes. */
+    fun setAudioDetails(uniqueId: String, h: AudioHeader) = write {
+        songs.setAudioDetails(h.sampleRate?.toLong(), h.bitDepth?.toLong(), h.codec ?: songs.songByUniqueId(uniqueId).executeAsOneOrNull()?.codec, uniqueId)
+    }
+
     fun songByUniqueId(uniqueId: String): Song? = songs.songByUniqueId(uniqueId).executeAsOneOrNull()
     fun songsInChat(chatId: Long): List<Song> = songs.songsInChat(chatId).executeAsList()
     fun chatList(): List<LibraryChat> = misc.chats().executeAsList()

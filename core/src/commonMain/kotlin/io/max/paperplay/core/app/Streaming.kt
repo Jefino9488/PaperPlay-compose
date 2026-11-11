@@ -63,6 +63,20 @@ class TdStreamSource(private val td: () -> TdClient?, val song: Song) : StreamSo
         requestDownload(0, bytes, PREFETCH_PRIORITY)
     }
 
+    /**
+     * The first bytes of the song's file as downloaded so far, or null when none are on this device yet. Reads
+     * what playback fetched; it starts no download of its own.
+     */
+    suspend fun head(maxBytes: Int = HEAD_BYTES): ByteArray? {
+        if (fileId == 0 || path.isEmpty()) return null
+        val have = client().call(request("getFileDownloadedPrefixSize") {
+            put("file_id", fileId)
+            put("offset", 0)
+        }).long("size") ?: 0L
+        if (have < 64 * 1024 && have < song.size) return null
+        return readRange(path, 0, minOf(have, maxBytes.toLong()).toInt()).takeIf { it.isNotEmpty() }
+    }
+
     /** Stops any download this source started. */
     suspend fun cancel() {
         if (fileId == 0) return
@@ -110,6 +124,7 @@ class TdStreamSource(private val td: () -> TdClient?, val song: Song) : StreamSo
     private companion object {
         val STALL = 20.seconds
         const val MAX_READ = 256L * 1024
+        const val HEAD_BYTES = 256 * 1024
         const val PREFETCH_BYTES = 512L * 1024
         const val READ_PRIORITY = 32
         const val PREFETCH_PRIORITY = 16
@@ -141,6 +156,9 @@ class TrackResolver(private val td: () -> TdClient?) {
 
     /** Looks up the file so playback can start without a round trip. */
     suspend fun warm(song: Song) = sourceOf(song).resolve()
+
+    /** The start of [song]'s file, once playback has fetched it; see [TdStreamSource.head]. */
+    suspend fun headOf(song: Song): ByteArray? = sources.value[song.unique_id]?.head()
 
     /** Keeps downloads only for [current] and [next]; starts [next]'s head. */
     suspend fun window(current: Song?, next: Song?) {

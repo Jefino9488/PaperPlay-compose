@@ -7,6 +7,7 @@ import io.max.paperplay.player.PlayerState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -74,6 +75,7 @@ class PlaybackController(
                     listening = song
                 }
                 runCatching { resolver.window(song, meta.value.queue.getOrNull(idx + 1)) }
+                if (song != null) launch { learnAudioDetails(song) }
             }
         }
         scope.launch { engine.positionMs.collect { listenedMs = maxOf(listenedMs, it) } }
@@ -86,6 +88,22 @@ class PlaybackController(
                     Repeat.OFF -> Unit
                 }
             }
+        }
+    }
+
+    /**
+     * Reads a song's real codec, bit depth and sample rate from the start of its file, once playback has fetched
+     * that. Costs no download of its own. Tries for about half a minute, then gives up until the song plays again.
+     */
+    private suspend fun learnAudioDetails(song: Song) {
+        if (repo.songByUniqueId(song.unique_id)?.sample_rate != null) return
+        repeat(15) {
+            delay(2_000)
+            if (engine.currentIndex.value < 0 || meta.value.queue.getOrNull(engine.currentIndex.value)?.unique_id != song.unique_id) return
+            val head = runCatching { resolver.headOf(song) }.getOrNull() ?: return@repeat
+            val h = parseAudioHeader(head)
+            if (h != null) repo.setAudioDetails(song.unique_id, h)
+            return
         }
     }
 
