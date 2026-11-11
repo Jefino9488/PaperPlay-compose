@@ -46,15 +46,20 @@ class MainActivity : ComponentActivity() {
         if (s.library.pref("keep_running") != "false") KeepAliveService.start(applicationContext)
         // Updates are dropped while the service is off, so the collector can run either way.
         s.scope.launch {
-            combine(s.scanner.progress, s.ready, s.error) { scan, ready, error -> Triple(scan, ready, error) }
+            combine(s.scanner.progress, s.ready, s.error, s.activity) { scan, ready, error, activity -> arrayOf(scan, ready, error, activity) }
                 .debounce(1000)
-                .collect { (scan, ready, error) ->
+                .collect { v ->
+                    val scan = v[0] as io.max.paperplay.core.app.ScanProgress?
+                    val ready = v[1] as Boolean
+                    val error = v[2] as String?
+                    val activity = v[3] as String?
                     when {
                         error != null -> KeepAliveService.update(applicationContext, "Paper Play is running", error, null, null, false)
                         scan != null -> {
                             val f = scan.fraction
                             KeepAliveService.update(applicationContext, scan.text, "", f?.let { (it * 1000).toInt() }, f?.let { 1000 }, f == null)
                         }
+                        activity != null -> KeepAliveService.update(applicationContext, activity, "", null, null, true)
                         !ready -> KeepAliveService.update(applicationContext, "Paper Play is running", "Connecting to Telegram", null, null, true)
                         else -> KeepAliveService.update(applicationContext, "Paper Play is running", "Everything is up to date", null, null, false)
                     }

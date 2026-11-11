@@ -45,7 +45,8 @@ class JvmPlayerEngine(vararg vlcArgs: String) : PlayerEngine {
 
     init {
         player.events().addMediaPlayerEventListener(object : MediaPlayerEventAdapter() {
-            override fun playing(mp: MediaPlayer) { _state.value = PlayerState.Playing }
+            // libvlc has no audio output until playback starts, so a volume set earlier is applied now.
+            override fun playing(mp: MediaPlayer) { _state.value = PlayerState.Playing; mp.audio().setVolume((volume * 100).toInt()) }
             override fun paused(mp: MediaPlayer) { _state.value = PlayerState.Paused }
             override fun error(mp: MediaPlayer) { _state.value = PlayerState.Error }
             override fun lengthChanged(mp: MediaPlayer, newLength: Long) { _durationMs.value = newLength }
@@ -92,7 +93,12 @@ class JvmPlayerEngine(vararg vlcArgs: String) : PlayerEngine {
     }
 
     override fun seek(positionMs: Long) = cmd { player.controls().setTime(positionMs) }
-    override fun setVolume(volume: Float) = cmd { player.audio().setVolume((volume.coerceIn(0f, 1f) * 100).toInt()) }
+    @Volatile private var volume = 1f
+
+    override fun setVolume(volume: Float) {
+        this.volume = volume.coerceIn(0f, 1f)
+        cmd { player.audio().setVolume((this.volume * 100).toInt()) }
+    }
 
     override fun setEqualizer(gainsDb: List<Float>?) = cmd {
         if (gainsDb == null) {

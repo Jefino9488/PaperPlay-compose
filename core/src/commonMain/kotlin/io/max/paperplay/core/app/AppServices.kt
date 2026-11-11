@@ -51,6 +51,21 @@ class AppServices(
         ).also { it.onRunFinished = { runCatching { indexCloud.save() } } }
     }
 
+    /** Refreshes imported Spotify playlists and the index in the background, and fetches songs from the index. */
+    val playlistSync: io.max.paperplay.core.integrations.PlaylistAutoSync by lazy {
+        io.max.paperplay.core.integrations.PlaylistAutoSync(
+            library, io.max.paperplay.core.integrations.ImportStore(library.repo, driver), io.max.paperplay.core.integrations.defaultHttp(),
+            account, chatIndex, scope,
+        )
+    }
+
+    /** What the app is doing now, for the notification: scan, then index, then playlist sync. */
+    val activity: StateFlow<String?> by lazy {
+        combine(scanner.progress, chatIndex.progress, playlistSync.progress) { scan, idx, sync ->
+            scan?.text ?: idx?.let { "Indexing ${it.chatTitle}: ${it.found} songs" } ?: sync
+        }.stateIn(scope, SharingStarted.Eagerly, null)
+    }
+
     /** Saves the index to Telegram (Saved Messages) and restores it after a login. */
     val indexCloud: io.max.paperplay.core.account.IndexCloud by lazy { io.max.paperplay.core.account.IndexCloud(account, chatIndex, library) }
     val resolver = TrackResolver { client }
@@ -117,6 +132,7 @@ class AppServices(
                 c.start()
                 c.ready()
                 scanner.catchUp()
+                playlistSync.start()
                 // A library restored from a backup keeps that backup's scan position, so posts it never saw stay
                 // missing. Read every chat from the start once; only a finished read counts.
                 if (library.pref("scan_verified") != "2") {

@@ -383,8 +383,15 @@ class CoreBackend(val services: AppServices) {
     fun previous() = services.playback.previous()
     fun seekTo(fraction: Float) = services.playback.seek((fraction * playback.value.durationMs).toLong())
     /** Output volume, 0 to 1; kept here since the engines do not report it. */
-    val volume = kotlinx.coroutines.flow.MutableStateFlow(1f)
-    fun setVolume(v: Float) { volume.value = v.coerceIn(0f, 1f); services.playback.setVolume(volume.value) }
+    val volume = kotlinx.coroutines.flow.MutableStateFlow(repo.pref("player_volume")?.toFloatOrNull()?.coerceIn(0f, 1f) ?: 1f)
+    fun setVolume(v: Float) {
+        volume.value = v.coerceIn(0f, 1f)
+        services.playback.setVolume(volume.value)
+        repo.setPref("player_volume", volume.value.toString())
+    }
+
+    // The saved volume is applied when the player is created, not only when the slider moves.
+    init { if (volume.value != 1f) services.playback.setVolume(volume.value) }
     fun toggleShuffle() = services.playback.setShuffle(!playback.value.shuffle)
     fun cycleRepeat() = services.playback.setRepeat(
         when (playback.value.repeat) { RepeatUi.Off -> Repeat.ALL; RepeatUi.All -> Repeat.ONE; RepeatUi.One -> Repeat.OFF },
