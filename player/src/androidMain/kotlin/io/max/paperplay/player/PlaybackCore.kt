@@ -8,6 +8,7 @@ import androidx.media3.common.C
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.SessionCommand
@@ -29,8 +30,13 @@ internal object PlaybackCore {
         val ctx = context.applicationContext
         val up = upstream ?: DefaultDataSource.Factory(ctx)
         val factory = DataSource.Factory { RoutingDataSource(sources, StreamDataSource(sources), up.createDataSource()) }
+        val loadControl = DefaultLoadControl.Builder()
+            .setBufferDurationsMs(15_000, 30_000, 1_500, 3_000)
+            .setPrioritizeTimeOverSizeThresholds(true)
+            .build()
         return ExoPlayer.Builder(ctx)
             .setMediaSourceFactory(DefaultMediaSourceFactory(factory))
+            .setLoadControl(loadControl)
             .setAudioAttributes(
                 AudioAttributes.Builder()
                     .setUsage(C.USAGE_MEDIA)

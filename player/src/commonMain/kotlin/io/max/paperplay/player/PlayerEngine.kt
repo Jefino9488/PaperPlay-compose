@@ -17,16 +17,23 @@ interface StreamSource {
 }
 
 /**
- * [uri] is played directly unless [source] is set; then [uri] is only a unique key
- * (URL-safe, e.g. "tg-123") and bytes come from [source].
+ * [uri] is played directly unless a stream source is supplied; then [uri] is only a unique key
+ * (URL-safe, e.g. "tg-123") and bytes come from [source]. [sourceFactory] resolves the stream lazily
+ * on first access so large queues do not allocate sources for unplayed tracks.
  */
 class QueueItem(
     val uri: String,
     val title: String = "",
     val artist: String = "",
     val artworkUri: String? = null,
-    val source: StreamSource? = null,
-)
+    source: StreamSource? = null,
+    private val sourceFactory: (() -> StreamSource)? = null,
+) {
+    private val lazySource: StreamSource? by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        source ?: sourceFactory?.invoke()
+    }
+    val source: StreamSource? get() = lazySource
+}
 
 /** Centre frequencies of the five equalizer bands every device can approximate. */
 val EQ_BANDS_HZ = listOf(60, 230, 910, 3600, 14000)

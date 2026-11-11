@@ -40,6 +40,10 @@ class AndroidPlayerEngine : PlayerEngine {
     private var controllerFuture: ListenableFuture<MediaController>? = null
     private var controller: MediaController? = null
     private val pending = ArrayDeque<(MediaController) -> Unit>()
+    private var fullQueue: List<QueueItem> = emptyList()
+    private var windowStart = 0
+    private var windowEnd = 0
+    private var pendingSlideIndex = -1
     private var released = false
     private var failed = false
     private var tickerRunning = false
@@ -99,6 +103,15 @@ class AndroidPlayerEngine : PlayerEngine {
         }
     }
 
+    private val slideRunnable = Runnable {
+        val idx = pendingSlideIndex
+        pendingSlideIndex = -1
+        val mc = controller ?: return@Runnable
+        if (!released && mc.isConnected && idx in fullQueue.indices) {
+            slideWindow(mc, idx)
+        }
+    }
+
     init {
         onMain { connect() }
     }
@@ -153,6 +166,20 @@ class AndroidPlayerEngine : PlayerEngine {
         }, mainExecutor)
     }
 
+    private fun currentFullIndex(mc: MediaController): Int {
+        if (mc.mediaItemCount == 0 || fullQueue.isEmpty()) return -1
+        val id = mc.currentMediaItem?.mediaId
+        val parsed = id?.substringBefore(':')?.toIntOrNull()
+        if (parsed != null && parsed in fullQueue.indices) return parsed
+        return (windowStart + mc.currentMediaItemIndex).coerceIn(fullQueue.indices)
+    }
+
+    private fun scheduleSlide(fullIndex: Int) {
+        pendingSlideIndex = fullIndex
+        handler.removeCallbacks(slideRunnable)
+        handler.post(slideRunnable)
+    }
+
     private fun sync() {
         val mc = controller
         if (mc == null || !mc.isConnected) {
@@ -177,8 +204,10 @@ class AndroidPlayerEngine : PlayerEngine {
         }
         _durationMs.value = mc.duration.takeIf { it != C.TIME_UNSET } ?: 0L
         _bufferedMs.value = mc.bufferedPosition.coerceAtLeast(0L)
-        _currentIndex.value = if (mc.mediaItemCount == 0) -1 else mc.currentMediaItemIndex
+        val fullIdx = currentFullIndex(mc)
+        _currentIndex.value = fullIdx
         _positionMs.value = mc.currentPosition.coerceAtLeast(0L)
+        if (fullIdx in fullQueue.indices) scheduleSlide(fullIdx)
         updateTicker(mc)
     }
 
@@ -202,39 +231,100 @@ class AndroidPlayerEngine : PlayerEngine {
         setQueueNow(mc, items, startIndex)
     }
 
+    private fun streamKey(item: QueueItem): String = "stream://${item.uri}"
+
+    private fun toMediaItem(index: Int, item: QueueItem): MediaItem {
+        val src = item.source
+        val uri = if (src != null) streamKey(item) else item.uri
+        return MediaItem.Builder()
+            .setMediaId("$index:${item.uri}")
+            .setUri(uri)
+            .setMediaMetadata(
+                MediaMetadata.Builder()
+                    .setTitle(item.title)
+                    .setArtist(item.artist)
+                    .setArtworkUri(parseArtworkUri(item.artworkUri))
+                    .build(),
+            )
+            .build()
+    }
+
+    private fun registerRange(start: Int, endExclusive: Int) {
+        for (i in start until endExclusive) {
+            val item = fullQueue[i]
+            val src = item.source ?: continue
+            PlaybackCore.sources[streamKey(item)] = src
+        }
+    }
+
+    private fun retainActiveWindowSources() {
+        val keep = HashSet<String>()
+        for (i in windowStart until windowEnd) {
+            val item = fullQueue[i]
+            if (item.source != null) keep.add(streamKey(item))
+        }
+        PlaybackCore.sources.keys.retainAll(keep)
+    }
+
+    /**
+     * Keeps only `[centerIndex - 1, centerIndex + 1]` loaded in [MediaController], sliding smoothly
+     * as playback moves so queues of any size stay lightweight and never exceed Binder IPC limits.
+     */
+    private fun slideWindow(mc: MediaController, centerIndex: Int) {
+        if (fullQueue.isEmpty() || centerIndex !in fullQueue.indices) return
+        val wantStart = maxOf(0, centerIndex - 1)
+        val wantEnd = minOf(fullQueue.size, centerIndex + 2)
+        if (wantStart == windowStart && wantEnd == windowEnd) return
+
+        if (wantStart < windowStart) registerRange(wantStart, windowStart)
+        if (wantEnd > windowEnd) registerRange(windowEnd, wantEnd)
+
+        if (wantEnd > windowEnd) {
+            val append = (windowEnd until wantEnd).map { toMediaItem(it, fullQueue[it]) }
+            windowEnd = wantEnd
+            mc.addMediaItems(append)
+        }
+        if (wantStart < windowStart) {
+            val prepend = (wantStart until windowStart).map { toMediaItem(it, fullQueue[it]) }
+            windowStart = wantStart
+            mc.addMediaItems(0, prepend)
+        }
+        if (wantEnd < windowEnd) {
+            val from = wantEnd - windowStart
+            val to = windowEnd - windowStart
+            windowEnd = wantEnd
+            if (from in 0 until to && to <= mc.mediaItemCount) mc.removeMediaItems(from, to)
+        }
+        if (wantStart > windowStart) {
+            val count = minOf(wantStart - windowStart, mc.mediaItemCount)
+            windowStart += count
+            if (count > 0) mc.removeMediaItems(0, count)
+        }
+        retainActiveWindowSources()
+    }
+
     private fun setQueueNow(mc: MediaController, items: List<QueueItem>, startIndex: Int) {
         failed = false
+        handler.removeCallbacks(slideRunnable)
+        pendingSlideIndex = -1
         if (items.isEmpty()) {
+            fullQueue = emptyList()
+            windowStart = 0
+            windowEnd = 0
             PlaybackCore.sources.clear()
             mc.stop()
             mc.clearMediaItems()
             sync()
             return
         }
-        val nextSources = HashMap<String, StreamSource>()
-        val mediaItems = items.map { item ->
-            val uri = if (item.source != null) {
-                "stream://${item.uri}".also {
-                    nextSources[it] = item.source
-                    PlaybackCore.sources[it] = item.source
-                }
-            } else {
-                item.uri
-            }
-            MediaItem.Builder()
-                .setMediaId(item.uri)
-                .setUri(uri)
-                .setMediaMetadata(
-                    MediaMetadata.Builder()
-                        .setTitle(item.title)
-                        .setArtist(item.artist)
-                        .setArtworkUri(parseArtworkUri(item.artworkUri))
-                        .build(),
-                )
-                .build()
-        }
-        PlaybackCore.sources.keys.retainAll(nextSources.keys)
-        mc.setMediaItems(mediaItems, startIndex.coerceIn(items.indices), 0L)
+        fullQueue = items
+        val target = startIndex.coerceIn(items.indices)
+        windowStart = maxOf(0, target - 1)
+        windowEnd = minOf(items.size, target + 2)
+        registerRange(windowStart, windowEnd)
+        retainActiveWindowSources()
+        val mediaItems = (windowStart until windowEnd).map { toMediaItem(it, items[it]) }
+        mc.setMediaItems(mediaItems, target - windowStart, 0L)
         mc.prepare()
         mc.play()
     }
@@ -250,8 +340,37 @@ class AndroidPlayerEngine : PlayerEngine {
     }
 
     override fun pause() = withController { it.pause() }
-    override fun next() = withController { failed = false; it.seekToNextMediaItem() }
-    override fun previous() = withController { failed = false; it.seekToPrevious() }
+
+    override fun next() = withController { mc ->
+        failed = false
+        val cur = currentFullIndex(mc)
+        if (cur in fullQueue.indices) {
+            if (mc.hasNextMediaItem()) {
+                mc.seekToNextMediaItem()
+                slideWindow(mc, cur + 1)
+            } else if (cur + 1 < fullQueue.size) {
+                setQueueNow(mc, fullQueue, cur + 1)
+            }
+        }
+    }
+
+    override fun previous() = withController { mc ->
+        failed = false
+        val cur = currentFullIndex(mc)
+        if (cur in fullQueue.indices) {
+            val threshold = mc.maxSeekToPreviousPosition
+            if (mc.currentPosition <= threshold && !mc.hasPreviousMediaItem() && cur > 0) {
+                setQueueNow(mc, fullQueue, cur - 1)
+            } else {
+                val target = if (mc.currentPosition <= threshold && mc.hasPreviousMediaItem()) cur - 1 else cur
+                mc.seekToPrevious()
+                slideWindow(mc, target)
+            }
+        } else {
+            mc.seekToPrevious()
+        }
+    }
+
     override fun seek(positionMs: Long) = withController { failed = false; it.seekTo(positionMs.coerceAtLeast(0L)) }
 
     override fun setVolume(volume: Float) {
@@ -280,7 +399,11 @@ class AndroidPlayerEngine : PlayerEngine {
     override fun release() = onMain {
         released = true
         stopTicker()
+        handler.removeCallbacks(slideRunnable)
         pending.clear()
+        fullQueue = emptyList()
+        windowStart = 0
+        windowEnd = 0
         controller?.let { mc ->
             mc.removeListener(playerListener)
             if (mc.isConnected) {
