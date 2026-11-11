@@ -103,6 +103,13 @@ class AppServices(
                 c.start()
                 c.ready()
                 scanner.catchUp()
+                // A library restored from a backup keeps that backup's scan position, so posts it never saw stay
+                // missing. Read every chat from the start once; only a finished read counts.
+                if (library.pref("scan_verified") != "1") {
+                    var all = true
+                    for (chat in library.chatList()) if (!scanner.rescanChat(chat)) all = false
+                    if (all) library.setPref("scan_verified", "1")
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: TdError) {

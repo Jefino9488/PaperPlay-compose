@@ -125,6 +125,11 @@ class Scanner(
     /** Null when idle. */
     val progress: StateFlow<ScanProgress?> = _progress
 
+    private val _report = MutableStateFlow<String?>(null)
+
+    /** A line about the last finished read of a chat: posts found, new songs, ids that held nothing. */
+    val report: StateFlow<String?> = _report
+
     /** Why the last scan failed; null after a scan that worked. */
     val error: StateFlow<String?> = _error
 
@@ -195,10 +200,11 @@ class Scanner(
     }
 
     /** Rescans from scratch and drops songs whose message no longer exists. */
-    suspend fun rescanChat(chat: LibraryChat) {
+    suspend fun rescanChat(chat: LibraryChat): Boolean {
         // A failed scan saw only part of the chat, so it proves nothing was deleted.
-        val seen = scanChat(chat, full = true) ?: return
+        val seen = scanChat(chat, full = true) ?: return false
         for (s in repo.songsInChat(chat.id)) if (s.message_id !in seen) repo.removePost(s.chat_id, s.message_id)
+        return true
     }
 
     /**
@@ -215,6 +221,7 @@ class Scanner(
         var newest = last ?: 0
         var empties = 0
         var added = 0
+        var holes = 0
         val seen = mutableSetOf<Long>()
         _error.value = null
         try {
@@ -228,7 +235,9 @@ class Scanner(
                     })
                 }
                 if (pause > minPause) pause = maxOf(minPause, pause * 0.85)
-                val messages = (page["messages"] as? JsonArray).orEmpty().filterIsInstance<JsonObject>()
+                val raw = (page["messages"] as? JsonArray).orEmpty()
+                val messages = raw.filterIsInstance<JsonObject>()
+                holes += raw.size - messages.size
                 for (m in messages) {
                     m.long("id")?.let { newest = maxOf(newest, it) }
                     saveTopicName(m)
@@ -250,6 +259,7 @@ class Scanner(
                 delay(pause)
             }
             repo.setScan(chat.id, newest, true)
+            _report.value = "${chat.title}: ${seen.size} song posts read up to message ${newest / MESSAGE_ID_STEP}, $added new, $holes ids held nothing"
             if (!full) caughtUp.update { it + chat.id }
             return seen
         } catch (e: TdError) {

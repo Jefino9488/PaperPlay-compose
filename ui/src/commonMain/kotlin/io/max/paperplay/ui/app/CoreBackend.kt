@@ -280,6 +280,7 @@ class CoreBackend(val services: AppServices) {
 
     init {
         scope.launch { services.auth.collect { if (it.isNotEmpty()) addLog("Telegram", it.removePrefix("authorizationState")) } }
+        scope.launch { services.scanner.report.collect { if (it != null) addLog("Scan", it) } }
         scope.launch { services.error.collect { if (it != null) addLog("Telegram", it, error = true) } }
         scope.launch {
             services.scanner.progress.collect { p ->
