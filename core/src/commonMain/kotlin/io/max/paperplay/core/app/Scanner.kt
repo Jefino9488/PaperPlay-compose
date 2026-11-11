@@ -70,6 +70,13 @@ internal fun fileOfMessage(message: JsonObject): JsonObject? {
     return payload.obj("audio") ?: payload.obj("document")
 }
 
+/** The embedded cover thumbnail `file` inside an audio or document message, if any. */
+internal fun thumbFileOfMessage(message: JsonObject): JsonObject? {
+    val payload = audioPayload(message.obj("content") ?: return null) ?: return null
+    val thumb = payload.obj("album_cover_thumbnail") ?: payload.obj("thumbnail") ?: return null
+    return thumb.obj("file")
+}
+
 private fun topicIdOf(message: JsonObject): Long? = message.obj("topic_id")?.long("forum_topic_id")
 
 /** A song row for [message] (a TDLib `message` object), or null when it is not audio. */

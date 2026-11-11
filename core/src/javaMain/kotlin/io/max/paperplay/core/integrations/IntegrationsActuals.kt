@@ -8,3 +8,5 @@ internal actual fun sha256(bytes: ByteArray): ByteArray = MessageDigest.getInsta
 private val random = SecureRandom()
 
 internal actual fun secureRandomBytes(count: Int): ByteArray = ByteArray(count).also { random.nextBytes(it) }
+
+internal actual fun defaultHttpFetcher(): HttpFetcher = JavaHttp()

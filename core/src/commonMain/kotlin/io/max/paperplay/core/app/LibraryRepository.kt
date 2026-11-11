@@ -102,7 +102,6 @@ class LibraryRepository(val repo: LibraryRepo, private val clock: () -> Long) {
         }
         if (notify) write { block() } else block()
     }
-    fun notifyLibraryChanged() = write {}
     fun chatList(): List<LibraryChat> = misc.chats().executeAsList()
     fun chat(id: Long): LibraryChat? = chatList().firstOrNull { it.id == id }
 

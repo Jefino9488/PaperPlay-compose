@@ -35,6 +35,7 @@ interface AuthRedirect {
 
 internal expect fun sha256(bytes: ByteArray): ByteArray
 internal expect fun secureRandomBytes(count: Int): ByteArray
+internal expect fun defaultHttpFetcher(): HttpFetcher
 
 private const val UNRESERVED = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~"
 

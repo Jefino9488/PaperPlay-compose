@@ -1,6 +1,7 @@
 package io.max.paperplay.core.app
 
 import io.max.paperplay.core.db.LibraryDatabase
+import io.max.paperplay.core.integrations.defaultHttpFetcher
 import io.max.paperplay.core.library.LibraryRepo
 import io.max.paperplay.core.library.newUuid
 import io.max.paperplay.core.telegram.TdClient
@@ -46,6 +47,7 @@ class AppServices(
     val library = LibraryRepository(LibraryRepo(db, clock), clock)
     val scanner = Scanner(library, scope)
     val resolver = TrackResolver({ client })
+    val covers = CoverService(platform.dataDir, { client }, library, defaultHttpFetcher(), scope, clock)
 
     /** Created on first use, so a screen that never plays does not load the audio stack. */
     val playback: PlaybackController by lazy { PlaybackController(platform.createPlayer(), resolver, library, scope) }
@@ -115,7 +117,9 @@ class AppServices(
                 }
                 c.start()
                 c.ready()
+                covers.start()
                 scanner.catchUp()
+                covers.kick(retryTdMissing = true)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: TdError) {
@@ -138,7 +142,10 @@ class AppServices(
     /** Adds a library chat and reads it. */
     fun addChat(id: Long, title: String) {
         library.addChat(id, title)
-        scope.launch { library.chat(id)?.let { scanner.scanChat(it) } }
+        scope.launch {
+            library.chat(id)?.let { scanner.scanChat(it) }
+            covers.kick()
+        }
     }
 
     /** Deletes the audio TDLib downloaded for streaming. Songs download again when played. False when not connected. */
