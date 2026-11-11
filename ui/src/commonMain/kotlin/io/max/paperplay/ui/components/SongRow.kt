@@ -1,4 +1,4 @@
-﻿package io.max.paperplay.ui.components
+package io.max.paperplay.ui.components
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
@@ -79,7 +79,7 @@ fun SongRow(
                     )
                 }
             } else {
-                CoverImage(effectiveCoverUri, coverKey, size = 48.dp, radius = 10.dp)
+                CoverImage(effectiveCoverUri, coverKey, size = 48.dp, radius = 10.dp, coverId = song.id)
             }
             Column(
                 modifier = Modifier

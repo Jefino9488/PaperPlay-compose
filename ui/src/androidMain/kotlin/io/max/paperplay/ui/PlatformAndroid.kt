@@ -8,6 +8,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import java.io.File
+import java.net.HttpURLConnection
 import java.net.URI
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.flow.Flow
@@ -26,7 +27,18 @@ actual fun PlatformBackHandler(enabled: Boolean, onBack: () -> Unit) {
 
 actual fun decodeImageFile(path: String, maxSide: Int): ImageBitmap? = runCatching {
     if (path.startsWith("http://") || path.startsWith("https://")) {
-        val bytes = URI.create(path).toURL().openStream().use { it.readBytes() }
+        val conn = (URI.create(path).toURL().openConnection() as HttpURLConnection).apply {
+            instanceFollowRedirects = true
+            connectTimeout = 10_000
+            readTimeout = 10_000
+            setRequestProperty("User-Agent", "PaperPlay/0.1.0")
+        }
+        val bytes = try {
+            if (conn.responseCode !in 200..299) return@runCatching null
+            conn.inputStream.use { it.readBytes() }
+        } finally {
+            conn.disconnect()
+        }
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
         var sample = 1
