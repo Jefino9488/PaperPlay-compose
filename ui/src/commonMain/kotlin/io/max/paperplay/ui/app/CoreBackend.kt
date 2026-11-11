@@ -24,7 +24,7 @@ import io.max.paperplay.ui.state.HomeUi
 import io.max.paperplay.ui.state.ShelfKindUi
 import io.max.paperplay.ui.state.ShelfUi
 import kotlinx.coroutines.flow.distinctUntilChangedBy
-import kotlinx.coroutines.flow.mapLatest
+import kotlinx.coroutines.flow.transformLatest
 import io.max.paperplay.ui.state.GroupUi
 import io.max.paperplay.ui.state.LibraryUi
 import io.max.paperplay.ui.state.Load
@@ -300,14 +300,11 @@ class CoreBackend(val services: AppServices) {
         HomeInput(songs, recent, fav, minOf(lib.playlists.size, 3) + if (fav.isEmpty()) 0 else 1, tw.first, tw.second)
     }
         .distinctUntilChangedBy { "${it.songs.size}:${it.favorites.size}:${it.reserved}:${it.taste.at}:${it.weather}:${nowMoment().dayKey}" }
-        .mapLatest { input ->
-            if (input.songs.isEmpty()) return@mapLatest HomeUi()
+        .transformLatest { input ->
+            if (input.songs.isEmpty()) { emit(HomeUi()); return@transformLatest }
             val now = nowMoment()
             val plan = HomeShelves.plan(input.songs, input.recent, input.favorites, now, tileCount = 6 - input.reserved)
-            val daily = if (!input.taste.showMixes) emptyList() else runCatching {
-                DailyMixes.build(input.songs, now, weather = input.weather, lists = tasteLists(input.favorites, input.taste), options = input.taste)
-            }.getOrDefault(emptyList())
-            HomeUi(
+            val base = HomeUi(
                 tiles = plan.tiles.map { CollectionUi(it.title, it.title, "${it.songs.size} songs", it.cover.cover_path, it.songs.map(Song::toUi)) },
                 shelves = plan.shelves.map { s ->
                     val kind = when (s.kind) { ShelfKind.SONGS -> ShelfKindUi.Songs; ShelfKind.ALBUMS -> ShelfKindUi.Albums; ShelfKind.ARTISTS -> ShelfKindUi.Artists }
@@ -316,10 +313,16 @@ class CoreBackend(val services: AppServices) {
                         CollectionUi(g.name, g.name, sub, g.cover.cover_path, g.songs.map(Song::toUi))
                     })
                 },
-                mixes = daily.map { m ->
-                    CollectionUi(m.mood.id, m.title, m.songs.take(3).joinToString(", ") { it.artist }, null, m.songs.map(Song::toUi), covers(m.songs))
-                },
             )
+            // Tiles and shelves show at once; the slower daily mixes join when they are ready.
+            emit(base)
+            if (!input.taste.showMixes) return@transformLatest
+            val daily = runCatching {
+                DailyMixes.build(input.songs, now, weather = input.weather, lists = tasteLists(input.favorites, input.taste), options = input.taste)
+            }.getOrDefault(emptyList())
+            emit(base.copy(mixes = daily.map { m ->
+                CollectionUi(m.mood.id, m.title, m.songs.take(3).joinToString(", ") { it.artist }, null, m.songs.map(Song::toUi), covers(m.songs))
+            }))
         }
         .catch { emit(HomeUi()) }
         .flowOn(Dispatchers.Default).stateIn(scope, SharingStarted.Eagerly, HomeUi())
