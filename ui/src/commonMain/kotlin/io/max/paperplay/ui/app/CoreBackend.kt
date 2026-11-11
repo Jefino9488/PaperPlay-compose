@@ -211,6 +211,22 @@ class CoreBackend(val services: AppServices) {
     val account get() = services.account
     val chatIndex get() = services.chatIndex
 
+    /** Your own groups and channels. The last list is kept, so the page can show it at once and refresh behind it. */
+    val myChats = MutableStateFlow<List<io.max.paperplay.core.account.ChatInfo>?>(
+        repo.pref("my_chats")?.lines()?.mapNotNull { l ->
+            val p = l.split('\t', limit = 3)
+            val id = p.getOrNull(0)?.toLongOrNull() ?: return@mapNotNull null
+            io.max.paperplay.core.account.ChatInfo(id, p.getOrNull(2).orEmpty(), p.getOrNull(1) == "1")
+        }?.takeIf { it.isNotEmpty() },
+    )
+
+    suspend fun refreshChats() {
+        val fresh = account.groupsAndChannels()
+        if (fresh.isEmpty()) return
+        myChats.value = fresh
+        repo.setPref("my_chats", fresh.joinToString("\n") { "${it.id}\t${if (it.isChannel) 1 else 0}\t${it.title.replace('\t', ' ').replace('\n', ' ')}" })
+    }
+
     /** Sleep timer: pauses at [sleepAt] (epoch ms). Null when none is set. */
     val sleepAt = MutableStateFlow<Long?>(null)
     private var sleepJob: kotlinx.coroutines.Job? = null

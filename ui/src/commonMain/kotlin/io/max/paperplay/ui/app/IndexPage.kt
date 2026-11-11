@@ -44,7 +44,7 @@ internal fun IndexPage(backend: CoreBackend, stack: MutableList<String>) {
     val indexed by backend.chatIndex.indexedChats.collectAsState()
     val progress by backend.chatIndex.progress.collectAsState()
     val scope = rememberCoroutineScope()
-    var chats by remember { mutableStateOf<List<ChatInfo>?>(null) }
+    val list = backend.myChats.collectAsState().value
     var auto by remember { mutableStateOf(backend.pref("index_auto") == "true") }
     var autoCopy by remember { mutableStateOf(backend.pref("index_auto_copy") == "true") }
     var message by remember { mutableStateOf<String?>(null) }
@@ -56,7 +56,7 @@ internal fun IndexPage(backend: CoreBackend, stack: MutableList<String>) {
         }
         return
     }
-    LaunchedEffect(loggedIn) { chats = runCatching { backend.account.groupsAndChannels() }.getOrDefault(emptyList()) }
+    LaunchedEffect(loggedIn) { runCatching { backend.refreshChats() } }
 
     SectionLabel("Automatic")
     SwitchRow("Index automatically", auto, { auto = it; backend.setPref("index_auto", "$it") }, Icons.Rounded.Sync,
@@ -72,7 +72,6 @@ internal fun IndexPage(backend: CoreBackend, stack: MutableList<String>) {
     }
 
     SectionLabel("Your chats and channels")
-    val list = chats
     when {
         list == null -> Text("Reading your chats", Modifier.padding(20.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
         list.isEmpty() -> Text("No groups or channels found.", Modifier.padding(20.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
