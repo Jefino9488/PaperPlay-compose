@@ -43,6 +43,15 @@ Telegram bot and chats as storage. It targets Android and desktop JVM.
   - **Audio processing**: equalizer, normalizer, resampler, compressor,
     surround, stereo-widener
 
+- Detail screens (album, artist, playlist) with hero cover, play and shuffle bar, playlist rename, delete and remove.
+- Settings pages for mixes and learning, weather, connection, bot activity, Spotify import (public link), equalizer,
+  ListenBrainz, listening statistics, clear cache, and the duplicate finder.
+- Player: play next, sleep timer, lyrics, saved volume, quality labels learned from played songs.
+- Own Telegram account (phone, code, password or QR login), a saved index of your chats and channels that updates
+  live and refreshes only newer posts, copying songs into the main chat, a plus button for songs the index has for a
+  Spotify playlist, and automatic refresh of imported playlists.
+- Release and debug builds are signed with the same key; the desktop app has its own blue icon.
+
 ## Build
 
 Use JDK 17 and run these commands from the repository root.
@@ -150,11 +159,9 @@ not upload this configuration to another service.
 
 ## Known limitations & upcoming ports
 
-- **Screens in progress**: Duplicates, Uploads & share receiver, Tasks center,
-  LAN sync, own-account QR login, Equalizer UI, metadata triage, and topic auto-filing.
-- **Detail screens parity**: Album, Artist, and Playlist screens currently show basic lists
-  and are being upgraded to hero headers with duration/track count and play/shuffle actions.
-- **Settings stubs**: Spotify import and ListenBrainz scrobbler are placeholders.
-- Recent searches are currently kept for the active search session.
-- macOS and Linux libvlc runtimes are not yet bundled (falls back to system VLC
-  on those platforms).
+- **Not built yet**: uploads and the Android share receiver, auto filing and topic moving, extra bots,
+  the task centre, LAN sync and device pairing, offline pinning, loudness normalising, audio output choice,
+  a backup writer, the metadata enricher run, and desktop tray and keyboard shortcuts.
+- **Duplicates**: the finder lists repeats in the main chat; deleting them is not wired yet.
+- **Own account**: login, chat index and copying are built but not yet verified on a device.
+- macOS and Linux libvlc runtimes are not yet bundled (falls back to system VLC on those platforms).
