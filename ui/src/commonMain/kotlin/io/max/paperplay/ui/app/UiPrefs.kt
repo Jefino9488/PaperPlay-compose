@@ -4,6 +4,16 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.unit.dp
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -117,3 +127,26 @@ class UiPrefs(private val read: (String) -> String?, private val write: (String,
 private fun JsonObject.str(key: String): String? = (get(key) as? JsonPrimitive)?.contentOrNull
 
 private fun JsonObject.num(key: String): Float? = (get(key) as? JsonPrimitive)?.doubleOrNull?.toFloat()
+
+val LocalUiPrefs = staticCompositionLocalOf<UiPrefs?> { null }
+
+/** True when [group] is set to the glass look. */
+@Composable
+fun glassLook(group: LookGroup): Boolean = LocalUiPrefs.current?.look(group) == Look.Glass
+
+private val rimColor = Color.White.copy(alpha = 0.18f)
+
+/** A card or overlay surface: a veil with a faint light rim when the part is glass, solid tonal colour otherwise. */
+@Composable
+fun Modifier.partSurface(group: LookGroup, color: Color, shape: Shape): Modifier =
+    if (glassLook(group)) clip(shape).background(color.copy(alpha = 0.55f)).border(1.dp, rimColor, shape)
+    else clip(shape).background(color)
+
+/** Dialog and menu colour for the Overlays part. */
+@Composable
+fun overlayColor(base: Color = MaterialTheme.colorScheme.surfaceContainerHigh): Color =
+    if (glassLook(LookGroup.Overlays)) base.copy(alpha = 0.55f) else base
+
+/** The light rim of a glass overlay; nothing for Material. */
+@Composable
+fun overlayRim(shape: Shape): Modifier = if (glassLook(LookGroup.Overlays)) Modifier.border(1.dp, rimColor, shape) else Modifier

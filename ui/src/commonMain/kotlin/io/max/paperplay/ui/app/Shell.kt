@@ -13,7 +13,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
@@ -100,17 +102,22 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit) {
     val pageBg = if (prefs.coverGradient) Modifier.background(androidx.compose.ui.graphics.Brush.verticalGradient(0f to g0, 0.45f to g1, 1f to base)) else Modifier.background(base)
 
     CompositionLocalProvider(LocalCoverLoader provides loader) {
-        Box(Modifier.fillMaxSize().then(pageBg)) {
-            Box(Modifier.fillMaxSize().layerBackdrop(backdrop).padding(top = top)) {
-                val d = detail
-                when {
-                    settings -> SettingsHost(settingsStack, prefs, conn, songs.size, backend, onRestore, { settings = false }, barsHeight)
-                    d != null -> DetailScreen(d, backend, currentId, actions, { detail = null }, barsHeight)
-                    tab == 0 -> HomeScreen(lib, home, favorites, pb, conn, actions, { detail = it }, barsHeight)
-                    tab == 1 -> SearchScreen(backend, songs, currentId, actions, { detail = it }, barsHeight)
-                    tab == 2 -> LibraryScreen(lib, favorites, currentId, actions, { detail = it }, { newPlaylist = true }, barsHeight)
-                    else -> ProfileScreen(songs.size, favorites.size, lib.playlists.size, conn, prefs, { settings = true }, barsHeight)
+        androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize().then(pageBg)) {
+            // On a wide desktop window the current song gets a panel on the right.
+            val panel = !io.max.paperplay.ui.isPhone && prefs.nowPlayingPanel && pb.current != null && maxWidth >= 1200.dp
+            Row(Modifier.fillMaxSize().layerBackdrop(backdrop).padding(top = top)) {
+                Box(Modifier.weight(1f).fillMaxSize()) {
+                    val d = detail
+                    when {
+                        settings -> SettingsHost(settingsStack, prefs, conn, songs.size, backend, onRestore, { settings = false }, barsHeight)
+                        d != null -> DetailScreen(d, backend, currentId, actions, { detail = null }, barsHeight)
+                        tab == 0 -> HomeScreen(lib, home, favorites, pb, conn, actions, { detail = it }, barsHeight)
+                        tab == 1 -> SearchScreen(backend, songs, currentId, actions, { detail = it }, barsHeight)
+                        tab == 2 -> LibraryScreen(lib, favorites, currentId, actions, { detail = it }, { newPlaylist = true }, barsHeight)
+                        else -> ProfileScreen(songs.size, favorites.size, lib.playlists.size, conn, prefs, { settings = true }, barsHeight)
+                    }
                 }
+                if (panel) NowPlayingPanel(pb, backend, actions, { showPlayer = true }, { prefs.putNowPlayingPanel(false) }, Modifier.width(340.dp).fillMaxSize().padding(bottom = barsHeight))
             }
             Column(
                 Modifier.align(Alignment.BottomCenter).fillMaxWidth().then(if (prefs.floatingNav) Modifier.padding(start = 24.dp, end = 24.dp, bottom = 12.dp + bottomInset) else Modifier),
@@ -147,6 +154,7 @@ private fun PlaylistPicker(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
+        modifier = overlayRim(RoundedCornerShape(28.dp)), shape = RoundedCornerShape(28.dp), containerColor = overlayColor(),
         confirmButton = { TextButton(onNew) { Text("New playlist") } },
         dismissButton = { TextButton(onDismiss) { Text("Cancel") } },
         title = { Text("Add to playlist") },
@@ -166,6 +174,7 @@ private fun NameDialog(title: String, onDone: (String) -> Unit, onDismiss: () ->
     var name by remember { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = onDismiss,
+        modifier = overlayRim(RoundedCornerShape(28.dp)), shape = RoundedCornerShape(28.dp), containerColor = overlayColor(),
         confirmButton = { TextButton({ onDone(name) }) { Text("Create") } },
         dismissButton = { TextButton(onDismiss) { Text("Cancel") } },
         title = { Text(title) },

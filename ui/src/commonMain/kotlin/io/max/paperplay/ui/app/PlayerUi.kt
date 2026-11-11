@@ -31,6 +31,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Bedtime
 import androidx.compose.material.icons.outlined.Lyrics
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
@@ -260,6 +261,7 @@ private fun SongInfoDialog(song: SongUi, onDismiss: () -> Unit) {
     ).filter { it.second != null }
     AlertDialog(
         onDismissRequest = onDismiss,
+        modifier = overlayRim(RoundedCornerShape(28.dp)), shape = RoundedCornerShape(28.dp), containerColor = overlayColor(),
         confirmButton = { TextButton(onDismiss) { Text("Close") } },
         title = { Text(song.title) },
         text = {
@@ -303,4 +305,51 @@ private fun QueueList(state: PlaybackUiState, backend: CoreBackend, modifier: Mo
 fun CoverTinted(uri: String?, content: @Composable (ColorScheme?) -> Unit) {
     val cover = coverScheme(uri)
     if (cover == null) content(null) else MaterialTheme(colorScheme = cover) { content(cover) }
+}
+
+/** The desktop side panel: the current song large, with what comes next. Shown on wide windows while the pref is on. */
+@Composable
+fun NowPlayingPanel(state: PlaybackUiState, backend: CoreBackend, actions: ListActions, onOpen: () -> Unit, onHide: () -> Unit, modifier: Modifier = Modifier) {
+    val song = state.current ?: return
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    val next = if (state.queueIndex < 0) emptyList() else state.queue.drop(state.queueIndex + 1).take(10)
+    LazyColumn(modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+        item {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    if (song.album.isEmpty() || song.album.startsWith(song.title)) "Now playing" else song.album,
+                    Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall,
+                )
+                IconButton(onHide) { Icon(Icons.Rounded.Close, "Hide this panel", Modifier.size(20.dp)) }
+            }
+            BoxWithConstraints(Modifier.fillMaxWidth().padding(top = 4.dp)) {
+                CoverImage(song.coverUri, song.id, Modifier.clickable(onClick = onOpen), size = maxWidth, radius = 12.dp)
+            }
+            Row(Modifier.padding(top = 14.dp)) {
+                Column(Modifier.weight(1f)) {
+                    Text(song.title, style = MaterialTheme.typography.titleLarge)
+                    Text(song.artist, Modifier.padding(top = 2.dp), style = MaterialTheme.typography.bodyMedium, color = muted)
+                }
+                IconButton({ actions.setFavorite(song, !song.favorite) }) {
+                    Icon(if (song.favorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder, if (song.favorite) "Remove from favorites" else "Add to favorites")
+                }
+            }
+            val facts = listOfNotNull(song.qualityLabel, song.year?.toString(), song.genre).joinToString(" · ")
+            if (facts.isNotEmpty()) Text(facts, Modifier.padding(top = 6.dp), style = MaterialTheme.typography.bodySmall, color = muted)
+            if (next.isNotEmpty()) Text("Next up", Modifier.padding(top = 20.dp, bottom = 6.dp), style = MaterialTheme.typography.titleSmall)
+        }
+        itemsIndexed(next) { i, s ->
+            Row(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable { backend.playQueueIndex(state.queueIndex + 1 + i) }.padding(vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                CoverImage(s.coverUri, s.id, size = 40.dp, radius = 6.dp)
+                Column(Modifier.weight(1f).padding(horizontal = 10.dp)) {
+                    Text(s.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
+                    Text(s.artist, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = muted)
+                }
+                Text(formatDuration(s.durationSec.toLong()), style = MaterialTheme.typography.labelSmall, color = muted)
+            }
+        }
+    }
 }

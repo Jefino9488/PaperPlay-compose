@@ -132,7 +132,7 @@ fun SongList(
                         Text(sort.label, Modifier.padding(horizontal = 8.dp), style = MaterialTheme.typography.bodyMedium)
                         Icon(if (reverse) Icons.Rounded.ArrowUpward else Icons.Rounded.ArrowDownward, null, Modifier.size(20.dp))
                     }
-                    DropdownMenu(sortMenu, { sortMenu = false }) {
+                    DropdownMenu(sortMenu, { sortMenu = false }, overlayRim(RoundedCornerShape(20.dp)), shape = RoundedCornerShape(20.dp), containerColor = overlayColor()) {
                         SongSort.entries.forEach { s ->
                             DropdownMenuItem(
                                 text = { Text(s.label) },

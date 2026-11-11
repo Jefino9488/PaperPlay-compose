@@ -57,7 +57,7 @@ fun ProfileScreen(songs: Int, favorites: Int, playlists: Int, conn: ConnectionUi
         }
         item {
             Column(
-                Modifier.padding(horizontal = 16.dp).fillMaxWidth().clip(RoundedCornerShape(36.dp)).background(MaterialTheme.colorScheme.surfaceContainerLow).padding(vertical = 40.dp),
+                Modifier.padding(horizontal = 16.dp).fillMaxWidth().partSurface(LookGroup.Cards, MaterialTheme.colorScheme.surfaceContainerLow, RoundedCornerShape(36.dp)).padding(vertical = 40.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Avatar(prefs.profilePhoto, prefs.profileName, 150.dp)
@@ -73,7 +73,7 @@ fun ProfileScreen(songs: Int, favorites: Int, playlists: Int, conn: ConnectionUi
         }
         item {
             var open by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(true) }
-            Column(Modifier.padding(horizontal = 16.dp).fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(MaterialTheme.colorScheme.surfaceContainerLow)) {
+            Column(Modifier.padding(horizontal = 16.dp).fillMaxWidth().partSurface(LookGroup.Cards, MaterialTheme.colorScheme.surfaceContainerLow, RoundedCornerShape(28.dp))) {
                 Row(Modifier.fillMaxWidth().clickable { open = !open }.padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Rounded.LibraryMusic, null, Modifier.padding(end = 16.dp))
                     Text("Library", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
@@ -92,7 +92,7 @@ fun ProfileScreen(songs: Int, favorites: Int, playlists: Int, conn: ConnectionUi
 @Composable
 private fun Stat(icon: ImageVector, n: Int, label: String, modifier: Modifier) {
     Column(
-        modifier.clip(RoundedCornerShape(32.dp)).background(MaterialTheme.colorScheme.surfaceContainerLow).padding(vertical = 20.dp),
+        modifier.partSurface(LookGroup.Cards, MaterialTheme.colorScheme.surfaceContainerLow, RoundedCornerShape(32.dp)).padding(vertical = 20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(Modifier.size(56.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer), contentAlignment = Alignment.Center) {

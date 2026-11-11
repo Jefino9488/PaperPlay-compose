@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -109,7 +110,7 @@ fun SongMenu(song: SongUi, actions: SongActions, icon: ImageVector = Icons.Round
     var open by remember { mutableStateOf(false) }
     Box {
         IconButton({ open = true }) { Icon(icon, "Song options") }
-        DropdownMenu(open, { open = false }) {
+        DropdownMenu(open, { open = false }, io.max.paperplay.ui.app.overlayRim(RoundedCornerShape(20.dp)), shape = RoundedCornerShape(20.dp), containerColor = io.max.paperplay.ui.app.overlayColor()) {
             @Composable
             fun item(text: String, run: () -> Unit) = DropdownMenuItem(
                 text = { Text(text) }, onClick = { open = false; run() },

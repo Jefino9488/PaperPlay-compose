@@ -89,8 +89,8 @@ fun HomeScreen(
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         pair.forEach { (g, click) ->
                             Row(
-                                Modifier.weight(1f).height(56.dp).clip(RoundedCornerShape(12.dp))
-                                    .background(MaterialTheme.colorScheme.surfaceContainerHigh).clickable(onClick = click),
+                                Modifier.weight(1f).height(56.dp).partSurface(LookGroup.Cards, MaterialTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(12.dp))
+                                    .clickable(onClick = click),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 CoverGrid(g.coverUris, g.id, 56.dp, 0.dp)

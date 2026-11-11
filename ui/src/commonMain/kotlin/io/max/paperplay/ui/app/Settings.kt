@@ -107,7 +107,7 @@ private fun SettingsList(prefs: UiPrefs, backend: CoreBackend, stack: MutableLis
         Spacer(Modifier.height(12.dp))
         if (q.isEmpty()) {
             Row(
-                Modifier.fillMaxWidth().padding(bottom = 12.dp).clip(RoundedCornerShape(28.dp)).background(MaterialTheme.colorScheme.surfaceContainerLow)
+                Modifier.fillMaxWidth().padding(bottom = 12.dp).partSurface(LookGroup.Cards, MaterialTheme.colorScheme.surfaceContainerLow, RoundedCornerShape(28.dp))
                     .clickableRow { stack.add("profile") }.padding(horizontal = 20.dp, vertical = 16.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
