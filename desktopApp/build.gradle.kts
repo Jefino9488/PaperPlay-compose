@@ -18,6 +18,17 @@ kotlin {
     }
 }
 
+val packagingResources = layout.buildDirectory.dir("packagingResources")
+
+// libvlc (git-ignored, bundled for playback) and TDLib (PAPERPLAY_TDLIB, else the Flutter tree) go into the app.
+val stagePackagingResources = tasks.register<Copy>("stagePackagingResources") {
+    into(packagingResources.map { it.dir("windows") })
+    from("src/jvmMain/resources/vlc") { into("vlc") }
+    val tdlib = file(System.getenv("PAPERPLAY_TDLIB") ?: "D:/Git forks/Teleplayer/windows/third_party/tdlib")
+    if (tdlib.exists()) from(tdlib) { into("native"); include("*.dll") }
+}
+tasks.matching { it.name == "prepareAppResources" }.configureEach { dependsOn(stagePackagingResources) }
+
 compose.desktop {
     application {
         mainClass = "io.max.paperplay.desktop.MainKt"
@@ -46,7 +57,9 @@ compose.desktop {
             //
             // VlcLoader in the player module reads compose.application.resources.dir
             // at runtime to locate the correct platform sub-folder.
-            appResourcesRootDir = project.file("src/jvmMain/resources")
+            // Compose copies only the common/ and windows/ folders of this root into the app. The local libvlc runtime
+            // and TDLib are staged into windows/ by stagePackagingResources below.
+            appResourcesRootDir.set(packagingResources)
         }
     }
 }
