@@ -103,6 +103,11 @@ class IndexStore(private val driver: SqlDriver) {
         touch()
     }
 
+    fun clearCopied() {
+        exec("DELETE FROM index_copied")
+        touch()
+    }
+
     /** Unique ids of songs copied to the main chat from here. */
     fun copiedIds(): Set<String> = query("SELECT unique_id FROM index_copied") { it.getString(0)!! }.toSet()
 

@@ -142,12 +142,13 @@ internal fun ChatSongsPage(backend: CoreBackend, chatId: Long, stack: MutableLis
                 busy = true
                 scope.launch {
                     var failed = 0
+                    var why: String? = null
                     todo.forEachIndexed { i, p ->
                         status = "Copying ${i + 1} of ${todo.size}"
-                        if (runCatching { backend.chatIndex.copyToMain(p) }.isFailure) failed++
+                        runCatching { backend.chatIndex.copyToMain(p) }.onFailure { failed++; if (why == null) why = it.message }
                         delay(3_000)
                     }
-                    status = if (failed == 0) "Copied ${todo.size}" else "Copied ${todo.size - failed}, $failed failed"
+                    status = if (failed == 0) "Copied ${todo.size}" else "Copied ${todo.size - failed}, $failed failed. ${why.orEmpty()}"
                     selection = selection.clear()
                     busy = false
                 }
@@ -166,7 +167,7 @@ internal fun ChatSongsPage(backend: CoreBackend, chatId: Long, stack: MutableLis
 
     for (s in shown.take(limit)) SongPostRow(backend, s, s.post.messageId in selection.picked,
         onToggle = { selection = selection.toggle(s.post.messageId) },
-        onCopy = { scope.launch { status = if (runCatching { backend.chatIndex.copyToMain(s.post) }.isSuccess) "Copying ${s.post.title}" else "Could not copy ${s.post.title}" } })
+        onCopy = { scope.launch { status = runCatching { backend.chatIndex.copyToMain(s.post) }.fold({ "Copied ${s.post.title}" }, { "Could not copy ${s.post.title}: ${it.message}" }) } })
     if (shown.size > limit) Column(Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) { OutlinedButton({ limit += 100 }) { Text("Show more") } }
 }
 

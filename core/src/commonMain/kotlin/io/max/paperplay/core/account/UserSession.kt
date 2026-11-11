@@ -305,13 +305,18 @@ class UserSession(
     override suspend fun copyPost(fromChat: Long, messageId: Long, toChat: Long) {
         val c = ready()
         knowChat(c, toChat, loadList = false)
-        call(c, request("forwardMessages") {
+        val sent = call(c, request("forwardMessages") {
             put("chat_id", toChat)
             put("from_chat_id", fromChat)
             put("message_ids", buildJsonArray { add(messageId) })
             put("send_copy", true)
             put("remove_caption", false)
         })
+        // Telegram answers with an empty entry for a post it will not copy, for example when the chat blocks saving content.
+        val first = (sent["messages"] as? kotlinx.serialization.json.JsonArray)?.firstOrNull()
+        if (first !is kotlinx.serialization.json.JsonObject) {
+            throw IllegalStateException("Telegram did not copy this post. The chat may block copying or forwarding.")
+        }
     }
 
     /** Deletes [ids] for everyone in one call. False when not logged in or Telegram refuses. */

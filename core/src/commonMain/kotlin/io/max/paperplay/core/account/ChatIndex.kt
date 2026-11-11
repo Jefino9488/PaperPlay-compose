@@ -58,6 +58,14 @@ class ChatIndex(
     private val mainChat: () -> Long?,
     private val clock: () -> Long,
 ) : ChatIndexApi {
+    init {
+        // Earlier builds marked a post as copied even when Telegram refused to copy it; those marks are wrong.
+        if (library.pref("index_copied_reset") != "1") {
+            store.clearCopied()
+            library.setPref("index_copied_reset", "1")
+        }
+    }
+
     private val _chats = MutableStateFlow(store.chats().associate { it.id to it.title })
     private val _progress = MutableStateFlow<IndexProgress?>(null)
     private val runLock = Mutex()

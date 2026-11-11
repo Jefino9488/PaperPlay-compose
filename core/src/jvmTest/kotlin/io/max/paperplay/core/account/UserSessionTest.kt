@@ -192,7 +192,13 @@ class UserSessionTest {
 
     @Test fun copyPostMakesTargetKnownAndForwardsACopy() = runBlocking {
         val fake = connected { req ->
-            listOf(if (req.type == "getChat") failure(req, 400, "Chat not found") else answer(req))
+            listOf(
+                when (req.type) {
+                    "getChat" -> failure(req, 400, "Chat not found")
+                    "forwardMessages" -> answer(req, """{"@type":"messages","total_count":1,"messages":[{"@type":"message","id":5}]}""")
+                    else -> answer(req)
+                },
+            )
         }
         val s = session(fake, loggedIn = true)
         s.copyPost(-1009L, 77L, -1001234567890L)
@@ -205,6 +211,15 @@ class UserSessionTest {
         assertEquals("77", fwd["message_ids"]!!.jsonArray.single().jsonPrimitive.content)
         assertEquals("true", fwd.str("send_copy"))
         assertEquals("false", fwd.str("remove_caption"))
+    }
+
+    @Test fun copyPostFailsWhenTelegramRefusesToCopy() = runBlocking {
+        val fake = connected { req ->
+            listOf(if (req.type == "forwardMessages") answer(req, """{"@type":"messages","total_count":1,"messages":[null]}""") else answer(req))
+        }
+        val s = session(fake, loggedIn = true)
+        val failed = runCatching { s.copyPost(-1009L, 77L, -1009L) }.exceptionOrNull()
+        assertTrue(failed is IllegalStateException)
     }
 
     @Test fun cloudLookupTakesNewestMessageWithTagAndReadsFile() = runBlocking {
