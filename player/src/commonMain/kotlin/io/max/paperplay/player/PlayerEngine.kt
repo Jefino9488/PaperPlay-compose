@@ -42,6 +42,8 @@ interface PlayerEngine {
     fun next()
     fun previous()
     fun seek(positionMs: Long)
+    /** 0 to 1. */
+    fun setVolume(volume: Float)
     fun release()
 
     fun play(uri: String) = setQueue(listOf(QueueItem(uri)))

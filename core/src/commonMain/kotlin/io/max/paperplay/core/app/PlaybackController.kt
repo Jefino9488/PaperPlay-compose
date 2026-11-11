@@ -111,6 +111,7 @@ class PlaybackController(
     fun play() = engine.play()
     fun pause() = engine.pause()
     fun seek(positionMs: Long) = engine.seek(positionMs)
+    fun setVolume(volume: Float) = engine.setVolume(volume)
 
     fun next() = command {
         val m = meta.value

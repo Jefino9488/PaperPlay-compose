@@ -5,8 +5,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -15,8 +17,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -26,41 +28,47 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.luminance
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
-import io.max.paperplay.ui.GlassSurface
 import io.max.paperplay.ui.PlatformBackHandler
 import io.max.paperplay.ui.components.LocalCoverLoader
+import io.max.paperplay.ui.isPhone
 import io.max.paperplay.ui.state.Load
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 
 @Composable
-fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open: kotlinx.coroutines.flow.MutableStateFlow<String?>? = null) {
+fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open: MutableStateFlow<String?>? = null) {
     val lib by backend.library.collectAsState()
     val favorites by backend.favorites.collectAsState()
+    val recents by backend.recents.collectAsState()
     val home by backend.home.collectAsState()
     val pb by backend.playback.collectAsState()
     val pbError by backend.playbackError.collectAsState()
     val conn by backend.connection.collectAsState()
+    val volume by backend.volume.collectAsState()
 
+    // Phone: four tabs. Desktop: a sidebar page id.
     var tab by remember { mutableIntStateOf(0) }
+    var page by remember { mutableStateOf("home") }
     var detail by remember { mutableStateOf<Detail?>(null) }
     var settings by remember { mutableStateOf(false) }
-    val settingsStack = remember { androidx.compose.runtime.mutableStateListOf<String>() }
+    val settingsStack = remember { mutableStateListOf<String>() }
     var showPlayer by remember { mutableStateOf(false) }
     var pickFor by remember { mutableStateOf<Set<String>?>(null) }
     var newPlaylist by remember { mutableStateOf(false) }
@@ -83,10 +91,10 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
 
     // A notification tap: the player, or Profile (where tasks are listed) for the background notification.
     val openRequest = open?.collectAsState()?.value
-    androidx.compose.runtime.LaunchedEffect(openRequest) {
+    LaunchedEffect(openRequest) {
         when (openRequest) {
             "player" -> showPlayer = true
-            "tasks" -> { tab = 3; detail = null; settings = false; showPlayer = false }
+            "tasks" -> { tab = 3; page = "tasks"; detail = null; settings = false; showPlayer = false }
         }
         if (openRequest != null) open?.value = null
     }
@@ -96,10 +104,6 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
     PlatformBackHandler(!showPlayer && !settings && detail == null && tab != 0) { tab = 0 }
 
     val songs = (lib.songs as? Load.Ready)?.value.orEmpty()
-    val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    val bottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    val navHeight = if (prefs.navLayout == NavLayout.Labels || prefs.navLayout == NavLayout.Dock) 76.dp else 64.dp
-    val barsHeight = (if (pb.current != null) 70.dp + 8.dp else 0.dp) + navHeight + (if (prefs.floatingNav) 24.dp else 0.dp) + bottomInset
     val currentId = pb.current?.id
 
     // Cover gradient: the current song's colours wash down from the top of every page.
@@ -108,14 +112,16 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
     val tint = (if (prefs.coverGradient) coverScheme(pb.current?.coverUri, dark) else null)?.primaryContainer ?: MaterialTheme.colorScheme.primaryContainer
     val g0 by androidx.compose.animation.animateColorAsState(tint.copy(alpha = 0.85f).compositeOver(base), androidx.compose.animation.core.tween(700))
     val g1 by androidx.compose.animation.animateColorAsState(tint.copy(alpha = 0.32f).compositeOver(base), androidx.compose.animation.core.tween(700))
-    val pageBg = if (prefs.coverGradient) Modifier.background(androidx.compose.ui.graphics.Brush.verticalGradient(0f to g0, 0.45f to g1, 1f to base)) else Modifier.background(base)
+    val pageBg = if (prefs.coverGradient) Modifier.background(Brush.verticalGradient(0f to g0, 0.45f to g1, 1f to base)) else Modifier.background(base)
 
     CompositionLocalProvider(LocalCoverLoader provides loader) {
-        androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize().then(pageBg)) {
-            // On a wide desktop window the current song gets a panel on the right.
-            val panel = !io.max.paperplay.ui.isPhone && prefs.nowPlayingPanel && pb.current != null && maxWidth >= 1200.dp
-            Row(Modifier.fillMaxSize().layerBackdrop(backdrop).padding(top = top)) {
-                Box(Modifier.weight(1f).fillMaxSize()) {
+        Box(Modifier.fillMaxSize().then(pageBg)) {
+            if (isPhone) {
+                val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+                val bottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+                val navHeight = if (prefs.navLayout == NavLayout.Labels || prefs.navLayout == NavLayout.Dock) 76.dp else 64.dp
+                val barsHeight = (if (pb.current != null) 70.dp + 8.dp else 0.dp) + navHeight + (if (prefs.floatingNav) 24.dp else 0.dp) + bottomInset
+                Box(Modifier.fillMaxSize().layerBackdrop(backdrop).padding(top = top)) {
                     val d = detail
                     when {
                         settings -> SettingsHost(settingsStack, prefs, conn, songs.size, backend, onRestore, { settings = false }, barsHeight)
@@ -126,19 +132,60 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
                         else -> ProfileScreen(songs.size, favorites.size, lib.playlists.size, conn, prefs, { settings = true }, barsHeight)
                     }
                 }
-                if (panel) NowPlayingPanel(pb, backend, actions, { showPlayer = true }, { prefs.putNowPlayingPanel(false) }, Modifier.width(340.dp).fillMaxSize().padding(bottom = barsHeight))
-            }
-            Column(
-                Modifier.align(Alignment.BottomCenter).fillMaxWidth().then(if (prefs.floatingNav) Modifier.padding(start = 24.dp, end = 24.dp, bottom = 12.dp + bottomInset) else Modifier),
-            ) {
-                if (pb.current != null) {
-                    MiniPlayer(pb, { showPlayer = true }, backend::togglePlay, backend::next, backend::previous, if (prefs.floatingNav) Modifier else Modifier.padding(horizontal = 8.dp))
-                    Box(Modifier.height(8.dp))
+                Column(
+                    Modifier.align(Alignment.BottomCenter).fillMaxWidth().then(if (prefs.floatingNav) Modifier.padding(start = 24.dp, end = 24.dp, bottom = 12.dp + bottomInset) else Modifier),
+                ) {
+                    if (pb.current != null) {
+                        MiniPlayer(pb, { showPlayer = true }, backend::togglePlay, backend::next, backend::previous, if (prefs.floatingNav) Modifier else Modifier.padding(horizontal = 8.dp))
+                        Box(Modifier.height(8.dp))
+                    }
+                    NavBar(if (settings) 3 else tab, backdrop, prefs, bottomInset, { tab = it; detail = null; settings = false; settingsStack.clear() })
                 }
-                NavBar(if (settings) 3 else tab, backdrop, prefs, bottomInset, { tab = it; detail = null; settings = false; settingsStack.clear() })
+                if (showPlayer) FullPlayer(pb, pbError, backend, actions, { showPlayer = false })
+                SnackbarHost(snack, Modifier.align(Alignment.TopCenter).padding(top = top))
+            } else {
+                // Desktop: sidebar, content card, now playing panel, player bar.
+                LaunchedEffect(settings) { if (settings && settingsStack.isEmpty()) settingsStack.add("style") }
+                val playlistId = (detail as? Detail.Playlist)?.id
+                val panel = prefs.nowPlayingPanel && pb.current != null
+                Column(Modifier.fillMaxSize()) {
+                    Row(Modifier.weight(1f).fillMaxWidth().padding(start = 12.dp, top = 12.dp, end = 12.dp)) {
+                        Sidebar(
+                            page, playlistId, lib.playlists,
+                            onPage = { page = it; detail = null; settings = false; settingsStack.clear() },
+                            onPlaylist = { detail = Detail.Playlist(it.id, it.name); settings = false },
+                            onNewPlaylist = { newPlaylist = true },
+                            modifier = Modifier.width(240.dp).fillMaxHeight(),
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Box(Modifier.weight(1f).fillMaxHeight().deskCard()) {
+                            val d = detail
+                            val pad = 16.dp
+                            when {
+                                settings -> DesktopSettings(settingsStack, prefs, conn, songs.size, backend, onRestore, { settings = false; settingsStack.clear() }, Modifier.fillMaxSize())
+                                d != null -> DetailScreen(d, backend, currentId, actions, { detail = null }, pad)
+                                page == "home" -> HomeScreen(lib, home, favorites, pb, conn, actions, { detail = it }, pad)
+                                page == "search" -> SearchScreen(backend, songs, currentId, actions, { detail = it }, pad)
+                                page == "profile" -> ProfileScreen(songs.size, favorites.size, lib.playlists.size, conn, prefs, { settings = true }, pad)
+                                page == "tasks" -> TasksPage(conn)
+                                page == "upload" -> Column { TopBar("Upload"); NotBuilt("Uploading songs to Telegram") }
+                                page == "songs" -> Column { TopBar("Songs"); SongList(songs, currentId, actions, Modifier.fillMaxSize(), pad, empty = "No songs yet. Add a chat in Settings.") }
+                                page == "albums" -> Column { TopBar("Albums"); GroupGrid(lib.albums, pad, "No albums yet.") { detail = Detail.Album(it.name) } }
+                                page == "artists" -> Column { TopBar("Artists"); GroupList(lib.artists, pad, "No artists yet.", circle = true) { detail = Detail.Artist(it.name) } }
+                                page == "favorites" -> Column { TopBar("Favorites"); SongList(favorites, currentId, actions, Modifier.fillMaxSize(), pad, empty = "No favorites yet.") }
+                                else -> Column { TopBar("Recently played"); SongList(recents, currentId, actions, Modifier.fillMaxSize(), pad, sortable = false, empty = "Nothing played yet.") }
+                            }
+                        }
+                        if (panel) {
+                            Spacer(Modifier.width(12.dp))
+                            NowPlayingPanel(pb, backend, actions, { showPlayer = true }, { prefs.putNowPlayingPanel(false) }, Modifier.width(320.dp).fillMaxHeight().deskCard())
+                        }
+                    }
+                    PlayerBar(pb, volume, prefs.nowPlayingPanel, backend, actions, { showPlayer = true }, { prefs.putNowPlayingPanel(!prefs.nowPlayingPanel) })
+                }
+                if (showPlayer) FullPlayer(pb, pbError, backend, actions, { showPlayer = false })
+                SnackbarHost(snack, Modifier.align(Alignment.BottomCenter).padding(bottom = 96.dp))
             }
-            if (showPlayer) FullPlayer(pb, pbError, backend, actions, { showPlayer = false })
-            SnackbarHost(snack, Modifier.align(Alignment.TopCenter).padding(top = top))
         }
 
         pickFor?.let { ids ->

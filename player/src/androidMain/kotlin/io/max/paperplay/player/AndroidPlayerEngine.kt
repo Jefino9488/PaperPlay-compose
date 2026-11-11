@@ -114,6 +114,7 @@ class AndroidPlayerEngine : PlayerEngine {
     override fun next() = onMain { player.seekToNextMediaItem() }
     override fun previous() = onMain { player.seekToPreviousMediaItem() }
     override fun seek(positionMs: Long) = onMain { player.seekTo(positionMs) }
+    override fun setVolume(volume: Float) = onMain { player.volume = volume.coerceIn(0f, 1f) }
 
     override fun release() = onMain {
         handler.removeCallbacks(ticker)

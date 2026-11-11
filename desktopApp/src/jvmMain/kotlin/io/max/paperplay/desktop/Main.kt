@@ -49,7 +49,7 @@ fun main() {
                 }.getOrNull())
             },
         )
-        Window(onCloseRequest = ::exitApplication, title = "PaperPlay", state = rememberWindowState(width = 1000.dp, height = 760.dp), icon = androidx.compose.ui.res.painterResource("icon.png")) {
+        Window(onCloseRequest = ::exitApplication, title = "Paper Play", state = rememberWindowState(width = 1320.dp, height = 840.dp), icon = androidx.compose.ui.res.painterResource("icon.png")) {
             App(env)
         }
     }

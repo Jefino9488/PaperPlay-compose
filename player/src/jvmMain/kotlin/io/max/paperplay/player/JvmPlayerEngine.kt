@@ -77,6 +77,7 @@ class JvmPlayerEngine(vararg vlcArgs: String) : PlayerEngine {
     }
 
     override fun seek(positionMs: Long) = cmd { player.controls().setTime(positionMs) }
+    override fun setVolume(volume: Float) = cmd { player.audio().setVolume((volume.coerceIn(0f, 1f) * 100).toInt()) }
 
     override fun release() {
         io.shutdown()

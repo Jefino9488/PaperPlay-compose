@@ -123,8 +123,8 @@ fun LibraryScreen(
                 is Load.Error -> Text(s.message, Modifier.padding(24.dp), color = MaterialTheme.colorScheme.error)
                 is Load.Ready -> SongList(s.value, currentId, actions, Modifier.fillMaxSize(), bottomPadding, empty = "No songs yet. Add a chat in Settings.")
             }
-            1 -> GroupList(lib.albums, bottomPadding, "No albums yet.") { onOpen(Detail.Album(it.name)) }
-            2 -> GroupList(lib.artists, bottomPadding, "No artists yet.") { onOpen(Detail.Artist(it.name)) }
+            1 -> GroupGrid(lib.albums, bottomPadding, "No albums yet.") { onOpen(Detail.Album(it.name)) }
+            2 -> GroupList(lib.artists, bottomPadding, "No artists yet.", circle = true) { onOpen(Detail.Artist(it.name)) }
             3 -> GroupList(
                 lib.playlists, bottomPadding, "No playlists yet.",
                 header = { TextButton(onNewPlaylist, Modifier.padding(horizontal = 8.dp)) { Text("New playlist") } },
@@ -134,14 +134,35 @@ fun LibraryScreen(
     }
 }
 
+/** Albums as a grid of large covers, two columns on a phone and as many as fit on a desktop. */
 @Composable
-private fun GroupList(groups: List<GroupUi>, bottomPadding: Dp, empty: String, header: (@Composable () -> Unit)? = null, onClick: (GroupUi) -> Unit) {
+fun GroupGrid(groups: List<GroupUi>, bottomPadding: Dp, empty: String, onClick: (GroupUi) -> Unit) {
+    if (groups.isEmpty()) { Text(empty, Modifier.padding(24.dp), color = MaterialTheme.colorScheme.onSurfaceVariant); return }
+    androidx.compose.foundation.lazy.grid.LazyVerticalGrid(
+        androidx.compose.foundation.lazy.grid.GridCells.Adaptive(160.dp), Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp, 4.dp, 16.dp, bottomPadding + 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        items(groups.size, key = { groups[it].id }) { i ->
+            val g = groups[i]
+            Column(Modifier.clip(RoundedCornerShape(12.dp)).clickable { onClick(g) }) {
+                androidx.compose.foundation.layout.BoxWithConstraints { CoverImage(g.coverUris.firstOrNull(), g.id, size = maxWidth, radius = 12.dp) }
+                Text(g.name, Modifier.padding(top = 8.dp), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall)
+                Text(g.subtitle, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+/** A list of albums, artists or playlists; [circle] makes round covers for artists. */
+@Composable
+fun GroupList(groups: List<GroupUi>, bottomPadding: Dp, empty: String, header: (@Composable () -> Unit)? = null, circle: Boolean = false, onClick: (GroupUi) -> Unit) {
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = bottomPadding)) {
         if (header != null) item { header() }
         if (groups.isEmpty()) item { Text(empty, Modifier.padding(24.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
         items(groups, key = { it.id }) { g ->
             ClickableRow({ onClick(g) }, Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
-                CoverImage(g.coverUris.firstOrNull(), g.id, size = 56.dp, radius = 10.dp)
+                CoverImage(g.coverUris.firstOrNull(), g.id, size = 56.dp, radius = if (circle) 28.dp else 10.dp)
                 Column(Modifier.weight(1f).padding(start = 14.dp)) {
                     Text(g.name, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium)
                     Text(g.subtitle, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

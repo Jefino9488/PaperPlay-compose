@@ -42,9 +42,9 @@ import androidx.compose.ui.unit.dp
 import io.max.paperplay.ui.components.CoverImage
 import io.max.paperplay.ui.isPhone
 
-private class Category(val id: String, val title: String, val subtitle: String, val keywords: String, val icon: ImageVector, val phoneOnly: Boolean = false)
+internal class Category(val id: String, val title: String, val subtitle: String, val keywords: String, val icon: ImageVector, val phoneOnly: Boolean = false)
 
-private val categories = listOf(
+internal val categories = listOf(
     Category("style", "Style", "Material 3 Expressive or glass, mixed as you like", "style look glass material expressive blur", Icons.Rounded.AutoAwesome),
     Category("appearance", "Appearance", "Theme, colors, display", "theme dark amoled accent color", Icons.Rounded.Palette),
     Category("nav", "Navigation bar", "Floating bar and its style", "nav bar floating radius", Icons.Rounded.ViewAgenda, phoneOnly = true),
@@ -91,7 +91,7 @@ fun SettingsHost(
     }
 }
 
-private val subTitles = mapOf(
+internal val subTitles = mapOf(
     "channels" to "Channels", "bots" to "Extra bots", "account" to "Your account", "log" to "Bot activity",
     "sort" to "Sort General", "dupes" to "Find duplicates", "mixlearn" to "Mixes and learning", "weather" to "Weather",
     "conn" to "Connection", "eq" to "Equalizer", "credentials" to "Bot credentials", "profile" to "Profile",
@@ -132,7 +132,7 @@ fun Avatar(photo: String?, name: String, size: Dp) {
 }
 
 @Composable
-private fun SettingsPage(
+internal fun SettingsPage(
     id: String, stack: MutableList<String>, prefs: UiPrefs, conn: ConnectionUi, songCount: Int, backend: CoreBackend, onRestore: () -> Unit,
 ) {
     var confirm by remember { mutableStateOf<String?>(null) }
