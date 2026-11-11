@@ -8,6 +8,9 @@ import io.max.paperplay.core.telegram.request
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -120,7 +123,7 @@ class ScanProgress(val text: String, val fraction: Double?)
 class Scanner(
     private val repo: LibraryRepository,
     private val scope: CoroutineScope,
-    private val minPause: Duration = 1500.milliseconds,
+    private val minPause: Duration = 500.milliseconds,
     private val maxPause: Duration = 1.minutes,
 ) {
     private var td: TdClient? = null
@@ -136,6 +139,10 @@ class Scanner(
     /** When on, ids that come back empty before the end are asked for once more (used by the one-time check after a restore). */
     @kotlin.concurrent.Volatile
     var retryEmptyIds = false
+
+    /** How many batches of message ids are asked for at once. Flood waits slow the whole read down on their own. */
+    @kotlin.concurrent.Volatile
+    var parallelBatches = 3
 
     private val _report = MutableStateFlow<String?>(null)
 
@@ -263,14 +270,28 @@ class Scanner(
                 repo.renameChat(chat.id, chatTitle)
             }
             val knownEnd = maxOf(endHint, rows.lastOrNull()?.message_id ?: 0, last ?: 0, meta.lastMessageId)
+            val window = ArrayDeque<JsonObject>()
             while (true) {
                 if (repo.chat(chat.id) == null) return seen // Removed while reading.
-                val page = retrying {
-                    client.call(request("getMessages") {
-                        put("chat_id", chat.id)
-                        put("message_ids", JsonArray(idsFrom(next, WALK_BATCH).map(::JsonPrimitive)))
-                    })
+                if (window.isEmpty()) {
+                    // Several batches are asked for at once; they are used in order below.
+                    val starts = List(parallelBatches.coerceIn(1, 6)) { next + it * WALK_BATCH * MESSAGE_ID_STEP }
+                    window.addAll(
+                        coroutineScope {
+                            starts.map { st ->
+                                async {
+                                    retrying {
+                                        client.call(request("getMessages") {
+                                            put("chat_id", chat.id)
+                                            put("message_ids", JsonArray(idsFrom(st, WALK_BATCH).map(::JsonPrimitive)))
+                                        })
+                                    }
+                                }
+                            }.awaitAll()
+                        },
+                    )
                 }
+                val page = window.removeFirst()
                 val floorPause = effectiveMinPause()
                 if (pause > floorPause) pause = maxOf(floorPause, pause * 0.85)
                 val raw = (page["messages"] as? JsonArray).orEmpty()
@@ -308,7 +329,7 @@ class Scanner(
                 )
                 val emptyLimit = if (chat.walk_done || (meta.lastMessageId > 0L && next > meta.lastMessageId)) 2 else 6
                 if (messages.isNotEmpty() || next <= knownEnd) empties = 0 else if (++empties >= emptyLimit) break
-                delay(pause)
+                if (window.isEmpty()) delay(pause)
             }
             repo.setScan(chat.id, newest, true)
             _report.value = "${chat.title}: ${seen.size} song posts read up to message ${newest / MESSAGE_ID_STEP}, $added new, $recovered found on a second ask, $holes ids held nothing"

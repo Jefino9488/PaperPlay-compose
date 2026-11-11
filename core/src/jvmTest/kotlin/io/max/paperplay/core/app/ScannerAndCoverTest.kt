@@ -187,6 +187,8 @@ class ScannerAndCoverTest {
         }
         val client = TdClient(TdRuntime(fake, scope, Dispatchers.IO), config).also { it.start() }
         val scanner = Scanner(repo, scope, minPause = 1.milliseconds)
+        // One batch at a time, so each step's progress text is seen before the next one replaces it.
+        scanner.parallelBatches = 1
         scanner.attach(client)
 
         val progressTexts = mutableListOf<String>()
