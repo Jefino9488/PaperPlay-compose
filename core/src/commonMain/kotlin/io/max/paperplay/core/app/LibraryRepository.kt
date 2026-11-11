@@ -68,6 +68,9 @@ class LibraryRepository(val repo: LibraryRepo, private val clock: () -> Long) {
     }
 
     fun songByUniqueId(uniqueId: String): Song? = songs.songByUniqueId(uniqueId).executeAsOneOrNull()
+    fun replaceSong(s: Song) = write { repo.db.enrichQueries.replaceSong(s) }
+    fun nextToEnrich(): Song? = songs.nextToEnrich().executeAsOneOrNull()
+    fun unmatchedSongs(): List<Song> = songs.allSongs().executeAsList().filter { it.enrich_state == 2L && !it.user_edited }
     fun setCachedBytes(uniqueId: String, bytes: Long, notify: Boolean = false) {
         if (notify) write { songs.setCachedBytes(bytes, uniqueId) } else songs.setCachedBytes(bytes, uniqueId)
     }
