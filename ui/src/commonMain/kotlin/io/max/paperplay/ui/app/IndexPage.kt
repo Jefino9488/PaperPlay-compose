@@ -14,6 +14,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -148,63 +149,69 @@ internal fun ChatSongsPage(backend: CoreBackend, chatId: Long, stack: MutableLis
     }
     val live = progress?.takeIf { it.chatId == chatId }
 
-    Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+    var more by remember { mutableStateOf(false) }
+    LaunchedEffect(status) { if (status != null) { delay(5_000); status = null } }
+    val pad = Modifier.padding(horizontal = 20.dp)
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(pad.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
             Text(
                 if (live != null) "Indexing: ${live.found} songs read so far" else "${songs.size} songs",
                 color = if (live != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
             )
             IconButton({ scope.launch { runCatching { backend.chatIndex.refresh() } } }, enabled = live == null) { AppIcon(Icons.Rounded.Refresh, "Refresh index") }
         }
-        ChipRow(reviewFilters.mapIndexed { i, l -> "$l ${counts[i]}" }, filter, { filter = it; limit = 100 })
-        OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth(), label = { Text("Search") }, singleLine = true)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        ChipRow(reviewFilters.mapIndexed { i, l -> "$l ${counts[i]}" }, filter, { filter = it; limit = 100 }, Modifier.padding(horizontal = 4.dp))
+        Row(pad, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton({ selection = IndexSelection(shown.map { it.post.messageId }.toSet()) }, enabled = shown.isNotEmpty()) { Text("Select all") }
             OutlinedButton({ selection = selection.clear() }, enabled = selection.picked.isNotEmpty()) { Text("Clear") }
-        }
-        Button(
-            {
-                val todo = if (selection.picked.isNotEmpty()) selection.toCopy(songs) else shown.filter { !it.inMainChat && !it.copied }.map { it.post }
-                busy = true
-                scope.launch {
-                    todo.forEach { runCatching { backend.chatIndex.addToLibrary(it) } }
-                    status = "Added ${todo.size} to your library. They play through your account."
-                    selection = selection.clear()
-                    busy = false
-                }
-            },
-            enabled = !busy && (selection.picked.isNotEmpty() || shown.any { !it.inMainChat && !it.copied }),
-        ) {
-            val n = if (selection.picked.isNotEmpty()) selection.picked.size else shown.count { !it.inMainChat && !it.copied }
-            Text(if (selection.picked.isNotEmpty()) "Add $n picked to library" else "Add all shown ($n new)")
-        }
-        OutlinedButton(
-            {
-                val todo = selection.toCopy(songs)
-                busy = true
-                scope.launch {
-                    var failed = 0
-                    var why: String? = null
-                    todo.forEachIndexed { i, p ->
-                        status = "Copying ${i + 1} of ${todo.size}"
-                        runCatching { backend.chatIndex.copyToMain(p) }.onFailure { failed++; if (why == null) why = it.message }
-                        delay(3_000)
+            Button(
+                {
+                    val todo = if (selection.picked.isNotEmpty()) selection.toCopy(songs) else shown.filter { !it.inMainChat && !it.copied }.map { it.post }
+                    busy = true
+                    scope.launch {
+                        todo.forEach { runCatching { backend.chatIndex.addToLibrary(it) } }
+                        status = "Added ${todo.size} to your library. They play through your account."
+                        selection = selection.clear()
+                        busy = false
                     }
-                    status = if (failed == 0) "Copied ${todo.size}" else "Copied ${todo.size - failed}, $failed failed. ${why.orEmpty()}"
-                    selection = selection.clear()
-                    busy = false
-                }
-            },
-            enabled = selection.picked.isNotEmpty() && !busy,
-        ) { Text("Copy ${selection.picked.size} to main chat instead") }
+                },
+                enabled = !busy && (selection.picked.isNotEmpty() || shown.any { !it.inMainChat && !it.copied }),
+            ) {
+                val n = if (selection.picked.isNotEmpty()) selection.picked.size else shown.count { !it.inMainChat && !it.copied }
+                Text(if (selection.picked.isNotEmpty()) "Add $n" else "Add all shown ($n)")
+            }
+        }
+        OutlinedTextField(query, { query = it }, pad.fillMaxWidth(), label = { Text("Search") }, singleLine = true)
         val missing = songs.count { !it.inMainChat && !it.copied }
-        Text("$missing of ${songs.size} are not in your library", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        OutlinedButton({
-            val first = songs.firstOrNull { !it.inMainChat && !it.copied } ?: return@OutlinedButton
-            scope.launch { status = "Asking the bot about \"${first.post.title}\"..."; status = backend.services.botCheck(first.post.chatId, first.post.messageId) }
-        }, enabled = missing > 0) { Text("Check why the first missing song is missing") }
-        status?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-        OutlinedButton({ backend.chatIndex.forget(chatId); if (stack.isNotEmpty()) stack.removeAt(stack.lastIndex) }) { Text("Forget this chat") }
+        Text("$missing of ${songs.size} are not in your library", pad, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        status?.let { Text(it, pad, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        TextButton({ more = !more }, pad) { Text(if (more) "Less" else "More") }
+        if (more) Column(pad, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(
+                {
+                    val todo = selection.toCopy(songs)
+                    busy = true
+                    scope.launch {
+                        var failed = 0
+                        var why: String? = null
+                        todo.forEachIndexed { i, p ->
+                            status = "Copying ${i + 1} of ${todo.size}"
+                            runCatching { backend.chatIndex.copyToMain(p) }.onFailure { failed++; if (why == null) why = it.message }
+                            delay(3_000)
+                        }
+                        status = if (failed == 0) "Copied ${todo.size}" else "Copied ${todo.size - failed}, $failed failed. ${why.orEmpty()}"
+                        selection = selection.clear()
+                        busy = false
+                    }
+                },
+                enabled = selection.picked.isNotEmpty() && !busy,
+            ) { Text("Copy ${selection.picked.size} to main chat instead") }
+            OutlinedButton({
+                val first = songs.firstOrNull { !it.inMainChat && !it.copied } ?: return@OutlinedButton
+                scope.launch { status = "Asking the bot about \"${first.post.title}\"..."; status = backend.services.botCheck(first.post.chatId, first.post.messageId) }
+            }, enabled = missing > 0) { Text("Check why the first missing song is missing") }
+            OutlinedButton({ backend.chatIndex.forget(chatId); if (stack.isNotEmpty()) stack.removeAt(stack.lastIndex) }) { Text("Forget this chat") }
+        }
     }
 
     for (s in shown.take(limit)) SongPostRow(s, s.post.messageId in selection.picked,
