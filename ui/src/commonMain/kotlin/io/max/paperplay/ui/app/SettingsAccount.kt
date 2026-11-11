@@ -1,0 +1,111 @@
+package io.max.paperplay.ui.app
+
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.*
+import androidx.compose.material3.Button
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.unit.dp
+import io.max.paperplay.core.account.LoginStep
+import io.max.paperplay.core.account.QrCode
+import kotlinx.coroutines.launch
+
+/** Settings > Telegram > Your account. Logs in as yourself, so chats and channels can be read and copied from. */
+@Composable
+internal fun AccountPage(backend: CoreBackend, onLogOut: () -> Unit) {
+    val account = backend.account
+    val step by account.step.collectAsState()
+    val scope = rememberCoroutineScope()
+    var input by remember(step) { mutableStateOf("") }
+    var restored by remember { mutableStateOf<String?>(null) }
+
+    Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        when (val s = step) {
+            LoginStep.LoggedOut -> {
+                Text(
+                    "Log in with your own Telegram account to read your chats and channels, find songs in them and copy songs into your main chat. Nothing is posted for you except those copies.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Button({ scope.launch { account.begin() } }) { Text("Log in with phone number") }
+                OutlinedButton({ scope.launch { account.beginQr() } }) { Text("Log in with QR code") }
+            }
+            LoginStep.Starting -> Text("Starting", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            LoginStep.Phone -> {
+                Text("Phone number with country code, like +91 98765 43210.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                OutlinedTextField(input, { input = it }, Modifier.fillMaxWidth(), label = { Text("Phone number") }, singleLine = true)
+                Button({ scope.launch { account.phone(input.trim()) } }, enabled = input.isNotBlank()) { Text("Send code") }
+                OutlinedButton({ scope.launch { account.beginQr() } }) { Text("Use a QR code instead") }
+            }
+            is LoginStep.Qr -> {
+                Text("On a phone where you are logged in to Telegram: Settings, Devices, Link Desktop Device, then scan this code.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                QrView(s.link)
+                SelectionContainer { Text(s.link, style = MaterialTheme.typography.bodySmall) }
+                OutlinedButton({ scope.launch { account.begin() } }) { Text("Use a phone number instead") }
+            }
+            LoginStep.Code -> {
+                Text("Telegram sent a code to your other devices or by SMS.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                OutlinedTextField(input, { input = it }, Modifier.fillMaxWidth(), label = { Text("Code") }, singleLine = true, visualTransformation = PasswordVisualTransformation())
+                Button({ scope.launch { account.code(input.trim()) } }, enabled = input.isNotBlank()) { Text("Confirm") }
+            }
+            LoginStep.Password -> {
+                Text("Your account has a two-step password.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                OutlinedTextField(input, { input = it }, Modifier.fillMaxWidth(), label = { Text("Password") }, singleLine = true, visualTransformation = PasswordVisualTransformation())
+                Button({ scope.launch { account.password(input) } }, enabled = input.isNotEmpty()) { Text("Confirm") }
+            }
+            LoginStep.Ready -> {
+                // A first login picks up the index saved on Telegram, so it need not be read again.
+                LaunchedEffect(Unit) {
+                    restored = if (runCatching { backend.services.indexCloud.restore() }.getOrDefault(false)) "Your saved index was restored from Telegram." else null
+                }
+                SettingsRow("Logged in", icon = Icons.Rounded.Person, subtitle = "Your chats and channels are available")
+                restored?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                OutlinedButton(onLogOut) { Text("Log out") }
+            }
+            is LoginStep.Failed -> {
+                Text(s.message, color = MaterialTheme.colorScheme.error)
+                Button({ scope.launch { account.begin() } }) { Text("Try again") }
+            }
+        }
+    }
+}
+
+/** The link drawn as a QR code, black on white with a quiet border. */
+@Composable
+internal fun QrView(link: String) {
+    val matrix = remember(link) { QrCode.encode(link) }
+    if (matrix == null) {
+        Text("This link is too long to show as a code.", color = MaterialTheme.colorScheme.error)
+        return
+    }
+    val n = matrix.size
+    val border = 4
+    Canvas(Modifier.size(220.dp)) {
+        val cell = size.width / (n + 2 * border)
+        drawRect(Color.White, Offset.Zero, size)
+        for (y in 0 until n) for (x in 0 until n) if (matrix[y][x]) {
+            drawRect(Color.Black, Offset((x + border) * cell, (y + border) * cell), Size(cell + 0.5f, cell + 0.5f))
+        }
+    }
+}

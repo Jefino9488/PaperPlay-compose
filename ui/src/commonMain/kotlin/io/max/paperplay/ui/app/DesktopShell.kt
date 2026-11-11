@@ -282,7 +282,7 @@ fun DesktopSettings(
         }
         Box(Modifier.width(1.dp).fillMaxHeight().padding(vertical = 16.dp).background(scheme.outlineVariant.copy(alpha = 0.5f)))
         Column(Modifier.weight(1f).fillMaxHeight()) {
-            val title = categories.firstOrNull { it.id == page }?.title ?: subTitles[page] ?: "Settings"
+            val title = categories.firstOrNull { it.id == page }?.title ?: settingsPageTitle(page) ?: "Settings"
             if (stack.size > 1) BackTopBar(title, onBack = { stack.removeAt(stack.lastIndex) })
             else Text(title, Modifier.padding(start = 20.dp, end = 16.dp, top = 24.dp, bottom = 8.dp), style = MaterialTheme.typography.headlineMedium)
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {

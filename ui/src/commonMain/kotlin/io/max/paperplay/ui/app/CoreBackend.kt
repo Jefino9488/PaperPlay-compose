@@ -183,6 +183,9 @@ class CoreBackend(val services: AppServices) {
         return repo.repo.listenTotals(from) to repo.repo.listenPerDay(from)
     }
 
+    val account get() = services.account
+    val chatIndex get() = services.chatIndex
+
     /** Sleep timer: pauses at [sleepAt] (epoch ms). Null when none is set. */
     val sleepAt = MutableStateFlow<Long?>(null)
     private var sleepJob: kotlinx.coroutines.Job? = null

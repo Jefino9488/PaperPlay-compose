@@ -79,12 +79,23 @@ internal fun SpotifyPage(backend: CoreBackend) {
             onClick = { reviewing = if (reviewing == p.id) null else p.id }) {
             OutlinedButton({ run("${p.source_url}") }, enabled = !busy) { Text("Refresh") }
         }
-        if (reviewing == p.id) ReviewList(store, waiting) { version++ }
+        if (reviewing == p.id) ReviewList(backend, store, waiting) { version++ }
     }
 }
 
 @Composable
-private fun ReviewList(store: ImportStore, waiting: List<MissingTrack>, onChange: () -> Unit) {
+private fun ReviewList(backend: CoreBackend, store: ImportStore, waiting: List<MissingTrack>, onChange: () -> Unit) {
+    // Songs the index has for tracks still missing: a plus button copies one, or the app does it on its own.
+    if (backend.pref("index_auto_copy") == "true") {
+        Text("Songs are fetched automatically", Modifier.padding(horizontal = 36.dp, vertical = 4.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+    } else {
+        for (t in waiting.take(30)) {
+            Column(Modifier.padding(vertical = 2.dp)) {
+                Text("${t.title} - ${t.artist}", Modifier.padding(horizontal = 36.dp), style = MaterialTheme.typography.titleSmall)
+                IndexMatchRow(backend, t.title, t.artist, t.duration_sec.toInt())
+            }
+        }
+    }
     val candidates = remember(waiting) { reviewCandidates(store, waiting) }
     val withMatches = waiting.filter { candidates[it.track_key].orEmpty().isNotEmpty() }
     if (withMatches.isEmpty()) {

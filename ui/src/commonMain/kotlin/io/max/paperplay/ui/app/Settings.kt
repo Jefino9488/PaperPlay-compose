@@ -31,6 +31,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -87,7 +88,7 @@ fun SettingsHost(
     onRestore: () -> Unit, onExit: () -> Unit, bottomPadding: Dp, modifier: Modifier = Modifier,
 ) {
     val page = stack.lastOrNull()
-    val title = categories.firstOrNull { it.id == page }?.title ?: subTitles[page] ?: "Settings"
+    val title = categories.firstOrNull { it.id == page }?.title ?: settingsPageTitle(page) ?: "Settings"
     Column(modifier) {
         BackTopBar(title, onBack = { if (stack.isEmpty()) onExit() else stack.removeAt(stack.lastIndex) })
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = bottomPadding)) {
@@ -99,7 +100,7 @@ fun SettingsHost(
 internal val subTitles = mapOf(
     "channels" to "Channels", "bots" to "Extra bots", "account" to "Your account", "log" to "Bot activity",
     "sort" to "Sort General", "dupes" to "Find duplicates", "mixlearn" to "Mixes and learning", "weather" to "Weather",
-    "conn" to "Connection", "eq" to "Equalizer", "listenbrainz" to "ListenBrainz", "stats" to "Listening statistics", "credentials" to "Bot credentials", "profile" to "Profile",
+    "conn" to "Connection", "index" to "Chats and channels", "eq" to "Equalizer", "listenbrainz" to "ListenBrainz", "stats" to "Listening statistics", "credentials" to "Bot credentials", "profile" to "Profile",
 )
 
 @Composable
@@ -196,7 +197,8 @@ internal fun SettingsPage(
             NavRow("Channels", "See what's added, add more, and choose the main chat", Icons.Rounded.Forum) { stack.add("channels") }
             NavRow("Bot credentials", "API id, API hash and bot token", Icons.Rounded.Key) { stack.add("credentials") }
             NavRow("Extra bots", "More bots share the uploading", Icons.Rounded.SmartToy) { stack.add("bots") }
-            NavRow("Your account (optional)", "Deletes old posts the bot isn't allowed to", Icons.Rounded.Person) { stack.add("account") }
+            NavRow("Your account (optional)", "Log in as yourself to read and copy from your chats", Icons.Rounded.Person) { stack.add("account") }
+            NavRow("Chats and channels", "Index songs in your chats and copy them to the main chat", Icons.Rounded.Forum) { stack.add("index") }
             NavRow("Bot activity since the app opened", "Message reads, downloads, uploads and rate limits", Icons.Rounded.MonitorHeart) { stack.add("log") }
             SettingsRow("Log out", icon = Icons.Rounded.Logout, subtitle = "Forgets the bot's credentials. Your library stays on this device", onClick = { confirm = "logout" })
         }
@@ -274,13 +276,16 @@ internal fun SettingsPage(
         "conn" -> ConnectionPage(conn, backend)
         "log" -> LogPage(backend)
         "dupes" -> DuplicatesPage(backend)
-        else -> NotBuilt(subTitles[id] ?: id)
+        "account" -> AccountPage(backend) { confirm = "accountout" }
+        "index" -> IndexPage(backend, stack)
+        else -> if (id.startsWith("index:")) ChatSongsPage(backend, id.removePrefix("index:").toLongOrNull() ?: 0L, stack) else NotBuilt(subTitles[id] ?: id)
     }
     notice.value?.let { Text(it, Modifier.padding(20.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
     when (confirm) {
         "rescan" -> ConfirmDialog("Run a full rescan?", "Re-reads every message in your music chats. Takes a few minutes and sends Telegram a lot of requests.", "Rescan", backend::rescan) { confirm = null }
         "restore" -> ConfirmDialog("Restore a backup?", "This replaces your library, playlists and favorites with the backup.", "Restore", onRestore) { confirm = null }
         "clearcache" -> ConfirmDialog("Clear the cache?", "Streamed songs stored on this device are deleted. Stop playback first. They download again when played.", "Clear", { backend.clearCache { notice.value = it } }) { confirm = null }
+        "accountout" -> ConfirmDialog("Log out of your account?", "Your index stays on this device. Chats and channels need a new login.", "Log out", { backend.services.scope.launch { backend.account.logOut() } }) { confirm = null }
         "clearlearned" -> ConfirmDialog("Clear what mixes have learned?", "Forgets play and skip counts and your \"doesn't fit this mix\" choices. Songs and playlists stay.", "Clear", backend::clearLearned) { confirm = null }
         "logout" -> ConfirmDialog("Log out?", "The bot's API id, hash and token are forgotten and the setup screen shows again. Songs, playlists and settings stay.", "Log out", backend::logOut) { confirm = null }
     }
