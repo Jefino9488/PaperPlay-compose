@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -26,6 +27,7 @@ fun interface CoverLoader {
 }
 
 val LocalCoverLoader = compositionLocalOf<CoverLoader?> { null }
+val LocalOnMissingCover = compositionLocalOf<((String) -> Unit)?> { null }
 
 /** Cover art, or the mosaic for [key] when there is none. */
 @Composable
@@ -35,8 +37,13 @@ fun CoverImage(
     modifier: Modifier = Modifier,
     size: Dp = 52.dp,
     radius: Dp = 8.dp,
+    coverId: String = key,
 ) {
     val loader = LocalCoverLoader.current
+    val onMissing = LocalOnMissingCover.current
+    LaunchedEffect(coverId, uri) {
+        if (uri == null) onMissing?.invoke(coverId)
+    }
     val painter = if (uri != null && loader != null) loader.painter(uri) else null
     val shape = io.max.paperplay.ui.app.appShape(radius)
     Box(modifier.size(size).clip(shape)) {

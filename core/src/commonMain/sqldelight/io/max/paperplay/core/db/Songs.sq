@@ -113,6 +113,21 @@ WHERE chat_id = :chatId AND message_id = :messageId;
 setCachedBytes:
 UPDATE songs SET cached_bytes = :bytes WHERE unique_id = :uniqueId;
 
+songsNeedingCovers:
+SELECT * FROM songs WHERE cover_path IS NULL ORDER BY date DESC;
+
+updateSongCover:
+UPDATE songs
+SET cover_path = COALESCE(:coverPath, cover_path),
+    cover_url = COALESCE(:coverUrl, cover_url),
+    cover_hi_res = COALESCE(:coverHiRes, cover_hi_res),
+    album = COALESCE(:album, album),
+    year = COALESCE(:year, year),
+    genre = COALESCE(:genre, genre),
+    metadata_source = COALESCE(:metadataSource, metadata_source),
+    enrich_state = COALESCE(:enrichState, enrich_state)
+WHERE unique_id = :uniqueId;
+
 setAudioDetails:
 UPDATE songs SET sample_rate = :sampleRate, bit_depth = :bitDepth, codec = :codec WHERE unique_id = :uniqueId;
 

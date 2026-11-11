@@ -3,7 +3,7 @@ package io.max.paperplay.core.metadata
 /** Text reduced to lowercase letters and digits, for comparing names. */
 fun comparableText(s: String): String = s.lowercase().replace(Regex("[^\\p{L}\\p{N}]+"), "")
 
-private val artistSplit = Regex("\\s*(?:,|&|\\bfeat\\.?\\s|\\bft\\.?\\s)\\s*", RegexOption.IGNORE_CASE)
+private val artistSplit = Regex("\\s*(?:,|&|;|\\s/\\s|\\bfeat\\.?\\s|\\bft\\.?\\s)\\s*", RegexOption.IGNORE_CASE)
 
 /** First name in `A, B & C`, since multi-artist strings rarely match exactly. */
 fun firstArtist(artist: String): String = artist.split(artistSplit).first().trim()
@@ -44,8 +44,10 @@ fun busyDelay(attempt: Int): Long = minOf(60, 2 shl attempt) * 1000L
 
 /** Other iTunes countries worth searching when the default one has no match. */
 fun extraStorefronts(title: String, artist: String): List<String> {
-    val japanese = Regex("[぀-ヿ]").containsMatchIn("$title $artist")
-    return listOfNotNull(if (japanese) "JP" else null, "IN")
+    val text = "$title $artist"
+    val japanese = Regex("[぀-ヿ]").containsMatchIn(text)
+    val cjk = Regex("[一-鿿]").containsMatchIn(text)
+    return listOfNotNull(if (japanese) "JP" else null, if (cjk && !japanese) "TW" else null, "IN")
 }
 
 class LrcLine(val timeMs: Long, val text: String)

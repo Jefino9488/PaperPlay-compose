@@ -23,6 +23,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
@@ -69,6 +70,13 @@ internal fun fileOfMessage(message: JsonObject): JsonObject? {
     return payload.obj("audio") ?: payload.obj("document")
 }
 
+/** The embedded cover thumbnail `file` inside an audio or document message, if any. */
+internal fun thumbFileOfMessage(message: JsonObject): JsonObject? {
+    val payload = audioPayload(message.obj("content") ?: return null) ?: return null
+    val thumb = payload.obj("album_cover_thumbnail") ?: payload.obj("thumbnail") ?: return null
+    return thumb.obj("file")
+}
+
 private fun topicIdOf(message: JsonObject): Long? = message.obj("topic_id")?.long("forum_topic_id")
 
 /** A song row for [message] (a TDLib `message` object), or null when it is not audio. */
@@ -112,7 +120,7 @@ class ScanProgress(val text: String, val fraction: Double?)
 class Scanner(
     private val repo: LibraryRepository,
     private val scope: CoroutineScope,
-    private val minPause: Duration = 3.seconds,
+    private val minPause: Duration = 1500.milliseconds,
     private val maxPause: Duration = 1.minutes,
 ) {
     private var td: TdClient? = null
@@ -124,6 +132,10 @@ class Scanner(
 
     /** Null when idle. */
     val progress: StateFlow<ScanProgress?> = _progress
+
+    /** When on, ids that come back empty before the end are asked for once more (used by the one-time check after a restore). */
+    @kotlin.concurrent.Volatile
+    var retryEmptyIds = false
 
     private val _report = MutableStateFlow<String?>(null)
 
@@ -224,12 +236,15 @@ class Scanner(
      * Returns ids of all song messages seen, or null if the scan failed. [endHint] is a message id known
      * to exist, for a first read.
      */
+    private fun effectiveMinPause(): Duration {
+        val rpm = repo.pref("rate_reading")?.toLongOrNull()?.coerceIn(1L, 1200L)
+        return if (rpm != null) (60_000L / rpm).milliseconds else minPause
+    }
+
     suspend fun scanChat(chat: LibraryChat, full: Boolean = false, endHint: Long = 0): Set<Long>? {
         val client = td ?: return null
         val rows = repo.songsInChat(chat.id)
         val last = chat.last_scanned_message_id
-        val knownEnd = maxOf(endHint, rows.lastOrNull()?.message_id ?: 0, last ?: 0)
-        val emptyLimit = if (chat.walk_done) 3 else 20
         var next = if (full || last == null) MESSAGE_ID_STEP else last + MESSAGE_ID_STEP
         var newest = last ?: 0
         var empties = 0
@@ -237,9 +252,17 @@ class Scanner(
         var holes = 0
         var recovered = 0
         val seen = mutableSetOf<Long>()
+        val initialFloor = effectiveMinPause()
+        if (pause < initialFloor) pause = initialFloor
+        var chatTitle = chat.title
         _error.value = null
         try {
-            introduceChat(client, chat.id)
+            val meta = introduceChat(client, chat.id)
+            if (meta.title != null && meta.title != chatTitle) {
+                chatTitle = meta.title
+                repo.renameChat(chat.id, chatTitle)
+            }
+            val knownEnd = maxOf(endHint, rows.lastOrNull()?.message_id ?: 0, last ?: 0, meta.lastMessageId)
             while (true) {
                 if (repo.chat(chat.id) == null) return seen // Removed while reading.
                 val page = retrying {
@@ -248,13 +271,14 @@ class Scanner(
                         put("message_ids", JsonArray(idsFrom(next, WALK_BATCH).map(::JsonPrimitive)))
                     })
                 }
-                if (pause > minPause) pause = maxOf(minPause, pause * 0.85)
+                val floorPause = effectiveMinPause()
+                if (pause > floorPause) pause = maxOf(floorPause, pause * 0.85)
                 val raw = (page["messages"] as? JsonArray).orEmpty()
                 val requested = idsFrom(next, WALK_BATCH)
                 val got = raw.filterIsInstance<JsonObject>().toMutableList()
                 // An id that came back empty and lies before the end may still exist: ask for those once more.
                 val empty = requested.filterIndexed { i, id -> id <= knownEnd && raw.getOrNull(i) !is JsonObject }
-                if (empty.isNotEmpty()) {
+                if (retryEmptyIds && empty.isNotEmpty()) {
                     delay(pause)
                     val again = retrying {
                         client.call(request("getMessages") { put("chat_id", chat.id); put("message_ids", JsonArray(empty.map(::JsonPrimitive))) })
@@ -278,10 +302,11 @@ class Scanner(
                 val share = if ((full || !chat.walk_done) && knownEnd > 0 && next <= knownEnd) next.toDouble() / knownEnd else null
                 val counts = "${seen.size} songs read, $added new"
                 _progress.value = ScanProgress(
-                    if (share == null) "Checking ${chat.title}: $counts"
-                    else "Syncing ${chat.title}: ${minOf(next, knownEnd) / MESSAGE_ID_STEP} of ${knownEnd / MESSAGE_ID_STEP} messages, $counts",
+                    if (share == null) "Checking $chatTitle: $counts"
+                    else "Syncing $chatTitle: ${minOf(next, knownEnd) / MESSAGE_ID_STEP} of ${knownEnd / MESSAGE_ID_STEP} messages, $counts",
                     share,
                 )
+                val emptyLimit = if (chat.walk_done || (meta.lastMessageId > 0L && next > meta.lastMessageId)) 2 else 6
                 if (messages.isNotEmpty() || next <= knownEnd) empties = 0 else if (++empties >= emptyLimit) break
                 delay(pause)
             }
@@ -290,12 +315,14 @@ class Scanner(
             if (!full) caughtUp.update { it + chat.id }
             return seen
         } catch (e: TdError) {
-            _error.value = "${chat.title}: scan failed, ${e.message}"
+            _error.value = "$chatTitle: scan failed, ${e.message}"
             return null
         } finally {
             _progress.value = null
         }
     }
+
+    private data class ChatMeta(val title: String? = null, val lastMessageId: Long = 0L)
 
     /**
      * A bot's TDLib database starts empty, so a channel is unknown to it ("Chat not found") until it is introduced.
@@ -303,24 +330,35 @@ class Scanner(
      * is then fetched, which is what makes its messages readable. Failures here are not fatal: the read that
      * follows reports what is really wrong (the bot is not in the channel, or offline).
      */
-    private suspend fun introduceChat(client: TdClient, chatId: Long) {
+    private suspend fun introduceChat(client: TdClient, chatId: Long): ChatMeta {
         val group = -chatId - 1_000_000_000_000
-        if (group <= 0) return // Not a channel or supergroup id.
-        for (force in listOf(false, true)) {
+        if (group > 0) {
+            for (force in listOf(false, true)) {
+                try {
+                    client.call(request("createSupergroupChat") { put("supergroup_id", group); put("force", force) })
+                    break
+                } catch (_: TdError) {
+                    // Offline, or the bot has not seen the channel; the forced attempt needs no network.
+                }
+            }
             try {
-                client.call(request("createSupergroupChat") { put("supergroup_id", group); put("force", force) })
-                break
+                withTimeout(10.seconds) { client.call(request("getSupergroup") { put("supergroup_id", group) }) }
             } catch (_: TdError) {
-                // Offline, or the bot has not seen the channel; the forced attempt needs no network.
+                // The bot is not in the channel.
+            } catch (_: TimeoutCancellationException) {
+                // Offline.
             }
         }
-        try {
-            withTimeout(10.seconds) { client.call(request("getSupergroup") { put("supergroup_id", group) }) }
-            withTimeout(10.seconds) { client.call(request("getChat") { put("chat_id", chatId) }) }
+        return try {
+            val chat = withTimeout(10.seconds) { client.call(request("getChat") { put("chat_id", chatId) }) }
+            ChatMeta(
+                title = chat.str("title")?.trim()?.takeIf { it.isNotEmpty() },
+                lastMessageId = chat.obj("last_message")?.long("id") ?: 0L,
+            )
         } catch (_: TdError) {
-            // The bot is not in the channel.
+            ChatMeta()
         } catch (_: TimeoutCancellationException) {
-            // Offline.
+            ChatMeta()
         }
     }
 
@@ -338,7 +376,7 @@ class Scanner(
         }
     }
 
-    private companion object {
-        const val WALK_BATCH = 50
+    companion object {
+        const val WALK_BATCH = 100
     }
 }

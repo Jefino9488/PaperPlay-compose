@@ -1,11 +1,13 @@
-﻿package io.max.paperplay.ui.app
+package io.max.paperplay.ui.app
 
 import io.max.paperplay.core.app.AppServices
 import io.max.paperplay.core.app.NowPlaying
 import io.max.paperplay.core.app.Repeat
 import io.max.paperplay.core.library.LibraryChat
 import io.max.paperplay.core.library.Song
+import io.max.paperplay.core.recs.DailyMix
 import io.max.paperplay.core.recs.DailyMixes
+import io.max.paperplay.core.recs.HomeMix
 import io.max.paperplay.core.recs.HomeShelves
 import io.max.paperplay.core.recs.TasteList
 import io.max.paperplay.core.recs.TasteSettings
@@ -39,8 +41,10 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlin.concurrent.Volatile
 
 data class LogLine(val at: Long, val source: String, val message: String, val error: Boolean = false)
 
@@ -65,10 +69,27 @@ class CoreBackend(val services: AppServices) {
     private val repo = services.library
 
     @Volatile private var byId: Map<String, Song> = emptyMap()
+    @Volatile private var byGroupKey: Map<String, Song> = emptyMap()
+
+    fun ensureCover(key: String) {
+        val song = byId[key] ?: byGroupKey[key] ?: return
+        services.covers.prioritize(listOf(song))
+    }
 
     val library: StateFlow<LibraryUi> = combine(
         repo.allSongs().map { songs ->
             byId = songs.associateBy { it.unique_id }
+            val groupsByKey = HashMap<String, Song>(songs.size)
+            for (s in songs) {
+                for (k in listOf(s.album, s.artist, s.title)) {
+                    if (k.isBlank()) continue
+                    val prev = groupsByKey[k]
+                    if (prev == null || (prev.cover_path != null && s.cover_path == null)) {
+                        groupsByKey[k] = s
+                    }
+                }
+            }
+            byGroupKey = groupsByKey
             LibraryUi(
                 songs = Load.Ready(songs.map(Song::toUi)),
                 albums = groups(songs, { it.album }) { name, list -> GroupUi(name, name, albumSubtitle(list), covers(list)) },
@@ -86,10 +107,14 @@ class CoreBackend(val services: AppServices) {
         .flowOn(Dispatchers.Default)
         .stateIn(scope, SharingStarted.Eagerly, LibraryUi())
 
-    val favorites: StateFlow<List<SongUi>> = repo.favorites().map { it.map(Song::toUi) }
+    val favorites: StateFlow<List<SongUi>> = repo.favorites()
+        .onEach { if (it.isNotEmpty()) services.covers.prioritize(it.take(20)) }
+        .map { it.map(Song::toUi) }
         .flowOn(Dispatchers.Default).stateIn(scope, SharingStarted.Eagerly, emptyList())
 
-    val recents: StateFlow<List<SongUi>> = repo.recents(30).map { it.map(Song::toUi) }
+    val recents: StateFlow<List<SongUi>> = repo.recents(30)
+        .onEach { if (it.isNotEmpty()) services.covers.prioritize(it.take(20)) }
+        .map { it.map(Song::toUi) }
         .flowOn(Dispatchers.Default).stateIn(scope, SharingStarted.Eagerly, emptyList())
 
     private class HomeInput(
@@ -293,57 +318,101 @@ class CoreBackend(val services: AppServices) {
         }
     }
 
+    private class HomePlanState(val plan: HomeMix? = null, val mixes: List<DailyMix> = emptyList())
+
     /**
      * The Home page plan: quick tiles, shelves and daily mixes. Replanned when the library, the favorites or the
-     * day changes, not on every play, so rows stay put while listening.
+     * day changes, not on every play or cover update, so rows stay put while cover art pops in live.
      */
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-    val home: StateFlow<HomeUi> = combine(
+    private val homePlan: Flow<HomePlanState> = combine(
         repo.allSongs(), repo.recents(30), repo.favorites(), library, taste.combine(weather) { t, w -> t to w },
     ) { songs, recent, fav, lib, tw ->
         HomeInput(songs, recent, fav, minOf(lib.playlists.size, 3) + if (fav.isEmpty()) 0 else 1, tw.first, tw.second)
     }
-        .distinctUntilChangedBy { "${it.songs.size}:${it.favorites.size}:${it.reserved}:${it.taste.at}:${it.weather}:${nowMoment().dayKey}" }
+        .distinctUntilChangedBy { "${it.songs.size}:${it.favorites.size}:${it.reserved}:${it.taste.at}:${it.taste.showMixes}:${it.weather}:${nowMoment().dayKey}" }
         .transformLatest { input ->
-            if (input.songs.isEmpty()) { emit(HomeUi()); return@transformLatest }
+            if (input.songs.isEmpty()) { emit(HomePlanState()); return@transformLatest }
             val now = nowMoment()
             val plan = HomeShelves.plan(input.songs, input.recent, input.favorites, now, tileCount = 6 - input.reserved)
-            val base = HomeUi(
-                tiles = plan.tiles.map { CollectionUi(it.title, it.title, "${it.songs.size} songs", it.cover.cover_path, it.songs.map(Song::toUi)) },
-                shelves = plan.shelves.map { s ->
-                    val kind = when (s.kind) { ShelfKind.SONGS -> ShelfKindUi.Songs; ShelfKind.ALBUMS -> ShelfKindUi.Albums; ShelfKind.ARTISTS -> ShelfKindUi.Artists }
-                    ShelfUi(s.title, kind, s.songs.map(Song::toUi), s.groups.map { g ->
-                        val sub = if (kind == ShelfKindUi.Albums) g.cover.artist else "${g.songs.size} songs"
-                        CollectionUi(g.name, g.name, sub, g.cover.cover_path, g.songs.map(Song::toUi))
-                    })
-                },
-            )
+            val leadSongs = buildList {
+                plan.tiles.forEach { add(it.cover); addAll(it.songs.take(1)) }
+                plan.shelves.forEach { s ->
+                    addAll(s.songs.take(8))
+                    s.groups.take(8).forEach { add(it.cover) }
+                }
+            }.distinctBy { it.unique_id }
+            if (leadSongs.isNotEmpty()) services.covers.prioritize(leadSongs)
             // Tiles and shelves show at once; the slower daily mixes join when they are ready.
-            emit(base)
+            emit(HomePlanState(plan = plan))
             if (!input.taste.showMixes) return@transformLatest
             val daily = runCatching {
                 DailyMixes.build(input.songs, now, weather = input.weather, lists = tasteLists(input.favorites, input.taste), options = input.taste)
             }.getOrDefault(emptyList())
-            emit(base.copy(mixes = daily.map { m ->
-                CollectionUi(m.mood.id, m.title, m.songs.take(3).joinToString(", ") { it.artist }, null, m.songs.map(Song::toUi), covers(m.songs))
-            }))
+            val mixLead = daily.flatMap { it.songs.take(4) }.distinctBy { it.unique_id }
+            if (mixLead.isNotEmpty()) services.covers.prioritize(mixLead)
+            emit(HomePlanState(plan = plan, mixes = daily))
         }
+
+    val home: StateFlow<HomeUi> = combine(repo.allSongs(), homePlan) { songs, state ->
+        val plan = state.plan ?: return@combine HomeUi()
+        val freshById = songs.associateBy { it.unique_id }
+        fun fresh(s: Song) = freshById[s.unique_id] ?: s
+        fun coverOf(lead: Song, groupSongs: List<Song>): String? {
+            val f = fresh(lead)
+            return (f.cover_path ?: f.cover_url)
+                ?: groupSongs.firstNotNullOfOrNull { it.cover_path ?: it.cover_url }
+        }
+        HomeUi(
+            tiles = plan.tiles.map { t ->
+                val ts = t.songs.map(::fresh)
+                CollectionUi(t.title, t.title, "${ts.size} songs", coverOf(t.cover, ts), ts.map(Song::toUi))
+            },
+            shelves = plan.shelves.map { s ->
+                val kind = when (s.kind) { ShelfKind.SONGS -> ShelfKindUi.Songs; ShelfKind.ALBUMS -> ShelfKindUi.Albums; ShelfKind.ARTISTS -> ShelfKindUi.Artists }
+                val ss = s.songs.map(::fresh)
+                ShelfUi(s.title, kind, ss.map(Song::toUi), s.groups.map { g ->
+                    val gs = g.songs.map(::fresh)
+                    val sub = if (kind == ShelfKindUi.Albums) fresh(g.cover).artist else "${gs.size} songs"
+                    CollectionUi(g.name, g.name, sub, coverOf(g.cover, gs), gs.map(Song::toUi))
+                })
+            },
+            mixes = state.mixes.map { m ->
+                val ms = m.songs.map(::fresh)
+                CollectionUi(m.mood.id, m.title, ms.take(3).joinToString(", ") { it.artist }, null, ms.map(Song::toUi), covers(ms))
+            },
+        )
+    }
         .catch { emit(HomeUi()) }
         .flowOn(Dispatchers.Default).stateIn(scope, SharingStarted.Eagerly, HomeUi())
 
-    private var queueCache: Pair<List<Song>, List<SongUi>> = emptyList<Song>() to emptyList()
+    private var queueCache: Triple<List<Song>, Long, List<SongUi>> = Triple(emptyList(), -1L, emptyList())
 
-    val playback: StateFlow<PlaybackUiState> = services.playback.nowPlaying.map { np -> np.toUi() }
+    val playback: StateFlow<PlaybackUiState> = combine(
+        services.playback.nowPlaying.onEach { np ->
+            val idx = np.index.coerceAtLeast(0)
+            val upcoming = if (idx < np.queue.size) np.queue.subList(idx, minOf(idx + 3, np.queue.size)) else emptyList()
+            val priority = (listOfNotNull(np.song) + upcoming).distinctBy { it.unique_id }
+            if (priority.isNotEmpty()) services.covers.prioritize(priority)
+        },
+        repo.changes,
+    ) { np, changes -> np.toUi(changes) }
         .flowOn(Dispatchers.Default).stateIn(scope, SharingStarted.Eagerly, PlaybackUiState())
 
-    private fun NowPlaying.toUi(): PlaybackUiState {
-        // The queue is the same list object while a song plays, so it is mapped once per queue, not per tick.
-        val ui = if (queueCache.first === queue) queueCache.second else queue.map(Song::toUi).also { queueCache = queue to it }
+    private fun NowPlaying.toUi(changes: Long): PlaybackUiState {
+        // The queue is mapped once per queue or library cover update, not per position tick.
+        val ui = if (queueCache.first === queue && queueCache.second == changes) {
+            queueCache.third
+        } else {
+            queue.map { (byId[it.unique_id] ?: it).toUi() }.also { queueCache = Triple(queue, changes, it) }
+        }
+        val currentSong = song?.let { byId[it.unique_id] ?: it }
         return PlaybackUiState(
-            current = song?.toUi(),
+            current = currentSong?.toUi(),
             playing = isPlaying,
             positionMs = positionMs,
             durationMs = durationMs,
+            bufferedMs = bufferedMs,
             shuffle = shuffle,
             repeat = when (repeat) { Repeat.OFF -> RepeatUi.Off; Repeat.ALL -> RepeatUi.All; Repeat.ONE -> RepeatUi.One },
             queue = ui,
@@ -362,10 +431,18 @@ class CoreBackend(val services: AppServices) {
     }.stateIn(scope, SharingStarted.Eagerly, ConnectionUi(hasCredentials = services.hasCredentials))
 
     // Reading
-    fun album(name: String): Flow<List<SongUi>> = repo.album(name).map { it.map(Song::toUi) }.flowOn(Dispatchers.Default)
-    fun artist(name: String): Flow<List<SongUi>> = repo.artist(name).map { it.map(Song::toUi) }.flowOn(Dispatchers.Default)
-    fun playlist(id: Long): Flow<List<SongUi>> = repo.playlistSongs(id).map { it.map(Song::toUi) }.flowOn(Dispatchers.Default)
-    fun search(query: String): Flow<List<SongUi>> = repo.search(query).map { it.map(Song::toUi) }.flowOn(Dispatchers.Default)
+    fun album(name: String): Flow<List<SongUi>> = repo.album(name)
+        .onEach { if (it.isNotEmpty()) services.covers.prioritize(it.take(30)) }
+        .map { it.map(Song::toUi) }.flowOn(Dispatchers.Default)
+    fun artist(name: String): Flow<List<SongUi>> = repo.artist(name)
+        .onEach { if (it.isNotEmpty()) services.covers.prioritize(it.take(30)) }
+        .map { it.map(Song::toUi) }.flowOn(Dispatchers.Default)
+    fun playlist(id: Long): Flow<List<SongUi>> = repo.playlistSongs(id)
+        .onEach { if (it.isNotEmpty()) services.covers.prioritize(it.take(30)) }
+        .map { it.map(Song::toUi) }.flowOn(Dispatchers.Default)
+    fun search(query: String): Flow<List<SongUi>> = repo.search(query)
+        .onEach { if (it.isNotEmpty()) services.covers.prioritize(it.take(20)) }
+        .map { it.map(Song::toUi) }.flowOn(Dispatchers.Default)
 
     // Playing
     fun play(songs: List<SongUi>, index: Int) {
@@ -485,7 +562,7 @@ private fun <T> groups(songs: List<Song>, key: (Song) -> String, make: (String, 
     songs.filter { key(it).isNotBlank() }.groupBy { key(it) }.entries
         .sortedBy { it.key.lowercase() }.map { make(it.key, it.value) }
 
-private fun covers(songs: List<Song>): List<String?> = songs.mapNotNull { it.cover_path }.distinct().take(4)
+private fun covers(songs: List<Song>): List<String?> = songs.mapNotNull { it.cover_path ?: it.cover_url }.distinct().take(4)
 
 private fun albumSubtitle(list: List<Song>): String {
     val artists = list.map { it.artist }.distinct()

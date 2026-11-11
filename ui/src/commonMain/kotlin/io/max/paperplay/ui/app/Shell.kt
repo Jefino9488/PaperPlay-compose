@@ -1,4 +1,4 @@
-﻿package io.max.paperplay.ui.app
+package io.max.paperplay.ui.app
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -49,6 +49,7 @@ import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import io.max.paperplay.ui.PlatformBackHandler
 import io.max.paperplay.ui.components.LocalCoverLoader
+import io.max.paperplay.ui.components.LocalOnMissingCover
 import io.max.paperplay.ui.isPhone
 import io.max.paperplay.ui.state.Load
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -125,7 +126,7 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
     val g1 by androidx.compose.animation.animateColorAsState(tint.copy(alpha = 0.32f).compositeOver(base), androidx.compose.animation.core.tween(700))
     val pageBg = if (prefs.coverGradient) Modifier.background(Brush.verticalGradient(0f to g0, 0.45f to g1, 1f to base)) else Modifier.background(base)
 
-    CompositionLocalProvider(LocalCoverLoader provides loader) {
+    CompositionLocalProvider(LocalCoverLoader provides loader, LocalOnMissingCover provides backend::ensureCover) {
         Box(Modifier.fillMaxSize().then(pageBg)) {
             if (isPhone) {
                 val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()

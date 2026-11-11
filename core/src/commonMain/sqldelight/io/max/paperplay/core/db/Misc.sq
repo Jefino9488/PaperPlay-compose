@@ -61,6 +61,9 @@ INSERT OR REPLACE INTO library_chats VALUES ?;
 deleteChat:
 DELETE FROM library_chats WHERE id = :chatId;
 
+renameChat:
+UPDATE library_chats SET title = :title WHERE id = :chatId;
+
 advanceScanned:
 UPDATE library_chats SET last_scanned_message_id = :messageId
 WHERE id = :chatId AND walk_done = 1 AND COALESCE(last_scanned_message_id, 0) < :messageId;

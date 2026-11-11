@@ -1,6 +1,7 @@
 package io.max.paperplay.core.app
 
 import io.max.paperplay.core.db.LibraryDatabase
+import io.max.paperplay.core.integrations.defaultHttpFetcher
 import io.max.paperplay.core.library.LibraryRepo
 import io.max.paperplay.core.library.newUuid
 import io.max.paperplay.core.telegram.TdClient
@@ -15,15 +16,21 @@ import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 import kotlin.time.Clock
 
 /**
@@ -68,13 +75,23 @@ class AppServices(
 
     /** Saves the index to Telegram (Saved Messages) and restores it after a login. */
     val indexCloud: io.max.paperplay.core.account.IndexCloud by lazy { io.max.paperplay.core.account.IndexCloud(account, chatIndex, library) }
-    val resolver = TrackResolver { client }
+    val resolver = TrackResolver({ client })
+    val covers = CoverService(
+        platform.dataDir,
+        { if (scanner.progress.value == null) client else null },
+        library,
+        defaultHttpFetcher(),
+        scope,
+        clock,
+    )
 
     /** Created on first use, so a screen that never plays does not load the audio stack. */
     val playback: PlaybackController by lazy { PlaybackController(platform.createPlayer(), resolver, library, scope) }
 
     @Volatile private var client: TdClient? = null
     private var runtime: TdRuntime? = null
+    private val cachePending = MutableStateFlow<Map<String, Pair<Long, Boolean>>>(emptyMap())
+    private var cacheFlushJob: Job? = null
     private val _auth = MutableStateFlow("")
     private val _error = MutableStateFlow<String?>(null)
 
@@ -129,6 +146,11 @@ class AppServices(
                 scanner.attach(c)
                 launch { c.auth.collect { _auth.value = it } }
                 launch { c.authError.collect { _error.value = it } }
+                launch {
+                    c.updates.collect { u ->
+                        if (u.type == "updateFile") u.obj("file")?.let { onFileUpdate(c, it) }
+                    }
+                }
                 c.start()
                 c.ready()
                 scanner.catchUp()
@@ -137,9 +159,15 @@ class AppServices(
                 // missing. Read every chat from the start once; only a finished read counts.
                 if (library.pref("scan_verified") != "2") {
                     var all = true
-                    for (chat in library.chatList()) if (!scanner.rescanChat(chat)) all = false
+                    scanner.retryEmptyIds = true
+                    try {
+                        for (chat in library.chatList()) if (!scanner.rescanChat(chat)) all = false
+                    } finally {
+                        scanner.retryEmptyIds = false
+                    }
                     if (all) library.setPref("scan_verified", "2")
                 }
+                covers.start()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: TdError) {
@@ -162,7 +190,10 @@ class AppServices(
     /** Adds a library chat and reads it. */
     fun addChat(id: Long, title: String) {
         library.addChat(id, title)
-        scope.launch { library.chat(id)?.let { scanner.scanChat(it) } }
+        scope.launch {
+            library.chat(id)?.let { scanner.scanChat(it) }
+            covers.kick()
+        }
     }
 
     /** Deletes the audio TDLib downloaded for streaming. Songs download again when played. False when not connected. */
@@ -182,6 +213,52 @@ class AppServices(
         driver.execute(null, "UPDATE songs SET cached_bytes = 0 WHERE pinned = 0", 0)
         library.invalidate()
         return true
+    }
+
+    private fun onFileUpdate(c: TdClient, file: kotlinx.serialization.json.JsonObject) {
+        resolver.onFileUpdate(file)
+        val uid = file.obj("remote")?.str("unique_id")?.takeIf { it.isNotEmpty() } ?: return
+        val local = file.obj("local") ?: return
+        val downloaded = local.long("downloaded_size") ?: return
+        val completed = (local["is_downloading_completed"] as? JsonPrimitive)?.booleanOrNull == true
+        cachePending.update { it + (uid to (downloaded to completed)) }
+        if (completed) {
+            cacheFlushJob?.cancel()
+            cacheFlushJob = scope.launch { flushCache(c) }
+        } else if (cacheFlushJob?.isActive != true) {
+            cacheFlushJob = scope.launch {
+                delay(3.seconds)
+                flushCache(c)
+            }
+        }
+    }
+
+    private suspend fun flushCache(c: TdClient) {
+        val batch = cachePending.getAndUpdate { emptyMap() }
+        if (batch.isEmpty()) return
+        for ((k, entry) in batch) {
+            runCatching { library.setCachedBytes(k, entry.first, notify = entry.second) }
+        }
+        val limit = library.cacheLimit()
+        val rows = library.cachedSongs().filter { !it.pinned }.sortedBy { it.last_played_at ?: 0L }
+        var total = rows.sumOf { it.cached_bytes }
+        val protected = resolver.activeIds() + batch.keys
+        for (s in rows) {
+            if (total <= limit) break
+            if (s.unique_id in protected) continue
+            val deleted = runCatching {
+                val msg = c.call(request("getMessage") { put("chat_id", s.chat_id); put("message_id", s.message_id) })
+                val fileId = fileOfMessage(msg)?.long("id")?.toInt()
+                if (fileId != null && fileId != 0) {
+                    c.call(request("deleteFile") { put("file_id", fileId) })
+                    true
+                } else false
+            }.getOrDefault(false)
+            if (deleted) {
+                library.setCachedBytes(s.unique_id, 0L, notify = true)
+                total -= s.cached_bytes
+            }
+        }
     }
 
     /** Disconnects and forgets the bot's credentials, so setup shows again. The library and prefs stay. */

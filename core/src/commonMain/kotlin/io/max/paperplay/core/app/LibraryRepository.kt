@@ -1,4 +1,4 @@
-﻿package io.max.paperplay.core.app
+package io.max.paperplay.core.app
 
 import io.max.paperplay.core.library.LibraryChat
 import io.max.paperplay.core.library.LibraryRepo
@@ -68,7 +68,40 @@ class LibraryRepository(val repo: LibraryRepo, private val clock: () -> Long) {
     }
 
     fun songByUniqueId(uniqueId: String): Song? = songs.songByUniqueId(uniqueId).executeAsOneOrNull()
+    fun setCachedBytes(uniqueId: String, bytes: Long, notify: Boolean = false) {
+        if (notify) write { songs.setCachedBytes(bytes, uniqueId) } else songs.setCachedBytes(bytes, uniqueId)
+    }
+    fun cachedSongs(): List<Song> = songs.cachedSongs().executeAsList()
+    fun cacheLimit(): Long = repo.cacheLimit()
     fun songsInChat(chatId: Long): List<Song> = songs.songsInChat(chatId).executeAsList()
+    fun songsNeedingCovers(): List<Song> = songs.songsNeedingCovers().executeAsList()
+    fun updateCover(
+        uniqueId: String,
+        coverPath: String? = null,
+        coverUrl: String? = null,
+        coverHiRes: Boolean? = null,
+        album: String? = null,
+        year: Long? = null,
+        genre: String? = null,
+        metadataSource: String? = null,
+        enrichState: Long? = null,
+        notify: Boolean = true,
+    ) {
+        val block = {
+            songs.updateSongCover(
+                coverPath = coverPath,
+                coverUrl = coverUrl,
+                coverHiRes = coverHiRes,
+                album = album,
+                year = year,
+                genre = genre,
+                metadataSource = metadataSource,
+                enrichState = enrichState,
+                uniqueId = uniqueId,
+            )
+        }
+        if (notify) write { block() } else block()
+    }
     fun chatList(): List<LibraryChat> = misc.chats().executeAsList()
     fun chat(id: Long): LibraryChat? = chatList().firstOrNull { it.id == id }
 
@@ -106,6 +139,7 @@ class LibraryRepository(val repo: LibraryRepo, private val clock: () -> Long) {
     }
     fun advanceScanned(chatId: Long, messageId: Long) = misc.advanceScanned(messageId, chatId)
     fun setScan(chatId: Long, messageId: Long, walkDone: Boolean) = misc.setScan(messageId, walkDone, chatId)
+    fun renameChat(chatId: Long, title: String) = write { misc.renameChat(title, chatId) }
 
     fun pref(key: String): String? = repo.pref(key)
     fun setPref(key: String, value: String) = repo.setPref(key, value)
