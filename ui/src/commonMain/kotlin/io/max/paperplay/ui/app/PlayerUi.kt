@@ -212,20 +212,7 @@ private fun PlayerBody(
                     var showSleep by remember { mutableStateOf(false) }
                     val sleepAt by backend.sleepAt.collectAsState()
                     IconButton({ showSleep = true }) { AppIcon(Icons.Outlined.Bedtime, "Sleep timer", tint = if (sleepAt != null) scheme.primary else scheme.onSurface) }
-                    if (showSleep) androidx.compose.material3.AlertDialog(
-                        onDismissRequest = { showSleep = false },
-                        title = { Text("Sleep timer") },
-                        text = {
-                            Column {
-                                sleepAt?.let { end -> Text("Pauses in about ${maxOf(1L, (end - nowMoment().epochMs + 59_999) / 60_000)} min", Modifier.padding(bottom = 8.dp)) }
-                                listOf(15, 30, 45, 60, 90).forEach { m ->
-                                    androidx.compose.material3.TextButton({ backend.setSleepTimer(m); showSleep = false }) { Text("$m minutes") }
-                                }
-                            }
-                        },
-                        confirmButton = { androidx.compose.material3.TextButton({ backend.setSleepTimer(null); showSleep = false }) { Text("Turn off") } },
-                        dismissButton = { androidx.compose.material3.TextButton({ showSleep = false }) { Text("Close") } },
-                    )
+                    if (showSleep) SleepTimerDialog(backend) { showSleep = false }
                     if (onQueue != null) IconButton(onQueue) { AppIcon(Icons.Rounded.QueueMusic, "Queue") }
                 }
             }
@@ -417,7 +404,7 @@ private fun SongInfoDialogPreview() {
 
 /** The song's lyrics. Timed lyrics follow the song; plain ones just scroll. */
 @Composable
-private fun LyricsDialog(id: String, title: String, positionMs: Long, backend: CoreBackend, onClose: () -> Unit) {
+internal fun LyricsDialog(id: String, title: String, positionMs: Long, backend: CoreBackend, onClose: () -> Unit) {
     var text by remember(id) { mutableStateOf<String?>(null) }
     var loaded by remember(id) { mutableStateOf(false) }
     androidx.compose.runtime.LaunchedEffect(id) { text = backend.lyricsFor(id); loaded = true }
@@ -445,5 +432,25 @@ private fun LyricsDialog(id: String, title: String, positionMs: Long, backend: C
             }
         },
         confirmButton = { androidx.compose.material3.TextButton(onClose) { Text("Close") } },
+    )
+}
+
+/** Pauses playback after a chosen time. */
+@Composable
+internal fun SleepTimerDialog(backend: CoreBackend, onClose: () -> Unit) {
+    val sleepAt by backend.sleepAt.collectAsState()
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onClose,
+        title = { Text("Sleep timer") },
+        text = {
+            Column {
+                sleepAt?.let { end -> Text("Pauses in about ${maxOf(1L, (end - nowMoment().epochMs + 59_999) / 60_000)} min", Modifier.padding(bottom = 8.dp)) }
+                listOf(15, 30, 45, 60, 90).forEach { m ->
+                    androidx.compose.material3.TextButton({ backend.setSleepTimer(m); onClose() }) { Text("$m minutes") }
+                }
+            }
+        },
+        confirmButton = { androidx.compose.material3.TextButton({ backend.setSleepTimer(null); onClose() }) { Text("Turn off") } },
+        dismissButton = { androidx.compose.material3.TextButton(onClose) { Text("Close") } },
     )
 }

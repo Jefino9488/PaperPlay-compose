@@ -30,6 +30,8 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.AccountCircle
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Album
+import androidx.compose.material.icons.outlined.Bedtime
+import androidx.compose.material.icons.outlined.Lyrics
 import androidx.compose.material.icons.rounded.Devices
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
@@ -165,6 +167,7 @@ fun PlayerBar(
                     colors = IconButtonDefaults.filledIconButtonColors(containerColor = scheme.onSurface, contentColor = scheme.surface),
                 ) { AppIcon(if (state.playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (state.playing) "Pause" else "Play") }
                 IconButton(backend::next) { AppIcon(Icons.Rounded.SkipNext, "Next") }
+                IconButton(backend::toggleShuffle) { AppIcon(Icons.Rounded.Shuffle, "Shuffle", tint = if (state.shuffle) scheme.primary else scheme.onSurface) }
                 IconButton(backend::cycleRepeat) {
                     AppIcon(if (state.repeat == RepeatUi.One) Icons.Rounded.RepeatOne else Icons.Rounded.Repeat, "Repeat", tint = if (state.repeat != RepeatUi.Off) scheme.primary else scheme.onSurface)
                 }
@@ -178,7 +181,12 @@ fun PlayerBar(
         Row(Modifier.weight(1f), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
             IconButton(onTogglePanel) { AppIcon(Icons.Rounded.ViewSidebar, if (panelOn) "Hide the now playing panel" else "Show the now playing panel", tint = if (panelOn) scheme.primary else scheme.onSurface) }
             IconButton(onOpen) { AppIcon(Icons.Rounded.QueueMusic, "Queue") }
-            IconButton({ actions.notice("Playing on other devices is not built yet.") }) { AppIcon(Icons.Rounded.Devices, "Devices") }
+            var showLyrics by remember { mutableStateOf(false) }
+            var showSleep by remember { mutableStateOf(false) }
+            IconButton({ showLyrics = true }, enabled = song != null) { AppIcon(Icons.Outlined.Lyrics, "Lyrics") }
+            IconButton({ showSleep = true }) { AppIcon(Icons.Outlined.Bedtime, "Sleep timer") }
+            if (showLyrics) song?.let { LyricsDialog(it.id, it.title, state.positionMs, backend) { showLyrics = false } }
+            if (showSleep) SleepTimerDialog(backend) { showSleep = false }
             IconButton({ backend.setVolume(if (volume > 0f) 0f else 1f) }) { AppIcon(if (volume > 0f) Icons.Rounded.VolumeUp else Icons.Rounded.VolumeOff, "Mute") }
             Slider(
                 volume, backend::setVolume, Modifier.width(110.dp),
