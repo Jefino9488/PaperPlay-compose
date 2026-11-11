@@ -23,11 +23,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -281,10 +284,10 @@ private fun RateSlider(key: String, backend: CoreBackend, notice: androidx.compo
 
 @Composable
 private fun ChannelsPage(conn: ConnectionUi, backend: CoreBackend) {
-    var chatId by remember { mutableStateOf("") }
-    var chatTitle by remember { mutableStateOf("") }
-    var chatError by remember { mutableStateOf<String?>(null) }
     var mainChatId by remember { mutableStateOf(backend.mainChatId()) }
+    var showAdd by remember { mutableStateOf(false) }
+    val mainChat = conn.chats.firstOrNull { it.id == mainChatId }
+    val otherChats = conn.chats.filterNot { it.id == mainChatId }
     Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
             when {
@@ -295,42 +298,90 @@ private fun ChannelsPage(conn: ConnectionUi, backend: CoreBackend) {
         )
         if (conn.error != null) Text(conn.error, color = MaterialTheme.colorScheme.error)
         if (!conn.ready) OutlinedButton(backend::connect) { Text("Reconnect") }
-        conn.chats.forEach { chat ->
-            Row(
-                Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text(chat.title, style = MaterialTheme.typography.bodyMedium)
-                    Text(
-                        "${chat.id}${if (chat.id == mainChatId) "  • Main chat" else ""}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = if (chat.id == mainChatId) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                if (chat.id != mainChatId) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Spacer(Modifier.weight(1f))
+            IconButton({ showAdd = true }) { AppIcon(Icons.Rounded.Add, "Add channel") }
+            OutlinedButton(backend::rescan, enabled = conn.ready && conn.chats.isNotEmpty()) { Text("Scan") }
+        }
+        SectionLabel("Main chat")
+        if (mainChat != null) {
+            SettingsRow(
+                mainChat.title,
+                icon = Icons.Rounded.Forum,
+                subtitle = "${mainChat.id}  •  Used for filing and duplicates",
+            )
+        } else {
+            Text(
+                if (conn.chats.isEmpty()) "Add a channel to choose the main chat."
+                else "Choose a channel below as the main chat.",
+                Modifier.padding(horizontal = 20.dp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        SectionLabel("Other channels")
+        if (otherChats.isEmpty()) {
+            Text(
+                if (conn.chats.isEmpty()) "No channels added yet." else "No other channels.",
+                Modifier.padding(horizontal = 20.dp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        otherChats.forEach { chat ->
+            SettingsRow(
+                chat.title,
+                icon = Icons.Rounded.Forum,
+                subtitle = chat.id.toString(),
+                trailing = {
                     OutlinedButton({
                         backend.setMainChat(chat.id)
                         mainChatId = chat.id
                     }) { Text("Set as main") }
-                }
-            }
+                },
+            )
         }
         if (conn.scanText != null) Text(conn.scanText)
-        OutlinedTextField(chatId, { chatId = it }, Modifier.fillMaxWidth(), label = { Text("Chat id, like -1001234567890") }, singleLine = true)
-        OutlinedTextField(chatTitle, { chatTitle = it }, Modifier.fillMaxWidth(), label = { Text("Name (optional)") }, singleLine = true)
-        if (chatError != null) Text(chatError!!, color = MaterialTheme.colorScheme.error)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button({
-                chatError = backend.addChat(chatId, chatTitle)
-                if (chatError == null) { chatId = ""; chatTitle = "" }
-            }, enabled = conn.ready) { Text("Add chat") }
-            OutlinedButton(backend::rescan, enabled = conn.ready && conn.chats.isNotEmpty()) { Text("Scan again") }
-        }
         if (!conn.ready) Text("Connect first to add a chat.", style = MaterialTheme.typography.bodySmall)
     }
+    if (showAdd) AddChannelDialog(backend, conn.ready) { showAdd = false }
+}
+
+@Composable
+private fun AddChannelDialog(backend: CoreBackend, connected: Boolean, onDismiss: () -> Unit) {
+    var chatId by remember { mutableStateOf("") }
+    var chatTitle by remember { mutableStateOf("") }
+    var chatError by remember { mutableStateOf<String?>(null) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Add channel") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(
+                    chatId,
+                    { chatId = it },
+                    label = { Text("Chat id") },
+                    placeholder = { Text("-1001234567890") },
+                    singleLine = true,
+                )
+                OutlinedTextField(
+                    chatTitle,
+                    { chatTitle = it },
+                    label = { Text("Name (optional)") },
+                    singleLine = true,
+                )
+                if (chatError != null) Text(chatError!!, color = MaterialTheme.colorScheme.error)
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    chatError = backend.addChat(chatId, chatTitle)
+                    if (chatError == null) onDismiss()
+                },
+                enabled = connected,
+            ) { Text("Add") }
+        },
+        dismissButton = { TextButton(onDismiss) { Text("Cancel") } },
+    )
 }
 
 @Preview
