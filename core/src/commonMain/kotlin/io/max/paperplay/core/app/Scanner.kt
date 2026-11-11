@@ -144,6 +144,9 @@ class Scanner(
     @kotlin.concurrent.Volatile
     var parallelBatches = 3
 
+    @kotlin.concurrent.Volatile
+    private var calm = false
+
     private val _report = MutableStateFlow<String?>(null)
 
     /** A line about the last finished read of a chat: posts found, new songs, ids that held nothing. */
@@ -245,7 +248,9 @@ class Scanner(
      */
     private fun effectiveMinPause(): Duration {
         val rpm = repo.pref("rate_reading")?.toLongOrNull()?.coerceIn(1L, 1200L)
-        return if (rpm != null) (60_000L / rpm).milliseconds else minPause
+        val base = if (rpm != null) (60_000L / rpm).milliseconds else minPause
+        // After a flood wait the rest of this scan goes one batch at a time with a longer pause.
+        return if (calm) maxOf(base, 1500.milliseconds) else base
     }
 
     suspend fun scanChat(chat: LibraryChat, full: Boolean = false, endHint: Long = 0): Set<Long>? {
@@ -259,6 +264,7 @@ class Scanner(
         var holes = 0
         var recovered = 0
         val seen = mutableSetOf<Long>()
+        calm = false
         val initialFloor = effectiveMinPause()
         if (pause < initialFloor) pause = initialFloor
         var chatTitle = chat.title
@@ -275,7 +281,7 @@ class Scanner(
                 if (repo.chat(chat.id) == null) return seen // Removed while reading.
                 if (window.isEmpty()) {
                     // Several batches are asked for at once; they are used in order below.
-                    val starts = List(parallelBatches.coerceIn(1, 6)) { next + it * WALK_BATCH * MESSAGE_ID_STEP }
+                    val starts = List(if (calm) 1 else parallelBatches.coerceIn(1, 6)) { next + it * WALK_BATCH * MESSAGE_ID_STEP }
                     window.addAll(
                         coroutineScope {
                             starts.map { st ->
@@ -390,6 +396,7 @@ class Scanner(
                 return call()
             } catch (e: TdError) {
                 val wait = e.retryAfter ?: throw e
+                calm = true
                 pause = minOf(maxPause, pause * 1.5)
                 _progress.value = ScanProgress("Telegram rate limit, waiting ${wait}s", null)
                 delay(wait.seconds)
