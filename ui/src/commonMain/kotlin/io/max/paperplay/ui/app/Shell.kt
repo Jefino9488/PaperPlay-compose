@@ -67,6 +67,8 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
 
     // Phone: four tabs. Desktop: a sidebar page id.
     var tab by remember { mutableIntStateOf(0) }
+    var libraryTab by remember { mutableStateOf<Int?>(null) }
+    var profilePage by remember { mutableStateOf<String?>(null) }
     var page by remember { mutableStateOf("home") }
     var detail by remember { mutableStateOf<Detail?>(null) }
     var settings by remember { mutableStateOf(false) }
@@ -103,6 +105,7 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
     PlatformBackHandler(showPlayer) { showPlayer = false }
     PlatformBackHandler(!showPlayer && settings) { if (settingsStack.isEmpty()) settings = false else settingsStack.removeAt(settingsStack.lastIndex) }
     PlatformBackHandler(!showPlayer && !settings && detail != null) { detail = null }
+    PlatformBackHandler(!showPlayer && !settings && detail == null && tab == 3 && profilePage != null) { profilePage = null }
     PlatformBackHandler(!showPlayer && !settings && detail == null && tab != 0) { tab = 0 }
 
     val songs = (lib.songs as? Load.Ready)?.value.orEmpty()
@@ -130,8 +133,24 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
                         d != null -> DetailScreen(d, backend, currentId, actions, { detail = null }, barsHeight)
                         tab == 0 -> HomeScreen(lib, home, favorites, pb, conn, actions, { detail = it }, barsHeight)
                         tab == 1 -> SearchScreen(backend, songs, currentId, actions, { detail = it }, barsHeight)
-                        tab == 2 -> LibraryScreen(lib, favorites, currentId, actions, { detail = it }, { newPlaylist = true }, barsHeight)
-                        else -> ProfileScreen(songs.size, favorites.size, lib.playlists.size, conn, prefs, { settings = true }, barsHeight)
+                        tab == 2 -> LibraryScreen(lib, favorites, currentId, actions, { detail = it }, { newPlaylist = true }, barsHeight, selectedTab = libraryTab)
+                        tab == 3 && profilePage == "tasks" -> TasksPage(conn, Modifier.fillMaxSize().padding(bottom = barsHeight))
+                        else -> ProfileScreen(
+                            songs.size, favorites.size, lib.playlists.size, conn, prefs,
+                            conn.chats.firstOrNull { it.id == backend.mainChatId() }?.title,
+                            onSettings = { id ->
+                                settings = true
+                                settingsStack.clear()
+                                id?.let(settingsStack::add)
+                            },
+                            onTasks = { profilePage = "tasks" },
+                            onLibraryTab = { selected ->
+                                profilePage = null
+                                libraryTab = selected
+                                tab = 2
+                            },
+                            barsHeight,
+                        )
                     }
                 }
                 Column(
@@ -175,10 +194,31 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
                                 d != null -> DetailScreen(d, backend, currentId, actions, { detail = null }, pad)
                                 page == "home" -> HomeScreen(lib, home, favorites, pb, conn, actions, { detail = it }, pad)
                                 page == "search" -> SearchScreen(backend, songs, currentId, actions, { detail = it }, pad)
-                                page == "profile" -> ProfileScreen(songs.size, favorites.size, lib.playlists.size, conn, prefs, { settings = true }, pad)
+                                page == "profile" -> ProfileScreen(
+                                    songs.size, favorites.size, lib.playlists.size, conn, prefs,
+                                    conn.chats.firstOrNull { it.id == backend.mainChatId() }?.title,
+                                    onSettings = { id ->
+                                        settings = true
+                                        settingsStack.clear()
+                                        id?.let(settingsStack::add)
+                                    },
+                                    onTasks = { page = "tasks" },
+                                    onLibraryTab = { selected ->
+                                        page = when (selected) {
+                                            3 -> "playlists"
+                                            4 -> "favorites"
+                                            else -> "songs"
+                                        }
+                                    },
+                                    pad,
+                                )
                                 page == "tasks" -> TasksPage(conn)
                                 page == "upload" -> Column { TopBar("Upload"); NotBuilt("Uploading songs to Telegram") }
                                 page == "songs" -> Column { TopBar("Songs"); SongList(songs, currentId, actions, Modifier.fillMaxSize(), pad, empty = "No songs yet. Add a chat in Settings.") }
+                                page == "playlists" -> Column {
+                                    TopBar("Playlists")
+                                    GroupList(lib.playlists, pad, "No playlists yet.") { detail = Detail.Playlist(it.id, it.name) }
+                                }
                                 page == "albums" -> Column { TopBar("Albums"); GroupGrid(lib.albums, pad, "No albums yet.") { detail = Detail.Album(it.name) } }
                                 page == "artists" -> Column { TopBar("Artists"); GroupList(lib.artists, pad, "No artists yet.", circle = true) { detail = Detail.Artist(it.name) } }
                                 page == "favorites" -> Column { TopBar("Favorites"); SongList(favorites, currentId, actions, Modifier.fillMaxSize(), pad, empty = "No favorites yet.") }

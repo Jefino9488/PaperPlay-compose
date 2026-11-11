@@ -16,6 +16,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.BarChart
+import androidx.compose.material.icons.rounded.CleaningServices
+import androidx.compose.material.icons.rounded.ContentCopy
+import androidx.compose.material.icons.rounded.Devices
+import androidx.compose.material.icons.rounded.Rule
+import androidx.compose.material.icons.rounded.SettingsEthernet
+import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Favorite
@@ -52,14 +58,29 @@ fun TopBar(title: String, modifier: Modifier = Modifier, actions: @Composable ()
 }
 
 @Composable
-fun ProfileScreen(songs: Int, favorites: Int, playlists: Int, conn: ConnectionUi, prefs: UiPrefs, onSettings: () -> Unit, bottomPadding: Dp, modifier: Modifier = Modifier) {
+fun ProfileScreen(
+    songs: Int,
+    favorites: Int,
+    playlists: Int,
+    conn: ConnectionUi,
+    prefs: UiPrefs,
+    mainChatTitle: String?,
+    onSettings: (String?) -> Unit,
+    onTasks: () -> Unit,
+    onLibraryTab: (Int) -> Unit,
+    bottomPadding: Dp,
+    modifier: Modifier = Modifier,
+) {
     LazyColumn(modifier, contentPadding = PaddingValues(bottom = bottomPadding)) {
         item {
-            TopBar("Profile") { IconButton(onSettings) { AppIcon(Icons.Rounded.Settings, "Settings") } }
+            TopBar("Profile") { IconButton({ onSettings(null) }) { AppIcon(Icons.Rounded.Settings, "Settings") } }
         }
         item {
             Column(
-                Modifier.padding(horizontal = 16.dp).fillMaxWidth().partSurface(LookGroup.Cards, MaterialTheme.colorScheme.surfaceContainerLow, RoundedCornerShape(36.dp)).padding(vertical = 40.dp),
+                Modifier.padding(horizontal = 16.dp).fillMaxWidth()
+                    .partSurface(LookGroup.Cards, MaterialTheme.colorScheme.surfaceContainerLow, RoundedCornerShape(36.dp))
+                    .clickable { onSettings("profile") }
+                    .padding(vertical = 40.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Avatar(prefs.profilePhoto, prefs.profileName, 150.dp)
@@ -68,9 +89,9 @@ fun ProfileScreen(songs: Int, favorites: Int, playlists: Int, conn: ConnectionUi
         }
         item {
             Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Stat(Icons.Rounded.MusicNote, songs, "Songs", Modifier.weight(1f))
-                Stat(Icons.Rounded.Favorite, favorites, "Favorites", Modifier.weight(1f))
-                Stat(Icons.Rounded.PlaylistPlay, playlists, "Playlists", Modifier.weight(1f))
+                Stat(Icons.Rounded.MusicNote, songs, "Songs", Modifier.weight(1f)) { onLibraryTab(0) }
+                Stat(Icons.Rounded.Favorite, favorites, "Favorites", Modifier.weight(1f)) { onLibraryTab(4) }
+                Stat(Icons.Rounded.PlaylistPlay, playlists, "Playlists", Modifier.weight(1f)) { onLibraryTab(3) }
             }
         }
         item {
@@ -82,9 +103,33 @@ fun ProfileScreen(songs: Int, favorites: Int, playlists: Int, conn: ConnectionUi
                     AppIcon(if (open) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore, null)
                 }
                 if (open) {
-                    SettingsRow("${conn.chats.size} channels", icon = Icons.Rounded.Forum, subtitle = conn.chats.firstOrNull()?.let { "Main chat: ${it.title}" } ?: "No chat added yet")
-                    SettingsRow("Tasks", icon = Icons.Rounded.TaskAlt, subtitle = conn.scanText ?: "Nothing running")
-                    SettingsRow("Time listened, top songs and artists", icon = Icons.Rounded.BarChart, subtitle = "Not built in this app yet", enabled = false)
+                    NavRow("${conn.chats.size} channels", icon = Icons.Rounded.Forum, subtitle = mainChatTitle?.let { "Main chat: $it" } ?: "No chat added yet") {
+                        onSettings("channels")
+                    }
+                    NavRow("Tasks", icon = Icons.Rounded.TaskAlt, subtitle = conn.scanText ?: "Nothing running", onClick = onTasks)
+                    NavRow("Listening", icon = Icons.Rounded.BarChart, subtitle = "Time listened, top songs and artists") {
+                        onSettings("listening")
+                    }
+                    NavRow("Duplicates", icon = Icons.Rounded.ContentCopy, subtitle = "Find repeated songs and remove the extras") {
+                        onSettings("library")
+                    }
+                    NavRow("Song info left", icon = Icons.Rounded.Rule, subtitle = "See which songs still lack info or a cover") {
+                        onSettings("library")
+                    }
+                }
+            }
+        }
+        item {
+            ProfileSection("Devices", Icons.Rounded.Devices) {
+                NavRow("No other device connected", icon = Icons.Rounded.SettingsEthernet, subtitle = "Sync and play on your other devices") {
+                    onSettings("devices")
+                }
+            }
+        }
+        item {
+            ProfileSection("Storage", Icons.Rounded.Storage) {
+                NavRow("Cache and backup", icon = Icons.Rounded.CleaningServices, subtitle = "Manage cached songs and library backups") {
+                    onSettings("storage")
                 }
             }
         }
@@ -92,9 +137,10 @@ fun ProfileScreen(songs: Int, favorites: Int, playlists: Int, conn: ConnectionUi
 }
 
 @Composable
-private fun Stat(icon: ImageVector, n: Int, label: String, modifier: Modifier) {
+private fun Stat(icon: ImageVector, n: Int, label: String, modifier: Modifier, onClick: () -> Unit) {
     Column(
-        modifier.partSurface(LookGroup.Cards, MaterialTheme.colorScheme.surfaceContainerLow, RoundedCornerShape(32.dp)).padding(vertical = 20.dp),
+        modifier.partSurface(LookGroup.Cards, MaterialTheme.colorScheme.surfaceContainerLow, RoundedCornerShape(32.dp))
+            .clickable(onClick = onClick).padding(vertical = 20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(Modifier.size(56.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer), contentAlignment = Alignment.Center) {
@@ -102,6 +148,21 @@ private fun Stat(icon: ImageVector, n: Int, label: String, modifier: Modifier) {
         }
         Text("$n", Modifier.padding(top = 8.dp), style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary, textAlign = TextAlign.Center)
         Text(label, style = MaterialTheme.typography.bodyMedium)
+    }
+}
+
+@Composable
+private fun ProfileSection(title: String, icon: ImageVector, content: @Composable () -> Unit) {
+    Column(
+        Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth()
+            .partSurface(LookGroup.Cards, MaterialTheme.colorScheme.surfaceContainerLow, RoundedCornerShape(28.dp)),
+    ) {
+        Row(Modifier.fillMaxWidth().padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
+            AppIcon(icon, null, Modifier.padding(end = 16.dp))
+            Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
+            AppIcon(Icons.Rounded.ExpandLess, null)
+        }
+        content()
     }
 }
 
@@ -122,7 +183,10 @@ private fun ProfileScreenPreview() {
         playlists = 3,
         conn = dummyConn,
         prefs = dummyPrefs,
+        mainChatTitle = null,
         onSettings = {},
+        onTasks = {},
+        onLibraryTab = {},
         bottomPadding = 0.dp,
     )
 }

@@ -22,6 +22,10 @@ Telegram bot and chats as storage. It targets Android and desktop JVM.
   - library sorting bottom sheet
   - swipe-up queue opening and long-press seek preview
   - recent search chips above genre tiles
+- Profile cards and statistics are interactive on Android and desktop:
+  profile editing, library tabs, channels, tasks, listening, duplicates/song
+  info settings, devices, storage, and playlist browsing all route to their
+  corresponding screen.
 - Selectable icon family in **Settings → Appearance**:
   - Material 3 Expressive
   - curated Tabler outline icons

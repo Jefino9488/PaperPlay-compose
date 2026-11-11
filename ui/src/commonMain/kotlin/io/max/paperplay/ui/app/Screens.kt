@@ -115,8 +115,9 @@ private val libraryTabs = listOf("Songs", "Albums", "Artists", "Playlists", "Fav
 fun LibraryScreen(
     lib: LibraryUi, favorites: List<SongUi>, currentId: String?, actions: ListActions,
     onOpen: (Detail) -> Unit, onNewPlaylist: () -> Unit, bottomPadding: Dp, modifier: Modifier = Modifier,
+    selectedTab: Int? = null,
 ) {
-    var tab by remember { mutableStateOf(0) }
+    var tab by remember(selectedTab) { mutableStateOf(selectedTab ?: 0) }
     Column(modifier) {
         TopBar("Your library")
         ChipRow(libraryTabs, tab, { tab = it })
