@@ -162,6 +162,22 @@ class ChatIndex(
         store.markCopied(post, clock())
     }
 
+    override suspend fun addToLibrary(post: ChatPost) {
+        library.upsertBotSong(post.asSong().copy(remote_id = io.max.paperplay.core.app.ACCOUNT_REMOTE))
+    }
+
+    override suspend fun addMissingFromMainChat(): Int {
+        val chat = mainChat() ?: return 0
+        val main = main() ?: return 0
+        var added = 0
+        for (p in store.posts(chat)) {
+            if (p.uniqueId in store.copiedIds() || main.has(p)) continue
+            addToLibrary(p)
+            added++
+        }
+        return added
+    }
+
     override fun forget(chatId: Long) {
         store.deleteChat(chatId)
         _chats.value = store.chats().associate { it.id to it.title }

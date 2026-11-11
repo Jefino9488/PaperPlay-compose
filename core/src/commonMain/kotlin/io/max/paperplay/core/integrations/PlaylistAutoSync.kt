@@ -57,6 +57,7 @@ class PlaylistAutoSync(
             while (true) {
                 if (IndexPrefs.auto(library) && account.loggedIn.value) {
                     runCatching { index.refresh() }.onFailure { log("Index refresh: ${it.message}") }
+                    if (library.pref("index_auto_add") == "true") runCatching { index.addMissingFromMainChat() }.onFailure { log("Add from index: ${it.message}") }
                     runCatching { fetchFromIndex() }.onFailure { log("Fetch from index: ${it.message}") }
                 }
                 pause(THREE_HOURS)

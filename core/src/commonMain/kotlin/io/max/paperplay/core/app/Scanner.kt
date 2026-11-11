@@ -227,7 +227,7 @@ class Scanner(
         val seen = scanChat(chat, full = true) ?: return false
         val client = td ?: return false
         for (s in repo.songsInChat(chat.id)) {
-            if (s.message_id in seen) continue
+            if (s.message_id in seen || s.remote_id == ACCOUNT_REMOTE) continue
             // The read can come back empty for a post that exists, so each one is asked for by itself. Only
             // Telegram saying it is gone removes the song.
             try {

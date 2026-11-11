@@ -194,6 +194,17 @@ class UserSession(
     }
 
     /** A client that is logged in; throws [TdError] when it cannot get there. */
+    /** The account's TDLib client once it is logged in, for streaming songs the bot cannot read. */
+    fun streamClient(): TdClient? = client.takeIf { _loggedIn.value }
+
+    /** Starts the client and makes [chatId] known to it, so a song of that chat can be played right away. */
+    suspend fun warmUp(chatId: Long) {
+        runCatching {
+            val c = ready()
+            knowChat(c, chatId, loadList = true)
+        }
+    }
+
     private suspend fun ready(): TdClient {
         val c = open()
         c.ready(30.seconds)

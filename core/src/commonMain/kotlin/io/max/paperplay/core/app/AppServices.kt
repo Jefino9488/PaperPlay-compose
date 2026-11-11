@@ -80,7 +80,7 @@ class AppServices(
 
     /** Saves the index to Telegram (Saved Messages) and restores it after a login. */
     val indexCloud: io.max.paperplay.core.account.IndexCloud by lazy { io.max.paperplay.core.account.IndexCloud(account, chatIndex, library) }
-    val resolver = TrackResolver({ client })
+    val resolver = TrackResolver({ client }, { (account as? io.max.paperplay.core.account.UserSession)?.streamClient() })
     val covers = CoverService(
         platform.dataDir,
         { if (scanner.progress.value == null) client else null },
@@ -160,6 +160,16 @@ class AppServices(
                 c.ready()
                 scanner.catchUp()
                 playlistSync.start()
+                // Songs read through the account need its client running before they are played.
+                launch {
+                    if (!account.loggedIn.value) return@launch
+                    val chats = driver.executeQuery(null, "SELECT DISTINCT chat_id FROM songs WHERE remote_id = ?", { cur ->
+                        val ids = mutableListOf<Long>()
+                        while (cur.next().value) cur.getLong(0)?.let { ids += it }
+                        app.cash.sqldelight.db.QueryResult.Value(ids)
+                    }, 1) { bindString(0, ACCOUNT_REMOTE) }.value
+                    for (id in chats) (account as? io.max.paperplay.core.account.UserSession)?.warmUp(id)
+                }
                 // A library restored from a backup keeps that backup's scan position, so posts it never saw stay
                 // missing. Read every chat from the start once; only a finished read counts.
                 if (library.pref("scan_verified") != "2") {

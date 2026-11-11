@@ -109,6 +109,12 @@ interface ChatIndexApi {
 
     fun forget(chatId: Long)
 
+    /** Adds [post] to the library so it can be played through the owner's account, with no copy in Telegram. */
+    suspend fun addToLibrary(post: ChatPost) {}
+
+    /** Adds every indexed song of the main chat that the library lacks. Returns how many were added. */
+    suspend fun addMissingFromMainChat(): Int = 0
+
     /** The index as text, for saving to Telegram; and the way back. */
     suspend fun export(): String
     suspend fun import(json: String)

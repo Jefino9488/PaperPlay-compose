@@ -219,16 +219,24 @@ class TdStreamSource(
  * Turns songs into lazy [QueueItem]s backed by [TdStreamSource]s created only when opened,
  * keeping active downloads strictly to the current playback window.
  */
+/**
+ * Songs whose posts the bot cannot read (for example posted by another bot) are added to the library through the
+ * owner's account and carry this value as their remote id. They are streamed with the account's TDLib client.
+ */
+const val ACCOUNT_REMOTE = "account"
+
 class TrackResolver(
     private val td: () -> TdClient?,
     val windowSeconds: Long,
+    private val accountTd: () -> TdClient? = { null },
 ) {
     constructor(td: () -> TdClient?) : this(td, TdStreamSource.DEFAULT_WINDOW_SECONDS)
+    constructor(td: () -> TdClient?, accountTd: () -> TdClient?) : this(td, TdStreamSource.DEFAULT_WINDOW_SECONDS, accountTd)
     private val sources = MutableStateFlow<Map<String, TdStreamSource>>(emptyMap())
 
     private fun sourceOf(song: Song): TdStreamSource {
         sources.value[song.unique_id]?.let { return it }
-        val fresh = TdStreamSource(td, song, windowSeconds)
+        val fresh = TdStreamSource(if (song.remote_id == ACCOUNT_REMOTE) accountTd else td, song, windowSeconds)
         sources.update { it + (song.unique_id to (it[song.unique_id] ?: fresh)) }
         return sources.value.getValue(song.unique_id)
     }

@@ -47,6 +47,7 @@ internal fun IndexPage(backend: CoreBackend, stack: MutableList<String>) {
     val list = backend.myChats.collectAsState().value
     var auto by remember { mutableStateOf(backend.pref("index_auto") == "true") }
     var autoCopy by remember { mutableStateOf(backend.pref("index_auto_copy") == "true") }
+    var autoAdd by remember { mutableStateOf(backend.pref("index_auto_add") == "true") }
     var message by remember { mutableStateOf<String?>(null) }
 
     if (!loggedIn) {
@@ -61,6 +62,8 @@ internal fun IndexPage(backend: CoreBackend, stack: MutableList<String>) {
     SectionLabel("Automatic")
     SwitchRow("Index automatically", auto, { auto = it; backend.setPref("index_auto", "$it") }, Icons.Rounded.Sync,
         "Reads only newer posts of indexed chats when the app starts and every few hours")
+    SwitchRow("Add new songs automatically", autoAdd, { autoAdd = it; backend.setPref("index_auto_add", "$it") }, Icons.Rounded.Add,
+        "Adds songs of your main chat that the bot cannot see, such as posts by other bots, when the index refreshes")
     SwitchRow("Fetch songs automatically", autoCopy, { autoCopy = it; backend.setPref("index_auto_copy", "$it") }, Icons.Rounded.ContentCopy,
         "Copies songs found in the index into your main chat when a Spotify playlist still waits for them")
     Column(Modifier.padding(horizontal = 20.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -141,6 +144,19 @@ internal fun ChatSongsPage(backend: CoreBackend, chatId: Long, stack: MutableLis
                 val todo = selection.toCopy(songs)
                 busy = true
                 scope.launch {
+                    todo.forEach { runCatching { backend.chatIndex.addToLibrary(it) } }
+                    status = "Added ${todo.size} to your library. They play through your account."
+                    selection = selection.clear()
+                    busy = false
+                }
+            },
+            enabled = selection.picked.isNotEmpty() && !busy,
+        ) { Text("Add ${selection.picked.size} to library") }
+        OutlinedButton(
+            {
+                val todo = selection.toCopy(songs)
+                busy = true
+                scope.launch {
                     var failed = 0
                     var why: String? = null
                     todo.forEachIndexed { i, p ->
@@ -154,7 +170,7 @@ internal fun ChatSongsPage(backend: CoreBackend, chatId: Long, stack: MutableLis
                 }
             },
             enabled = selection.picked.isNotEmpty() && !busy,
-        ) { Text("Copy ${selection.picked.size} to main chat") }
+        ) { Text("Copy ${selection.picked.size} to main chat instead") }
         val missing = songs.count { !it.inMainChat && !it.copied }
         Text("$missing of ${songs.size} are not in your library", color = MaterialTheme.colorScheme.onSurfaceVariant)
         OutlinedButton({
@@ -167,7 +183,7 @@ internal fun ChatSongsPage(backend: CoreBackend, chatId: Long, stack: MutableLis
 
     for (s in shown.take(limit)) SongPostRow(backend, s, s.post.messageId in selection.picked,
         onToggle = { selection = selection.toggle(s.post.messageId) },
-        onCopy = { scope.launch { status = runCatching { backend.chatIndex.copyToMain(s.post) }.fold({ "Copied ${s.post.title}" }, { "Could not copy ${s.post.title}: ${it.message}" }) } })
+        onCopy = { scope.launch { status = runCatching { backend.chatIndex.addToLibrary(s.post) }.fold({ "Added ${s.post.title} to your library" }, { "Could not add ${s.post.title}: ${it.message}" }) } })
     if (shown.size > limit) Column(Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) { OutlinedButton({ limit += 100 }) { Text("Show more") } }
 }
 
@@ -183,7 +199,7 @@ private fun SongPostRow(backend: CoreBackend, s: IndexedSong, picked: Boolean, o
         subtitle = listOfNotNull(s.post.artist.ifBlank { null }, label).joinToString(" · ").ifEmpty { null },
     ) {
         Checkbox(picked, { onToggle() })
-        IconButton(onCopy, enabled = !s.copied && !s.inMainChat) { AppIcon(Icons.Rounded.Add, "Copy to main chat") }
+        IconButton(onCopy, enabled = !s.copied && !s.inMainChat) { AppIcon(Icons.Rounded.Add, "Add to library") }
     }
 }
 
