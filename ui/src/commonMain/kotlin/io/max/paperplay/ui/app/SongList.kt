@@ -61,11 +61,12 @@ class ListActions(
     val setFavorite: (SongUi, Boolean) -> Unit,
     val addToPlaylist: (Set<String>) -> Unit,
     val notice: (String) -> Unit,
+    val playNext: (SongUi) -> Unit = {},
 )
 
 internal fun ListActions.rowActions() = object : SongActions {
     override fun play(songs: List<SongUi>, index: Int) = this@rowActions.play(songs, index)
-    override fun playNext(song: SongUi) = notice("Play next is not built yet.")
+    override fun playNext(song: SongUi) = this@rowActions.playNext(song)
     override fun setFavorite(song: SongUi, favorite: Boolean) = this@rowActions.setFavorite(song, favorite)
     override fun setPinned(song: SongUi, pinned: Boolean) = notice("Pinning for offline is not built yet.")
     override fun addToPlaylist(song: SongUi) = this@rowActions.addToPlaylist(setOf(song.id))

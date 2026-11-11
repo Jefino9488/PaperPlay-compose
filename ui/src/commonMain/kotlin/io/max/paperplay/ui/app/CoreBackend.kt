@@ -159,6 +159,38 @@ class CoreBackend(val services: AppServices) {
 
     init { refreshWeather() }
 
+    fun playNext(song: SongUi) {
+        byId[song.id]?.let { services.playback.playNext(it) }
+    }
+
+    /** Sleep timer: pauses at [sleepAt] (epoch ms). Null when none is set. */
+    val sleepAt = MutableStateFlow<Long?>(null)
+    private var sleepJob: kotlinx.coroutines.Job? = null
+
+    fun setSleepTimer(minutes: Int?) {
+        sleepJob?.cancel()
+        if (minutes == null) { sleepAt.value = null; return }
+        val end = nowMoment().epochMs + minutes * 60_000L
+        sleepAt.value = end
+        sleepJob = scope.launch {
+            kotlinx.coroutines.delay(minutes * 60_000L)
+            services.playback.pause()
+            sleepAt.value = null
+        }
+    }
+
+    /** Deletes streamed audio TDLib keeps on disk. Reports what happened as text. */
+    fun clearCache(done: (String) -> Unit) {
+        scope.launch {
+            val msg = try {
+                if (services.clearDownloads()) "Cache cleared." else "Connect first, then clear the cache."
+            } catch (e: Exception) {
+                e.message ?: "The cache could not be cleared."
+            }
+            done(msg)
+        }
+    }
+
     // Equalizer: five bands in dB, saved as a JSON list like the Flutter app does.
     val eqOn = MutableStateFlow(repo.pref("eq_on") == "true")
     val eqGains = MutableStateFlow(

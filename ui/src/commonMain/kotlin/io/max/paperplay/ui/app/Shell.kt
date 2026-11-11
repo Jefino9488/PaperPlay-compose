@@ -90,6 +90,7 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
             setFavorite = { s, f -> backend.setFavorite(s.id, f) },
             addToPlaylist = { pickFor = it },
             notice = { scope.launch { snack.showSnackbar(it) } },
+            playNext = { s -> backend.playNext(s); scope.launch { snack.showSnackbar("Plays next") } },
         )
     }
 

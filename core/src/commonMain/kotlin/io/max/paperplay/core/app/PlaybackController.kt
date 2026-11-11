@@ -141,6 +141,26 @@ class PlaybackController(
         apply(order, order.indexOfFirst { it.unique_id == song.unique_id }, engine.positionMs.value, shuffle = on)
     }
 
+    /** Puts [song] right after the one playing, or starts it when nothing is. Keeps the position and pause state. */
+    fun playNext(song: Song) = command {
+        val m = meta.value
+        val idx = engine.currentIndex.value
+        val cur = m.queue.getOrNull(idx)
+        if (cur == null) {
+            original = listOf(song)
+            apply(listOf(song), 0, 0)
+            return@command
+        }
+        val wasPlaying = engine.state.value == PlayerState.Playing
+        val order = m.queue.toMutableList().also { it.add(idx + 1, song) }
+        original = original.toMutableList().also {
+            val at = it.indexOfFirst { s -> s.unique_id == cur.unique_id }
+            it.add(if (at >= 0) at + 1 else it.size, song)
+        }
+        apply(order, idx, engine.positionMs.value)
+        if (!wasPlaying) engine.pause()
+    }
+
     fun setRepeat(repeat: Repeat) = meta.update { Meta(it.queue, it.shuffle, repeat, it.error) }
 
     private fun restart() = command { apply(meta.value.queue, 0, 0) }

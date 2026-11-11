@@ -245,7 +245,7 @@ internal fun SettingsPage(
             SettingsRow("Cache limit: ${bytesText(cacheLimits[idx])}", icon = Icons.Rounded.Storage, subtitle = "Pinned songs are not counted")
             SliderRow("Cache size", idx.toFloat(), 0f..(cacheLimits.size - 1f), { limit = cacheLimits[it.toInt()] }, steps = cacheLimits.size - 2,
                 onDone = { backend.setPref("cache_limit", "$limit") })
-            SettingsRow("Clear cache", icon = Icons.Rounded.CleaningServices, subtitle = "Not built in this app yet", enabled = false)
+            SettingsRow("Clear cache", icon = Icons.Rounded.CleaningServices, subtitle = "Deletes streamed songs stored on this device. They download again when played", onClick = { confirm = "clearcache" })
             SettingsRow("Save backup", icon = Icons.Rounded.SaveAlt, subtitle = "Not built in this app yet", enabled = false)
             SettingsRow("Restore backup", icon = Icons.Rounded.Restore, subtitle = "Replaces your current library", onClick = { confirm = "restore" })
         }
@@ -274,9 +274,11 @@ internal fun SettingsPage(
         "dupes" -> DuplicatesPage(backend)
         else -> NotBuilt(subTitles[id] ?: id)
     }
+    notice.value?.let { Text(it, Modifier.padding(20.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
     when (confirm) {
         "rescan" -> ConfirmDialog("Run a full rescan?", "Re-reads every message in your music chats. Takes a few minutes and sends Telegram a lot of requests.", "Rescan", backend::rescan) { confirm = null }
         "restore" -> ConfirmDialog("Restore a backup?", "This replaces your library, playlists and favorites with the backup.", "Restore", onRestore) { confirm = null }
+        "clearcache" -> ConfirmDialog("Clear the cache?", "Streamed songs stored on this device are deleted. Stop playback first. They download again when played.", "Clear", { backend.clearCache { notice.value = it } }) { confirm = null }
         "clearlearned" -> ConfirmDialog("Clear what mixes have learned?", "Forgets play and skip counts and your \"doesn't fit this mix\" choices. Songs and playlists stay.", "Clear", backend::clearLearned) { confirm = null }
         "logout" -> ConfirmDialog("Log out?", "The bot's API id, hash and token are forgotten and the setup screen shows again. Songs, playlists and settings stay.", "Log out", backend::logOut) { confirm = null }
     }

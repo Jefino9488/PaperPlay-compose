@@ -55,6 +55,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import io.max.paperplay.ui.nowMoment
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -203,7 +205,23 @@ private fun PlayerBody(
                             tint = if (state.repeat != RepeatUi.Off) scheme.primary else scheme.onSurface,
                         )
                     }
-                    IconButton({ actions.notice("The sleep timer is not built yet.") }) { AppIcon(Icons.Outlined.Bedtime, "Sleep timer and speed") }
+                    var showSleep by remember { mutableStateOf(false) }
+                    val sleepAt by backend.sleepAt.collectAsState()
+                    IconButton({ showSleep = true }) { AppIcon(Icons.Outlined.Bedtime, "Sleep timer", tint = if (sleepAt != null) scheme.primary else scheme.onSurface) }
+                    if (showSleep) androidx.compose.material3.AlertDialog(
+                        onDismissRequest = { showSleep = false },
+                        title = { Text("Sleep timer") },
+                        text = {
+                            Column {
+                                sleepAt?.let { end -> Text("Pauses in about ${maxOf(1L, (end - nowMoment().epochMs + 59_999) / 60_000)} min", Modifier.padding(bottom = 8.dp)) }
+                                listOf(15, 30, 45, 60, 90).forEach { m ->
+                                    androidx.compose.material3.TextButton({ backend.setSleepTimer(m); showSleep = false }) { Text("$m minutes") }
+                                }
+                            }
+                        },
+                        confirmButton = { androidx.compose.material3.TextButton({ backend.setSleepTimer(null); showSleep = false }) { Text("Turn off") } },
+                        dismissButton = { androidx.compose.material3.TextButton({ showSleep = false }) { Text("Close") } },
+                    )
                     if (onQueue != null) IconButton(onQueue) { AppIcon(Icons.Rounded.QueueMusic, "Queue") }
                 }
             }

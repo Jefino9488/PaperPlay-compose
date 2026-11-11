@@ -7,6 +7,11 @@ import io.max.paperplay.core.telegram.TdClient
 import io.max.paperplay.core.telegram.TdConfig
 import io.max.paperplay.core.telegram.TdError
 import io.max.paperplay.core.telegram.TdRuntime
+import io.max.paperplay.core.telegram.request
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -121,6 +126,25 @@ class AppServices(
     fun addChat(id: Long, title: String) {
         library.addChat(id, title)
         scope.launch { library.chat(id)?.let { scanner.scanChat(it) } }
+    }
+
+    /** Deletes the audio TDLib downloaded for streaming. Songs download again when played. False when not connected. */
+    suspend fun clearDownloads(): Boolean {
+        val c = client ?: return false
+        c.call(request("optimizeStorage") {
+            put("size", 0)
+            put("ttl", 0)
+            put("count", 0)
+            put("immunity_delay", 0)
+            put("file_types", buildJsonArray { add(buildJsonObject { put("@type", "fileTypeAudio") }) })
+            put("chat_ids", buildJsonArray { })
+            put("exclude_chat_ids", buildJsonArray { })
+            put("return_deleted_file_statistics", false)
+            put("chat_limit", 0)
+        }, 300.seconds)
+        driver.execute(null, "UPDATE songs SET cached_bytes = 0 WHERE pinned = 0", 0)
+        library.invalidate()
+        return true
     }
 
     /** Disconnects and forgets the bot's credentials, so setup shows again. The library and prefs stay. */
