@@ -15,3 +15,6 @@ expect fun currentHour(): Int
 
 /** True on a phone, where the floating bar and glass settings apply; the desktop has a sidebar instead. */
 expect val isPhone: Boolean
+
+/** The local date and hour now, for planning the Home page. */
+expect fun nowMoment(): io.max.paperplay.core.recs.Moment

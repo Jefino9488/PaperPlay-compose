@@ -62,6 +62,8 @@ sealed interface Detail {
     data class Album(val name: String) : Detail { override val title get() = name }
     data class Artist(val name: String) : Detail { override val title get() = name }
     data class Playlist(val id: String, val name: String) : Detail { override val title get() = name }
+    /** A fixed list: a mix, a generated tile or a genre. */
+    data class Songs(override val title: String, val songs: List<SongUi>) : Detail
 }
 
 // ---- Setup ---------------------------------------------------------------------------------------------
@@ -99,106 +101,6 @@ fun SetupScreen(backend: CoreBackend, onSaved: () -> Unit, onRestore: () -> Unit
         )
         CredentialsForm(backend::saveCredentials, onSaved)
         OutlinedButton(onRestore, Modifier.fillMaxWidth().padding(top = 16.dp)) { Text("Restore everything from a backup") }
-    }
-}
-
-// ---- Home ----------------------------------------------------------------------------------------------
-
-@Composable
-fun HomeScreen(
-    lib: LibraryUi, favorites: List<SongUi>, recents: List<SongUi>, playback: PlaybackUiState,
-    conn: ConnectionUi, actions: ListActions, onOpen: (Detail) -> Unit, bottomPadding: Dp, modifier: Modifier = Modifier,
-) {
-    val songs = (lib.songs as? Load.Ready)?.value.orEmpty()
-    LazyColumn(modifier, contentPadding = PaddingValues(bottom = bottomPadding)) {
-        item {
-            val h = io.max.paperplay.ui.currentHour()
-            TopBar(if (h < 12) "Good morning" else if (h < 18) "Good afternoon" else "Good evening")
-        }
-        item { StatusLine(conn, songs.size) }
-        val tiles = buildList<Pair<GroupUi, () -> Unit>> {
-            if (favorites.isNotEmpty()) add(GroupUi("fav", "Favorites", coverUris = favorites.map { it.coverUri }) to { actions.play(favorites, 0) })
-            lib.playlists.take(6 - size).forEach { g -> add(g to { onOpen(Detail.Playlist(g.id, g.name)) }) }
-        }
-        if (tiles.isNotEmpty()) item {
-            Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                tiles.chunked(2).forEach { pair ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        pair.forEach { (g, click) ->
-                            Row(
-                                Modifier.weight(1f).height(56.dp).clip(RoundedCornerShape(12.dp))
-                                    .background(MaterialTheme.colorScheme.surfaceContainerHigh).clickable(onClick = click),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                CoverGrid(g.coverUris, g.id, 56.dp, 0.dp)
-                                Text(g.name, Modifier.padding(horizontal = 12.dp), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall)
-                            }
-                        }
-                        if (pair.size == 1) Spacer(Modifier.weight(1f))
-                    }
-                }
-            }
-        }
-        if (recents.isNotEmpty()) item { Shelf("Recently played", recents, playback.current?.id, actions) }
-        if (favorites.isNotEmpty()) item { Shelf("Favorites", favorites, playback.current?.id, actions) }
-        val added = songs.sortedByDescending { it.addedAt }.take(20)
-        if (added.isNotEmpty()) item { Shelf("Recently added", added, playback.current?.id, actions) }
-        if (lib.playlists.isNotEmpty()) item {
-            Column {
-                Section("Your playlists")
-                LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    items(lib.playlists, key = { it.id }) { g ->
-                        Column(Modifier.width(150.dp).clickable { onOpen(Detail.Playlist(g.id, g.name)) }) {
-                            CoverGrid(g.coverUris, g.id, 150.dp, 16.dp)
-                            Text(g.name, Modifier.padding(top = 6.dp), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelLarge)
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun StatusLine(conn: ConnectionUi, songCount: Int) {
-    val text = when {
-        conn.error != null -> conn.error
-        !conn.ready && conn.state.isNotEmpty() -> "Connecting to Telegram…"
-        conn.scanText != null -> conn.scanText
-        songCount == 0 && conn.ready -> "No songs yet. Add the chat that holds your music in Settings."
-        else -> null
-    } ?: return
-    Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
-        Text(text, color = if (conn.error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
-        if (conn.scanText != null && conn.error == null) {
-            val f = conn.scanFraction
-            if (f != null) LinearProgressIndicator({ f.toFloat() }, Modifier.fillMaxWidth().padding(top = 6.dp))
-            else LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 6.dp))
-        }
-    }
-}
-
-@Composable
-private fun Shelf(title: String, songs: List<SongUi>, currentId: String?, actions: ListActions) {
-    Column {
-        Section(title)
-        LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            items(songs.size) { i ->
-                val s = songs[i]
-                Column(Modifier.width(120.dp).clickable { actions.play(songs, i) }) {
-                    CoverImage(s.coverUri, s.id, size = 120.dp, radius = 12.dp)
-                    Text(
-                        s.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelLarge,
-                        color = if (s.id == currentId) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.padding(top = 6.dp),
-                    )
-                    Text(
-                        s.artist, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-        }
     }
 }
 
@@ -259,6 +161,7 @@ fun DetailScreen(
             is Detail.Album -> backend.album(detail.name)
             is Detail.Artist -> backend.artist(detail.name)
             is Detail.Playlist -> backend.playlist(detail.id.toLongOrNull() ?: -1)
+            is Detail.Songs -> flowOf(detail.songs)
         }
     }
     val songs by flow.collectAsState(emptyList())
@@ -274,7 +177,10 @@ fun DetailScreen(
 
 @OptIn(FlowPreview::class)
 @Composable
-fun SearchScreen(backend: CoreBackend, currentId: String?, actions: ListActions, bottomPadding: Dp, modifier: Modifier = Modifier) {
+fun SearchScreen(
+    backend: CoreBackend, songs: List<SongUi>, currentId: String?, actions: ListActions, onOpen: (Detail) -> Unit,
+    bottomPadding: Dp, modifier: Modifier = Modifier,
+) {
     var query by remember { mutableStateOf("") }
     var results by remember { mutableStateOf<List<SongUi>>(emptyList()) }
     LaunchedEffect(Unit) {
@@ -286,9 +192,10 @@ fun SearchScreen(backend: CoreBackend, currentId: String?, actions: ListActions,
     Column(modifier) {
         TopBar("Search")
         PillField(query, { query = it }, "Songs, artists or albums", Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
-        SongList(
+        if (query.isBlank()) GenreGrid(songs, bottomPadding, onOpen, Modifier.fillMaxSize())
+        else SongList(
             results, currentId, actions, Modifier.fillMaxSize(), bottomPadding, sortable = false, searchable = false,
-            empty = if (query.isBlank()) "Type to search your library." else "No songs match \"${query.trim()}\".",
+            empty = "No songs match \"${query.trim()}\".",
         )
     }
 }

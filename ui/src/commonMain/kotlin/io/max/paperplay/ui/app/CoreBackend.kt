@@ -5,6 +5,16 @@ import io.max.paperplay.core.app.NowPlaying
 import io.max.paperplay.core.app.Repeat
 import io.max.paperplay.core.library.LibraryChat
 import io.max.paperplay.core.library.Song
+import io.max.paperplay.core.recs.DailyMixes
+import io.max.paperplay.core.recs.HomeShelves
+import io.max.paperplay.core.recs.ShelfKind
+import io.max.paperplay.ui.nowMoment
+import io.max.paperplay.ui.state.CollectionUi
+import io.max.paperplay.ui.state.HomeUi
+import io.max.paperplay.ui.state.ShelfKindUi
+import io.max.paperplay.ui.state.ShelfUi
+import kotlinx.coroutines.flow.distinctUntilChangedBy
+import kotlinx.coroutines.flow.mapLatest
 import io.max.paperplay.ui.state.GroupUi
 import io.max.paperplay.ui.state.LibraryUi
 import io.max.paperplay.ui.state.Load
@@ -69,6 +79,39 @@ class CoreBackend(val services: AppServices) {
 
     val recents: StateFlow<List<SongUi>> = repo.recents(30).map { it.map(Song::toUi) }
         .flowOn(Dispatchers.Default).stateIn(scope, SharingStarted.Eagerly, emptyList())
+
+    private class HomeInput(val songs: List<Song>, val recent: List<Song>, val favorites: List<Song>, val reserved: Int)
+
+    /**
+     * The Home page plan: quick tiles, shelves and daily mixes. Replanned when the library, the favorites or the
+     * day changes, not on every play, so rows stay put while listening.
+     */
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val home: StateFlow<HomeUi> = combine(repo.allSongs(), repo.recents(30), repo.favorites(), library) { songs, recent, fav, lib ->
+        HomeInput(songs, recent, fav, minOf(lib.playlists.size, 3) + if (fav.isEmpty()) 0 else 1)
+    }
+        .distinctUntilChangedBy { "${it.songs.size}:${it.favorites.size}:${it.reserved}:${nowMoment().dayKey}" }
+        .mapLatest { input ->
+            if (input.songs.isEmpty()) return@mapLatest HomeUi()
+            val now = nowMoment()
+            val plan = HomeShelves.plan(input.songs, input.recent, input.favorites, now, tileCount = 6 - input.reserved)
+            val daily = runCatching { DailyMixes.build(input.songs, now) }.getOrDefault(emptyList())
+            HomeUi(
+                tiles = plan.tiles.map { CollectionUi(it.title, it.title, "${it.songs.size} songs", it.cover.cover_path, it.songs.map(Song::toUi)) },
+                shelves = plan.shelves.map { s ->
+                    val kind = when (s.kind) { ShelfKind.SONGS -> ShelfKindUi.Songs; ShelfKind.ALBUMS -> ShelfKindUi.Albums; ShelfKind.ARTISTS -> ShelfKindUi.Artists }
+                    ShelfUi(s.title, kind, s.songs.map(Song::toUi), s.groups.map { g ->
+                        val sub = if (kind == ShelfKindUi.Albums) g.cover.artist else "${g.songs.size} songs"
+                        CollectionUi(g.name, g.name, sub, g.cover.cover_path, g.songs.map(Song::toUi))
+                    })
+                },
+                mixes = daily.map { m ->
+                    CollectionUi(m.mood.id, m.title, m.songs.take(3).joinToString(", ") { it.artist }, null, m.songs.map(Song::toUi), covers(m.songs))
+                },
+            )
+        }
+        .catch { emit(HomeUi()) }
+        .flowOn(Dispatchers.Default).stateIn(scope, SharingStarted.Eagerly, HomeUi())
 
     private var queueCache: Pair<List<Song>, List<SongUi>> = emptyList<Song>() to emptyList()
 

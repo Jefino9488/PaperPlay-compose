@@ -50,7 +50,7 @@ import kotlinx.coroutines.launch
 fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit) {
     val lib by backend.library.collectAsState()
     val favorites by backend.favorites.collectAsState()
-    val recents by backend.recents.collectAsState()
+    val home by backend.home.collectAsState()
     val pb by backend.playback.collectAsState()
     val pbError by backend.playbackError.collectAsState()
     val conn by backend.connection.collectAsState()
@@ -106,8 +106,8 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit) {
                 when {
                     settings -> SettingsHost(settingsStack, prefs, conn, songs.size, backend, onRestore, { settings = false }, barsHeight)
                     d != null -> DetailScreen(d, backend, currentId, actions, { detail = null }, barsHeight)
-                    tab == 0 -> HomeScreen(lib, favorites, recents, pb, conn, actions, { detail = it }, barsHeight)
-                    tab == 1 -> SearchScreen(backend, currentId, actions, barsHeight)
+                    tab == 0 -> HomeScreen(lib, home, favorites, pb, conn, actions, { detail = it }, barsHeight)
+                    tab == 1 -> SearchScreen(backend, songs, currentId, actions, { detail = it }, barsHeight)
                     tab == 2 -> LibraryScreen(lib, favorites, currentId, actions, { detail = it }, { newPlaylist = true }, barsHeight)
                     else -> ProfileScreen(songs.size, favorites.size, lib.playlists.size, conn, prefs, { settings = true }, barsHeight)
                 }

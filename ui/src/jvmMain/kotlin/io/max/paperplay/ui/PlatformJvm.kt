@@ -15,3 +15,8 @@ actual fun decodeImageFile(path: String, maxSide: Int): ImageBitmap? = runCatchi
 actual fun currentHour(): Int = java.time.LocalTime.now().hour
 
 actual val isPhone: Boolean = false
+
+actual fun nowMoment(): io.max.paperplay.core.recs.Moment {
+    val t = java.time.LocalDateTime.now()
+    return io.max.paperplay.core.recs.Moment(System.currentTimeMillis(), t.year, t.monthValue, t.dayOfMonth, t.hour)
+}

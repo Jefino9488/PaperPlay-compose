@@ -108,3 +108,21 @@ interface TaskActions {
     fun retry(id: String)
     fun clearFinished()
 }
+
+/** A group of songs opened from Home or Search: a mix, a generated tile, a genre, or an album or artist on a shelf. */
+data class CollectionUi(
+    val id: String,
+    val name: String,
+    val subtitle: String = "",
+    val coverUri: String? = null,
+    val songs: List<SongUi> = emptyList(),
+    val coverUris: List<String?> = emptyList(),
+)
+
+enum class ShelfKindUi { Songs, Albums, Artists }
+
+/** One row of the Home page. */
+data class ShelfUi(val title: String, val kind: ShelfKindUi, val songs: List<SongUi> = emptyList(), val groups: List<CollectionUi> = emptyList())
+
+/** The Home page plan for the day. [mixes] are the daily mood mixes; their [CollectionUi.id] is the mood id. */
+data class HomeUi(val tiles: List<CollectionUi> = emptyList(), val shelves: List<ShelfUi> = emptyList(), val mixes: List<CollectionUi> = emptyList())
