@@ -150,7 +150,7 @@ fun HomeScreen(
 private fun StatusLine(conn: ConnectionUi, songCount: Int) {
     val text = when {
         conn.error != null -> conn.error
-        !conn.ready && conn.state.isNotEmpty() -> "Connecting to Telegramâ€¦"
+        !conn.ready && conn.state.isNotEmpty() -> "Connecting to Telegram…"
         conn.scanText != null -> conn.scanText
         songCount == 0 && conn.ready -> "No songs yet. Add the chat that holds your music in Settings."
         else -> null

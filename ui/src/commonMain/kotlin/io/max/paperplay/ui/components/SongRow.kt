@@ -104,7 +104,7 @@ fun SongRow(
                         text = buildString {
                             append(song.artist)
                             if (song.qualityLabel != null) {
-                                append(" Â· ")
+                                append(" · ")
                                 append(song.qualityLabel.substringBefore(' '))
                             }
                         },

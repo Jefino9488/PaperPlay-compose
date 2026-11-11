@@ -123,7 +123,7 @@ fun LibraryScreen(
         ChipRow(libraryTabs, tab, { tab = it })
         when (tab) {
             0 -> when (val s = lib.songs) {
-                is Load.Loading -> Text("Loadingâ€¦", Modifier.padding(24.dp))
+                is Load.Loading -> Text("Loading…", Modifier.padding(24.dp))
                 is Load.Error -> Text(s.message, Modifier.padding(24.dp), color = MaterialTheme.colorScheme.error)
                 is Load.Ready -> SongList(s.value, currentId, actions, Modifier.fillMaxSize(), bottomPadding, empty = "No songs yet. Add a chat in Settings.")
             }

@@ -98,15 +98,20 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
     LaunchedEffect(openRequest) {
         when (openRequest) {
             "player" -> showPlayer = true
-            "tasks" -> { tab = 3; page = "tasks"; detail = null; settings = false; showPlayer = false }
+            "tasks" -> { tab = 3; profilePage = "tasks"; page = "tasks"; detail = null; settings = false; showPlayer = false }
         }
         if (openRequest != null) open?.value = null
     }
-    PlatformBackHandler(showPlayer) { showPlayer = false }
-    PlatformBackHandler(!showPlayer && settings) { if (settingsStack.isEmpty()) settings = false else settingsStack.removeAt(settingsStack.lastIndex) }
-    PlatformBackHandler(!showPlayer && !settings && detail != null) { detail = null }
-    PlatformBackHandler(!showPlayer && !settings && detail == null && tab == 3 && profilePage != null) { profilePage = null }
-    PlatformBackHandler(!showPlayer && !settings && detail == null && tab != 0) { tab = 0 }
+    // One handler: several enabled handlers would let the last one win.
+    PlatformBackHandler(showPlayer || settings || detail != null || profilePage != null || tab != 0) {
+        when {
+            showPlayer -> showPlayer = false
+            settings -> if (settingsStack.isEmpty()) settings = false else settingsStack.removeAt(settingsStack.lastIndex)
+            detail != null -> detail = null
+            tab == 3 && profilePage != null -> profilePage = null
+            else -> tab = 0
+        }
+    }
 
     val songs = (lib.songs as? Load.Ready)?.value.orEmpty()
     val currentId = pb.current?.id

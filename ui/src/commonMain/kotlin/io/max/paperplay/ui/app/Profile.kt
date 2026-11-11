@@ -103,7 +103,7 @@ fun ProfileScreen(
                     AppIcon(if (open) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore, null)
                 }
                 if (open) {
-                    NavRow("${conn.chats.size} channels", icon = Icons.Rounded.Forum, subtitle = mainChatTitle?.let { "Main chat: $it" } ?: "No chat added yet") {
+                    NavRow(if (conn.chats.size == 1) "1 channel" else "${conn.chats.size} channels", icon = Icons.Rounded.Forum, subtitle = mainChatTitle?.let { "Main chat: $it" } ?: "No chat added yet") {
                         onSettings("channels")
                     }
                     NavRow("Tasks", icon = Icons.Rounded.TaskAlt, subtitle = conn.scanText ?: "Nothing running", onClick = onTasks)

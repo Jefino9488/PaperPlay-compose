@@ -159,9 +159,9 @@ fun GlyphButton(
     fontSize: Int = 20,
 ) {
     val vector = when (glyph) {
-        "â–¶", "play" -> Icons.Rounded.PlayArrow
+        "▶", "play" -> Icons.Rounded.PlayArrow
         "âšâš", "pause" -> Icons.Rounded.Pause
-        "â–¶â–¶", "next" -> Icons.Rounded.SkipNext
+        "▶▶", "next" -> Icons.Rounded.SkipNext
         "â—€â—€", "prev", "previous" -> Icons.Rounded.SkipPrevious
         "â˜…", "star" -> Icons.Rounded.Star
         else -> null
@@ -223,7 +223,7 @@ private fun IconTapPreview() {
 @Composable
 private fun GlyphButtonPreview() {
     Box(Modifier.size(64.dp), contentAlignment = Alignment.Center) {
-        GlyphButton(glyph = "â–¶", description = "Play", onClick = {})
+        GlyphButton(glyph = "▶", description = "Play", onClick = {})
     }
 }
 

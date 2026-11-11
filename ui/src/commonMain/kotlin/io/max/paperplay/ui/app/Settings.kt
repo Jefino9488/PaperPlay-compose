@@ -293,7 +293,7 @@ private fun ChannelsPage(conn: ConnectionUi, backend: CoreBackend) {
             when {
                 conn.ready -> "Connected as your bot."
                 conn.state.isEmpty() -> "Not connected."
-                else -> "Connectingâ€¦ (${conn.state.removePrefix("authorizationState")})"
+                else -> "Connecting… (${conn.state.removePrefix("authorizationState")})"
             },
         )
         if (conn.error != null) Text(conn.error, color = MaterialTheme.colorScheme.error)

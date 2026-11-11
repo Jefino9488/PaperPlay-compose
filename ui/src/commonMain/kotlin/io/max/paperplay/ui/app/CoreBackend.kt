@@ -260,7 +260,7 @@ private fun covers(songs: List<Song>): List<String?> = songs.mapNotNull { it.cov
 
 private fun albumSubtitle(list: List<Song>): String {
     val artists = list.map { it.artist }.distinct()
-    return (if (artists.size == 1) artists[0] else "Various artists") + " Â· ${list.size} songs"
+    return (if (artists.size == 1) artists[0] else "Various artists") + " · ${list.size} songs"
 }
 
 private val LOSSLESS = setOf("flac", "alac", "wav", "aiff", "aif", "ape", "wv")

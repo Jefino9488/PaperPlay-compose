@@ -340,7 +340,7 @@ fun NowPlayingPanel(state: PlaybackUiState, backend: CoreBackend, actions: ListA
                     AppIcon(if (song.favorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder, if (song.favorite) "Remove from favorites" else "Add to favorites")
                 }
             }
-            val facts = listOfNotNull(song.qualityLabel, song.year?.toString(), song.genre).joinToString(" Â· ")
+            val facts = listOfNotNull(song.qualityLabel, song.year?.toString(), song.genre).joinToString(" · ")
             if (facts.isNotEmpty()) Text(facts, Modifier.padding(top = 6.dp), style = MaterialTheme.typography.bodySmall, color = muted)
             if (next.isNotEmpty()) Text("Next up", Modifier.padding(top = 20.dp, bottom = 6.dp), style = MaterialTheme.typography.titleSmall)
         }
