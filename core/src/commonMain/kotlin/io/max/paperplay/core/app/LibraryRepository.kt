@@ -78,6 +78,11 @@ class LibraryRepository(val repo: LibraryRepo, private val clock: () -> Long) {
     fun cacheLimit(): Long = repo.cacheLimit()
     fun songsInChat(chatId: Long): List<Song> = songs.songsInChat(chatId).executeAsList()
     fun songsNeedingCovers(): List<Song> = songs.songsNeedingCovers().executeAsList()
+    /** Songs of one album name, for sharing a cover and album info between its tracks. */
+    fun albumSongs(name: String): List<Song> = songs.albumRows(name).executeAsList()
+    /** Songs whose cover is only a thumbnail but have a full-size source. */
+    fun songsNeedingUpgrade(): List<Song> =
+        songs.allSongs().executeAsList().filter { io.max.paperplay.core.metadata.coverWorkFor(it) == io.max.paperplay.core.metadata.CoverWork.Upgrade }
     fun updateCover(
         uniqueId: String,
         coverPath: String? = null,

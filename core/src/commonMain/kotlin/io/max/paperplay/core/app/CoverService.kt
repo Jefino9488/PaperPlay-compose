@@ -2,18 +2,14 @@ package io.max.paperplay.core.app
 
 import io.max.paperplay.core.backup.Fs
 import io.max.paperplay.core.integrations.HttpFetcher
-import io.max.paperplay.core.integrations.HttpRequest
-import io.max.paperplay.core.integrations.HttpResponse
 import io.max.paperplay.core.integrations.defaultHttpFetcher
-import io.max.paperplay.core.integrations.urlWith
 import io.max.paperplay.core.library.Song
+import io.max.paperplay.core.metadata.CoverImage
+import io.max.paperplay.core.metadata.CoverQuery
+import io.max.paperplay.core.metadata.CoverSources
+import io.max.paperplay.core.metadata.CoverWork
+import io.max.paperplay.core.metadata.coverWorkFor
 import io.max.paperplay.core.metadata.ExternalMatch
-import io.max.paperplay.core.metadata.cleanTitle
-import io.max.paperplay.core.metadata.extraStorefronts
-import io.max.paperplay.core.metadata.firstArtist
-import io.max.paperplay.core.metadata.pickExternal
-import io.max.paperplay.core.metadata.searchTitle
-import io.max.paperplay.core.metadata.userAgent
 import io.max.paperplay.core.recs.TasteSettings
 import io.max.paperplay.core.telegram.TdClient
 import io.max.paperplay.core.telegram.TdError
@@ -24,6 +20,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -55,14 +53,12 @@ class CoverService(
     private val http: HttpFetcher = defaultHttpFetcher(),
     private val scope: CoroutineScope,
     private val clock: () -> Long = { Clock.System.now().toEpochMilliseconds() },
-    private val maxWorkers: Int = 3,
+    private val maxWorkers: Int = 4,
     private val requestPauseMs: Long = 200L,
     private val backgroundPauseMs: Long = 250L,
     private val debounceMs: Long = 200L,
 ) {
     private val queueMutex = Mutex()
-    private val deezerMutex = Mutex()
-    private val itunesMutex = Mutex()
     private val tdMutex = Mutex()
     private val highPriority = LinkedHashSet<String>()
     private val background = LinkedHashSet<String>()
@@ -73,12 +69,20 @@ class CoverService(
     private val wake = Channel<Unit>(Channel.CONFLATED)
     private val notifyWake = Channel<Unit>(Channel.CONFLATED)
     private val json = Json { ignoreUnknownKeys = true }
+    private val sources = CoverSources(http, clock)
+    private val upgradeAsked = HashSet<String>()
+    private val albumLocks = HashMap<String, Mutex>()
+    private val albumLocksMutex = Mutex()
+    private val giveUpMutex = Mutex()
+    private var giveUps: MutableMap<String, Long>? = null
+    private var giveUpDirty = 0
+    private val _queued = MutableStateFlow(0)
+
+    /** Covers waiting to load (on screen first, then the library backlog), for the progress UI. */
+    val queued: StateFlow<Int> = _queued
 
     @Volatile private var started = false
-    @Volatile private var nextDeezerAt = 0L
-    @Volatile private var nextItunesAt = 0L
     @Volatile private var nextTdAt = 0L
-    @Volatile private var itunesBlockedUntil = 0L
     @Volatile private var tdBlockedUntil = 0L
     private var retryJob: Job? = null
 
@@ -112,7 +116,7 @@ class CoverService(
 
     /** Queues [songs] ahead of background cover work so visible cards and playback populate immediately. */
     fun prioritize(songs: Collection<Song>) {
-        val need = songs.filter(::needsCover).map { it.unique_id }
+        val need = songs.filter { needsCover(it) || coverWorkFor(it) == CoverWork.Upgrade }.map { it.unique_id }
         if (need.isEmpty()) return
         ensureStarted()
         scope.launch {
@@ -126,15 +130,73 @@ class CoverService(
                     }
                 }
             }
+            _queued.value = highPriority.size + background.size
             if (enqueued) wake.trySend(Unit)
         }
+    }
+
+    /** Asks for the cover of a song on screen or playing; a thumbnail with a full-size source is upgraded too. */
+    fun requestCover(song: Song) = prioritize(listOf(song))
+
+    /**
+     * Queues the whole library: songs with no cover first, then thumbnails that can be upgraded to
+     * full size. Songs no source had a cover for are left alone for a week. Songs on screen still jump ahead.
+     */
+    fun coverAll() = kick(retryTdMissing = true)
+
+    /** Tries these songs again even if nothing was found for them recently. */
+    fun retrySongs(songs: Collection<Song>) {
+        ensureStarted()
+        scope.launch {
+            val map = giveUpMap()
+            giveUpMutex.withLock { songs.forEach { map.remove(it.unique_id) } }
+            queueMutex.withLock {
+                songs.forEach { attempted.remove(it.unique_id); rateLimited.remove(it.unique_id) }
+            }
+            persistGiveUps()
+            prioritize(songs)
+        }
+    }
+
+    private suspend fun giveUpMap(): MutableMap<String, Long> = giveUpMutex.withLock {
+        giveUps ?: HashMap<String, Long>().also { m ->
+            runCatching {
+                (json.parseToJsonElement(repo.pref(GIVE_UP_KEY) ?: "{}") as? JsonObject)?.forEach { (k, v) ->
+                    (v as? JsonPrimitive)?.content?.toLongOrNull()?.let { m[k] = it }
+                }
+            }
+            giveUps = m
+        }
+    }
+
+    private suspend fun gaveUpRecently(uid: String): Boolean {
+        val at = giveUpMap()[uid] ?: return false
+        return clock() - at < GIVE_UP_MS
+    }
+
+    private suspend fun recordGiveUp(uid: String, found: Boolean) {
+        val map = giveUpMap()
+        val flush = giveUpMutex.withLock {
+            if (found) { if (map.remove(uid) != null) giveUpDirty++ } else { map[uid] = clock(); giveUpDirty++ }
+            giveUpDirty >= 25
+        }
+        if (flush) persistGiveUps()
+    }
+
+    private suspend fun persistGiveUps() {
+        val text = giveUpMutex.withLock {
+            giveUpDirty = 0
+            val m = giveUps ?: return
+            JsonObject(m.mapValues { JsonPrimitive(it.value) }).toString()
+        }
+        runCatching { repo.setPref(GIVE_UP_KEY, text) }
     }
 
     /** Refreshes the background queue from [LibraryRepository.songsNeedingCovers]. */
     fun kick(retryTdMissing: Boolean = false) {
         ensureStarted()
         scope.launch {
-            val missing = repo.songsNeedingCovers()
+            val missing = (repo.songsNeedingCovers() + repo.songsNeedingUpgrade()).filter { !gaveUpRecently(it.unique_id) }
             var enqueued = false
             queueMutex.withLock {
                 if (retryTdMissing && awaitingTd.isNotEmpty()) {
@@ -152,6 +214,7 @@ class CoverService(
                         if (background.add(uid)) enqueued = true
                     }
                 }
+                _queued.value = highPriority.size + background.size
             }
             if (enqueued) wake.trySend(Unit)
         }
@@ -186,14 +249,17 @@ class CoverService(
         if (high != null) {
             highPriority.remove(high)
             inFlight.add(high)
+            _queued.value = highPriority.size + background.size
             return@withLock high to true
         }
         val bg = background.firstOrNull()
         if (bg != null) {
             background.remove(bg)
             inFlight.add(bg)
+            _queued.value = highPriority.size + background.size
             return@withLock bg to false
         }
+        _queued.value = 0
         null
     }
 
@@ -203,12 +269,6 @@ class CoverService(
     }
 
     private enum class Outcome { Done, NeedsTd, RetryLater }
-
-    private sealed class LookupResult {
-        data class Found(val match: ExternalMatch) : LookupResult()
-        data object Missing : LookupResult()
-        data class RetryAfter(val delayMs: Long) : LookupResult()
-    }
 
     private suspend fun markDone(uid: String, outcome: Outcome, retryDelayMs: Long = 0L) {
         queueMutex.withLock {
@@ -252,51 +312,57 @@ class CoverService(
             markDone(uid, Outcome.Done)
             return
         }
+        // Tracks of one album are looked up one at a time, so the first finds the art and shares it.
+        val key = CoverSources.albumKey(song.album, song.artist)
+        if (key == null) {
+            resolveSong(uid)
+            return
+        }
+        val lock = albumLocksMutex.withLock {
+            if (albumLocks.size > 2000) albumLocks.clear()
+            albumLocks.getOrPut(key) { Mutex() }
+        }
+        lock.withLock { resolveSong(uid) }
+    }
+
+    private fun queryOf(song: Song) = CoverQuery(
+        title = song.title, artist = song.artist, album = song.album, durationSec = song.duration_sec.toInt(),
+        releaseId = song.release_id?.takeIf { it.isNotBlank() }, coverUrl = song.cover_url?.takeIf { it.isNotBlank() },
+    )
+
+    private suspend fun resolveSong(uid: String) {
+        // Read again: a sibling track may have shared a cover while this waited.
+        val song = repo.songByUniqueId(uid) ?: run {
+            markDone(uid, Outcome.Done)
+            return
+        }
+        val lookups = TasteSettings.parse(repo.pref(TasteSettings.PREF_KEY)).lookups
+        val asked = queueMutex.withLock { upgradeAsked.remove(uid) }
         if (!needsCover(song)) {
+            if (coverWorkFor(song) == CoverWork.Upgrade || (asked && lookups && !song.cover_hi_res && !song.user_edited && song.cover_at == 0L)) {
+                upgradeOne(song, lookups)
+            }
             markDone(uid, Outcome.Done)
             return
         }
 
-        // 1. Existing cover_url already stored on the row.
-        val knownUrl = song.cover_url?.takeIf { it.isNotBlank() }
-        if (knownUrl != null) {
-            val bytes = fetchImageBytes(knownUrl)
-            if (bytes != null) {
-                val outPath = writeCoverFile(uid, bytes)
-                if (outPath != null) {
-                    repo.updateCover(uniqueId = uid, coverPath = outPath, notify = false)
-                    notifyWake.trySend(Unit)
-                    markDone(uid, Outcome.Done)
-                    return
-                }
+        // 0. Another track of the album already has the full-size cover.
+        if (shareFromAlbum(song)) {
+            markDone(uid, Outcome.Done)
+            return
+        }
+
+        // 1. Stored sources: the saved link, then MusicBrainz release art (falling back to the album's art).
+        val hasSource = song.release_id != null || !song.cover_url.isNullOrBlank()
+        if (hasSource) {
+            val img = runCatchingCancellable { sources.find(queryOf(song), lookups = false) }.getOrNull()
+            if (img != null && saveImage(song, img)) {
+                markDone(uid, Outcome.Done)
+                return
             }
         }
 
-        // 2. MusicBrainz release_id via Cover Art Archive.
-        val releaseId = song.release_id?.takeIf { it.isNotBlank() }
-        if (releaseId != null) {
-            val caaUrl = "https://coverartarchive.org/release/$releaseId/front-500"
-            val bytes = fetchImageBytes(caaUrl)
-            if (bytes != null) {
-                val outPath = writeCoverFile(uid, bytes)
-                if (outPath != null) {
-                    repo.updateCover(
-                        uniqueId = uid,
-                        coverPath = outPath,
-                        coverUrl = song.cover_url ?: caaUrl,
-                        coverHiRes = true,
-                        metadataSource = song.metadata_source ?: "musicbrainz",
-                        enrichState = if (song.enrich_state == 0L) 1L else null,
-                        notify = false,
-                    )
-                    notifyWake.trySend(Unit)
-                    markDone(uid, Outcome.Done)
-                    return
-                }
-            }
-        }
-
-        // 3. Embedded Telegram album_cover_thumbnail / thumbnail via TDLib (skipped while Scanner is active).
+        // 2. Embedded Telegram album_cover_thumbnail / thumbnail via TDLib (skipped while Scanner is active).
         val client = td()
         var tdRateLimited = false
         if (client != null && song.chat_id != 0L && song.message_id != 0L) {
@@ -308,42 +374,141 @@ class CoverService(
                 if (outPath != null) {
                     repo.updateCover(uniqueId = uid, coverPath = outPath, notify = false)
                     notifyWake.trySend(Unit)
+                    recordGiveUp(uid, found = true)
                     markDone(uid, Outcome.Done)
+                    // The thumbnail is only a stand-in; the full-size cover comes right after.
+                    if (lookups) queueUpgrade(uid)
                     return
                 }
             }
         }
 
-        // 4. External catalog lookups (Deezer -> iTunes), when enabled.
-        val taste = TasteSettings.parse(repo.pref(TasteSettings.PREF_KEY))
+        // 3. Search services, all asked at once: Deezer and iTunes (the stored sources were tried already).
         var httpRetryMs = 0L
-        if (taste.lookups) {
-            when (val res = findExternalMatch(song)) {
-                is LookupResult.Found -> {
-                    val coverUrl = res.match.coverUrl?.takeIf { it.isNotBlank() }
-                    if (coverUrl != null) {
-                        val bytes = fetchImageBytes(coverUrl)
-                        if (bytes != null) {
-                            val outPath = writeCoverFile(uid, bytes)
-                            if (outPath != null) {
-                                saveExternalCover(song, res.match, coverUrl, outPath)
-                                notifyWake.trySend(Unit)
-                                markDone(uid, Outcome.Done)
-                                return
-                            }
-                        }
-                    }
-                }
-                is LookupResult.RetryAfter -> httpRetryMs = res.delayMs
-                LookupResult.Missing -> Unit
+        if (lookups) {
+            val img = runCatchingCancellable {
+                sources.best(sources.candidates(queryOf(song), lookups = true, includeStored = false))
+            }.getOrNull()
+            if (img != null && saveImage(song, img)) {
+                markDone(uid, Outcome.Done)
+                return
             }
+            if (sources.itunesBlocked) httpRetryMs = 30_000L
         }
 
         when {
             client == null -> markDone(uid, Outcome.NeedsTd)
             tdRateLimited -> markDone(uid, Outcome.RetryLater, maxOf(1_000L, tdBlockedUntil - clock()))
             httpRetryMs > 0L -> markDone(uid, Outcome.RetryLater, httpRetryMs)
-            else -> markDone(uid, Outcome.Done)
+            else -> {
+                recordGiveUp(uid, found = false)
+                markDone(uid, Outcome.Done)
+            }
+        }
+    }
+
+    /** After a thumbnail is saved, the same song is looked at again for a full-size cover. */
+    private suspend fun queueUpgrade(uid: String) {
+        val added = queueMutex.withLock {
+            attempted.remove(uid)
+            upgradeAsked.add(uid)
+            val ok = uid !in inFlight && background.add(uid)
+            _queued.value = highPriority.size + background.size
+            ok
+        }
+        if (added) wake.trySend(Unit)
+    }
+
+    /** Replaces a thumbnail with the best full-size cover any source has. The thumbnail stays if none does. */
+    private suspend fun upgradeOne(song: Song, lookups: Boolean) {
+        if (shareFromAlbum(song)) return
+        val img = runCatchingCancellable { sources.find(queryOf(song), lookups = lookups) }.getOrNull()
+        if (img == null) {
+            recordGiveUp(song.unique_id, found = false)
+            return
+        }
+        saveImage(song, img)
+    }
+
+    /**
+     * Writes [img] as [song]'s cover and shares it, with the album info the match carried, to the other
+     * tracks of the same album. An old thumbnail file is removed a little later, once screens let go of it.
+     */
+    private suspend fun saveImage(song: Song, img: CoverImage): Boolean {
+        val uid = song.unique_id
+        val outPath = writeCoverFile(uid, img.bytes) ?: return false
+        val match = img.match
+        if (match != null) {
+            saveExternalCover(song, match, img.url, outPath)
+        } else {
+            repo.updateCover(
+                uniqueId = uid,
+                coverPath = outPath,
+                coverUrl = song.cover_url ?: img.url,
+                coverHiRes = true,
+                metadataSource = song.metadata_source ?: "musicbrainz",
+                enrichState = if (song.enrich_state == 0L && song.release_id != null) 1L else null,
+                notify = false,
+            )
+        }
+        deleteLater(song.cover_path, outPath)
+        recordGiveUp(uid, found = true)
+        shareToAlbum(song, img.bytes, img.url, match)
+        notifyWake.trySend(Unit)
+        return true
+    }
+
+    private fun deleteLater(old: String?, keep: String) {
+        if (old.isNullOrEmpty() || old == keep) return
+        scope.launch {
+            delay(10_000L)
+            runCatching { Fs.deleteRecursively(old) }
+        }
+    }
+
+    /** Tracks of [song]'s album, other than itself. */
+    private fun siblings(song: Song, album: String = song.album): List<Song> {
+        val key = CoverSources.albumKey(album, song.artist) ?: return emptyList()
+        return repo.albumSongs(album).filter { it.unique_id != song.unique_id && CoverSources.albumKey(it.album, it.artist) == key }
+    }
+
+    /** Copies a full-size cover from another track of the album when it has one. */
+    private fun shareFromAlbum(song: Song): Boolean {
+        val donor = siblings(song).firstOrNull { s ->
+            val p = s.cover_path
+            s.cover_hi_res && !p.isNullOrEmpty() && Fs.exists(p) && s.cover_at == 0L
+        } ?: return false
+        val bytes = runCatching { readWholeFile(donor.cover_path!!) }.getOrNull() ?: return false
+        val out = writeCoverFile(song.unique_id, bytes) ?: return false
+        repo.updateCover(uniqueId = song.unique_id, coverPath = out, coverUrl = donor.cover_url, coverHiRes = true, notify = false)
+        deleteLater(song.cover_path, out)
+        notifyWake.trySend(Unit)
+        return true
+    }
+
+    /**
+     * Gives the other tracks of the album the same cover when they lack one or hold only a thumbnail
+     * (never a cover someone chose), and fills the album's year and genre where they are blank.
+     */
+    private suspend fun shareToAlbum(song: Song, bytes: ByteArray, url: String, match: ExternalMatch?) {
+        val album = song.album.ifBlank { match?.album.orEmpty() }
+        for (s in siblings(song, album)) {
+            val wants = needsCover(s) || coverWorkFor(s) == CoverWork.Upgrade
+            val free = !s.user_edited && s.cover_at == 0L
+            val out = if (wants && free) writeCoverFile(s.unique_id, bytes) else null
+            val year = if (!s.user_edited && s.year == null) match?.year?.toLong() else null
+            val genre = if (!s.user_edited && s.genre.isNullOrBlank()) match?.genre?.takeIf { it.isNotBlank() } else null
+            if (out == null && year == null && genre == null) continue
+            repo.updateCover(
+                uniqueId = s.unique_id, coverPath = out, coverUrl = if (out != null) url else null,
+                coverHiRes = if (out != null) true else null, year = year, genre = genre, notify = false,
+            )
+            if (out != null) {
+                deleteLater(s.cover_path, out)
+                queueMutex.withLock {
+                    attempted.add(s.unique_id); background.remove(s.unique_id); highPriority.remove(s.unique_id)
+                }
+            }
         }
     }
 
@@ -428,107 +593,6 @@ class CoverService(
         return updated?.obj("local")?.str("path")?.takeIf { it.isNotEmpty() }
     }
 
-    private suspend fun findExternalMatch(song: Song): LookupResult {
-        val cleanT = searchTitle(cleanTitle(song.title, song.artist))
-        if (cleanT.isBlank()) return LookupResult.Missing
-        val cleanA = if (song.artist == "Unknown artist") "" else firstArtist(song.artist)
-        val term = "$cleanT $cleanA".trim()
-
-        searchDeezer(song, term)?.let { return LookupResult.Found(it) }
-        return searchItunes(song, term)
-    }
-
-    private suspend fun searchDeezer(song: Song, term: String): ExternalMatch? {
-        paceDeezer()
-        val url = urlWith("https://api.deezer.com/search", mapOf("q" to term, "limit" to "10"))
-        val res = sendHttp(url) ?: return null
-        if (res.status != 200) return null
-        val root = runCatching { json.parseToJsonElement(res.text) as? JsonObject }.getOrNull() ?: return null
-        val items = (root["data"] as? JsonArray).orEmpty().filterIsInstance<JsonObject>()
-        val matches = items.map { ExternalMatch.fromDeezer(it) }
-        return pickExternal(matches, song.title, song.artist, song.duration_sec.toInt())
-            ?.takeIf { !it.coverUrl.isNullOrBlank() }
-    }
-
-    private suspend fun searchItunes(song: Song, term: String): LookupResult {
-        val extra = extraStorefronts(song.title, song.artist)
-        val primaryIsAsian = extra.firstOrNull() in setOf("JP", "TW")
-        val storefronts = if (primaryIsAsian) extra.map<String, String?> { it } + null else listOf<String?>(null) + extra
-        var sawError = false
-        for (country in storefronts) {
-            if (!reserveItunesSlot()) {
-                return LookupResult.RetryAfter((itunesBlockedUntil - clock()).coerceAtLeast(50L))
-            }
-            val params = buildMap {
-                put("term", term)
-                put("media", "music")
-                put("entity", "song")
-                put("limit", "10")
-                if (country != null) put("country", country)
-            }
-            val url = urlWith("https://itunes.apple.com/search", params)
-            val res = sendHttp(url) ?: run { sawError = true; continue }
-            if (res.status == 403 || res.status == 429) {
-                val cooldown = if (requestPauseMs > 0L) 30_000L else 50L
-                itunesBlockedUntil = maxOf(itunesBlockedUntil, clock() + cooldown)
-                return LookupResult.RetryAfter(cooldown)
-            }
-            if (res.status != 200) { sawError = true; continue }
-            val root = runCatching { json.parseToJsonElement(res.text) as? JsonObject }.getOrNull() ?: continue
-            val items = (root["results"] as? JsonArray).orEmpty().filterIsInstance<JsonObject>()
-            val matches = items.map { ExternalMatch.fromItunes(it) }
-            val match = pickExternal(matches, song.title, song.artist, song.duration_sec.toInt())
-                ?.takeIf { !it.coverUrl.isNullOrBlank() }
-            if (match != null) return LookupResult.Found(match)
-        }
-        return if (sawError) LookupResult.RetryAfter(if (requestPauseMs > 0L) 10_000L else 40L) else LookupResult.Missing
-    }
-
-    private suspend fun paceDeezer() {
-        if (requestPauseMs <= 0L) return
-        val waitMs = deezerMutex.withLock {
-            val slotAt = maxOf(clock(), nextDeezerAt)
-            nextDeezerAt = slotAt + requestPauseMs
-            slotAt - clock()
-        }
-        if (waitMs > 0L) delay(waitMs)
-    }
-
-    private suspend fun reserveItunesSlot(): Boolean {
-        if (clock() < itunesBlockedUntil) return false
-        if (requestPauseMs <= 0L) return true
-        val minGap = maxOf(requestPauseMs * 15L, 3100L)
-        val waitMs = itunesMutex.withLock {
-            if (clock() < itunesBlockedUntil) return@withLock -1L
-            val slotAt = maxOf(clock(), nextItunesAt)
-            nextItunesAt = slotAt + minGap
-            slotAt - clock()
-        }
-        if (waitMs < 0L) return false
-        if (waitMs > 0L) delay(waitMs)
-        return clock() >= itunesBlockedUntil
-    }
-
-    private suspend fun fetchImageBytes(url: String): ByteArray? {
-        val retryDelays = if (requestPauseMs > 0L) listOf(1000L) else emptyList()
-        var attempt = 0
-        while (true) {
-            val res = sendHttp(url) ?: return null
-            if (res.status == 200) {
-                return res.body.takeIf { looksLikeImage(it, res.headers["content-type"]) }
-            }
-            if ((res.status == 429 || res.status >= 500) && attempt < retryDelays.size) {
-                delay(retryDelays[attempt++])
-                continue
-            }
-            return null
-        }
-    }
-
-    private suspend fun sendHttp(url: String): HttpResponse? = runCatchingCancellable {
-        http.send(HttpRequest(url, headers = mapOf("User-Agent" to userAgent())))
-    }.getOrNull()
-
     private fun saveExternalCover(song: Song, match: ExternalMatch, coverUrl: String, outPath: String) {
         val keepUserTags = song.user_edited
         val newAlbum = if (!keepUserTags && song.album.isBlank()) match.album.takeIf { it.isNotBlank() } else null
@@ -585,6 +649,8 @@ class CoverService(
 
     private companion object {
         const val MAX_THUMB_BYTES = 10 * 1024 * 1024
+        const val GIVE_UP_KEY = "covers_nofind"
+        const val GIVE_UP_MS = 7L * 24 * 60 * 60 * 1000
     }
 }
 

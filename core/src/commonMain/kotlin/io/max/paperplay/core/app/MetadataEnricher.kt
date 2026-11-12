@@ -31,9 +31,13 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlin.time.Clock
 
 /** Song-info run progress: [done] looked up so far of [total], and the song being looked up. */
@@ -43,8 +47,10 @@ data class EnrichProgress(val done: Int, val total: Int, val current: String)
 private class ServiceBusy : Exception()
 
 /**
- * Looks songs up online and writes what it finds back to the library: MusicBrainz first, then
- * Deezer and iTunes when MusicBrainz has no safe match. Also backs the manual picker (search,
+ * Looks songs up online and writes what it finds back to the library. MusicBrainz, Deezer and
+ * TheAudioDB are asked at once, iTunes when none of them has a safe match; the best safe result
+ * wins and the others fill its gaps (year, genre, cover). Several songs are looked up in parallel.
+ * Last.fm, Discogs, Spotify and Genius need keys or a sign-in and are not used here. Also backs the manual picker (search,
  * apply a result, set a cover). Covers themselves are fetched by [CoverService].
  */
 class MetadataEnricher(
@@ -57,13 +63,35 @@ class MetadataEnricher(
     private val itunesIntervalMs: Long = 3500L,
     private val retryAfterMs: Long = 60_000L,
     private val maxBusyRetries: Int = 6,
+    private val workers: Int = 6,
+    private val deezerIntervalMs: Long = 150L,
+    private val audioDbIntervalMs: Long = 2100L,
 ) {
     private val json = Json { ignoreUnknownKeys = true }
     private var worker: Job? = null
     private var retryJob: Job? = null
     @Volatile private var stopped = false
-    @Volatile private var nextMbAt = 0L
-    @Volatile private var nextItunesAt = 0L
+    private val mbGate = Gate(mbIntervalMs)
+    private val itunesGate = Gate(itunesIntervalMs)
+    private val deezerGate = Gate(deezerIntervalMs)
+    private val audioDbGate = Gate(audioDbIntervalMs)
+
+    /** Spaces calls to one service so its rate limit is kept however many workers ask. */
+    private inner class Gate(private val interval: Long) {
+        private val lock = Mutex()
+        private var next = 0L
+        suspend fun pass() {
+            val wait = lock.withLock {
+                val now = clock()
+                val at = maxOf(now, next)
+                next = at + interval
+                at - now
+            }
+            if (wait > 0) delay(wait)
+        }
+    }
+
+    private class Dz(val match: ExternalMatch, val albumId: Long?)
     private val groups = HashMap<String, String?>()
 
     private val _running = MutableStateFlow(false)
@@ -107,25 +135,39 @@ class MetadataEnricher(
     }
 
     private suspend fun runPending() {
-        var busy = 0
+        val lock = Mutex()
+        val inFlight = HashSet<String>()
         var done = 0
-        while (!stopped) {
-            val song = repo.nextToEnrich() ?: run { _failure.value = null; return }
-            _progress.value = EnrichProgress(done, done + waiting(), song.title)
-            try {
-                enrich(song)
-                done++
-                busy = 0
-                _failure.value = null
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: ServiceBusy) {
-                if (busy >= maxBusyRetries) return giveUp("A lookup service is busy")
-                delay(busyDelay(busy++))
-            } catch (e: Exception) {
-                return giveUp("No connection")
+        var failed: String? = null
+        coroutineScope {
+            repeat(workers.coerceAtLeast(1)) {
+                launch {
+                    var busy = 0
+                    while (!stopped && failed == null) {
+                        val song = lock.withLock {
+                            repo.repo.db.songsQueries.pendingToEnrich(0).executeAsList()
+                                .firstOrNull { it.unique_id !in inFlight }?.also { inFlight += it.unique_id }
+                        } ?: break
+                        lock.withLock { _progress.value = EnrichProgress(done, done + waiting(), song.title) }
+                        try {
+                            enrich(song)
+                            lock.withLock { done++; inFlight -= song.unique_id; _failure.value = null }
+                            busy = 0
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: ServiceBusy) {
+                            lock.withLock { inFlight -= song.unique_id }
+                            if (busy >= maxBusyRetries) { failed = "A lookup service is busy"; break }
+                            delay(busyDelay(busy++))
+                        } catch (e: Exception) {
+                            lock.withLock { inFlight -= song.unique_id }
+                            failed = "No connection"
+                        }
+                    }
+                }
             }
         }
+        failed?.let { giveUp(it) } ?: run { if (!stopped) _failure.value = null }
     }
 
     private fun giveUp(why: String) {
@@ -145,28 +187,86 @@ class MetadataEnricher(
             repo.replaceSong(fresh.copy(enrich_state = EnrichState.DONE))
             return
         }
-        val (match, external) = coroutineScope {
-            val ext = async { runCatching { externalMatch(fresh) }.getOrNull() }
-            val mb = search(fresh.title, fresh.artist)
-            pickMatch(mb, fresh.duration_sec.toInt()) to ext.await()
+        val title = fresh.title
+        val artist = fresh.artist
+        val dur = fresh.duration_sec.toInt()
+        val term = "${searchTitle(cleanTitle(title, artist))} ${firstArtist(artist)}"
+        val (mbR, dzR, adbR) = coroutineScope {
+            val mb = async { probe(45_000) { search(title, artist) } }
+            val dz = async { probe(15_000) { deezerRaw(term) } }
+            val adb = async { probe(15_000) { audioDb(searchTitle(cleanTitle(title, artist)), firstArtist(artist)) } }
+            Triple(mb.await(), dz.await(), adb.await())
+        }
+        val match = mbR.getOrNull()?.let { pickMatch(it, dur) }
+        val dzList = dzR.getOrNull() ?: emptyList()
+        val dzHit = pickExternal(dzList.map { it.match }, title, artist, dur)
+        val adbHit = adbR.getOrNull()?.let { pickExternal(it, title, artist, dur) }
+        var itunesHit: ExternalMatch? = null
+        var itunesFailed = false
+        if (match == null && dzHit == null && adbHit == null) {
+            val r = probe(45_000) { itunesMatch(term, title, artist, dur) }
+            itunesHit = r.getOrNull()
+            itunesFailed = r.isFailure
+        }
+        val primary = dzHit ?: adbHit ?: itunesHit
+        if (match == null && primary == null) {
+            if (mbR.exceptionOrNull() is ServiceBusy) throw ServiceBusy()
+            if (mbR.isFailure && dzR.isFailure && itunesFailed) throw (mbR.exceptionOrNull() ?: IllegalStateException("offline"))
+        }
+        // Gaps in the winner are filled from the other safe hits.
+        val extras = listOfNotNull(dzHit, adbHit, itunesHit)
+        var genre = extras.firstNotNullOfOrNull { it.genre }
+        var year = match?.year ?: extras.firstNotNullOfOrNull { it.year }
+        val coverUrl = extras.firstNotNullOfOrNull { it.coverUrl }
+        if ((genre == null || year == null) && dzHit != null) {
+            val id = dzList.firstOrNull { it.match === dzHit }?.albumId
+            if (id != null) {
+                val d = probe(10_000) { deezerAlbum(id) }.getOrNull()
+                if (d != null) { genre = genre ?: d.first; year = year ?: d.second }
+            }
         }
         val now = repo.songByUniqueId(song.unique_id) ?: return
-        if (now.user_edited) return
+        if (now.user_edited) {
+            repo.replaceSong(now.copy(enrich_state = EnrichState.DONE))
+            return
+        }
         val stamp = laterStamp(clock(), now.tags_at)
         val out = when {
             match != null -> now.copy(
                 title = match.title, artist = match.artist, album = match.album, release_id = match.releaseId,
-                year = match.year?.toLong(), metadata_source = "MusicBrainz", enrich_state = EnrichState.DONE, tags_at = stamp,
+                cover_url = coverUrl ?: now.cover_url, genre = genre ?: now.genre,
+                year = year?.toLong() ?: now.year, metadata_source = "MusicBrainz", enrich_state = EnrichState.DONE, tags_at = stamp,
             )
-            external != null -> now.copy(
-                title = external.title, artist = external.artist, album = external.album,
-                cover_url = external.coverUrl ?: now.cover_url, genre = external.genre ?: now.genre,
-                year = external.year?.toLong() ?: now.year, metadata_source = external.source,
+            primary != null -> now.copy(
+                title = primary.title, artist = primary.artist,
+                album = primary.album.ifEmpty { extras.firstNotNullOfOrNull { it.album.ifEmpty { null } } ?: "" },
+                cover_url = coverUrl ?: now.cover_url, genre = genre ?: now.genre,
+                year = year?.toLong() ?: now.year, metadata_source = primary.source,
                 enrich_state = EnrichState.DONE, tags_at = stamp,
             )
             else -> now.copy(title = cleanTitle(now.title, now.artist), enrich_state = EnrichState.NO_MATCH)
         }
         repo.replaceSong(out)
+    }
+
+    /** Runs one source with a time limit; its failure is a value, not a throw. */
+    private suspend fun <T> probe(timeoutMs: Long, block: suspend () -> T): Result<T> =
+        try {
+            Result.success(withTimeout(timeoutMs) { block() })
+        } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+            Result.failure(e)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+
+    private suspend fun itunesMatch(term: String, title: String, artist: String, dur: Int): ExternalMatch? {
+        pickExternal(itunes(term), title, artist, dur)?.let { return it }
+        for (country in extraStorefronts(title, artist)) {
+            pickExternal(runCatching { itunes(term, country) }.getOrDefault(emptyList()), title, artist, dur)?.let { return it }
+        }
+        return null
     }
 
     /** Puts every unmatched song back in the queue and starts the run. Returns how many. */
@@ -219,9 +319,15 @@ class MetadataEnricher(
                     else objects(parse(res), "recordings").map { MetadataOption.fromMusicBrainz(MbMatch.fromJson(it)) }
                 }.getOrDefault(emptyList())
             }
-            val dz = async { runCatching { deezer(term).map { MetadataOption.fromExternal(it) } }.getOrDefault(emptyList()) }
+            val dz = async { runCatching { deezerRaw(term).map { MetadataOption.fromExternal(it.match) } }.getOrDefault(emptyList()) }
             val tn = async { runCatching { itunes(term).map { MetadataOption.fromExternal(it) } }.getOrDefault(emptyList()) }
-            mb.await() + dz.await() + tn.await()
+            val adb = async {
+                runCatching {
+                    val t = term.split(" - ", limit = 2)
+                    if (t.size < 2) emptyList() else audioDb(t[1].trim(), t[0].trim()).map { MetadataOption.fromExternal(it) }
+                }.getOrDefault(emptyList())
+            }
+            mb.await() + dz.await() + adb.await() + tn.await()
         }
         if (durationSec <= 0) return all
         val (near, far) = all.partition { o -> (o.lengthSec ?: Int.MAX_VALUE).let { l -> kotlin.math.abs(l - durationSec) <= 5 } }
@@ -231,14 +337,18 @@ class MetadataEnricher(
     /** Covers from Deezer and iTunes for a search. A failed service gives none. */
     suspend fun coverOptions(term: String): List<CoverOption> {
         val all = coroutineScope {
-            val a = async { runCatching { deezer(term) }.getOrDefault(emptyList()) }
+            val a = async { runCatching { deezerRaw(term).map { it.match } }.getOrDefault(emptyList()) }
             val b = async { runCatching { itunes(term) }.getOrDefault(emptyList()) }
             a.await() + b.await()
         }
         val seen = HashSet<String>()
-        return all.filter { !it.coverUrl.isNullOrBlank() && seen.add(it.coverUrl) }
+        val own = all.filter { !it.coverUrl.isNullOrBlank() && seen.add(it.coverUrl) }
             .map { CoverOption(it.coverUrl!!, listOf(it.album, it.artist).filter { s -> s.isNotEmpty() }.joinToString(" - ")) }
+        val more = runCatching { coverSources.options(term) }.getOrDefault(emptyList()).filter { seen.add(it.url) }
+        return own + more
     }
+
+    private val coverSources by lazy { io.max.paperplay.core.metadata.CoverSources(http, clock) }
 
     // Applying a pick
 
@@ -262,7 +372,9 @@ class MetadataEnricher(
 
     /** Sets a cover from [url] on [songs]. False if it could not be downloaded. */
     suspend fun setCoverFromUrl(songs: List<Song>, url: String): Boolean {
-        val bytes = runCatching { image(url) }.getOrNull() ?: return false
+        val bytes = runCatching {
+            io.max.paperplay.core.metadata.CoverSources.upscaled(url).firstNotNullOfOrNull { coverSources.fetchImage(it) } ?: image(url)
+        }.getOrNull() ?: return false
         setCoverBytes(songs, bytes)
         return true
     }
@@ -283,32 +395,43 @@ class MetadataEnricher(
 
     // Services
 
-    private suspend fun externalMatch(s: Song): ExternalMatch? {
-        val term = "${searchTitle(cleanTitle(s.title, s.artist))} ${firstArtist(s.artist)}"
-        val dur = s.duration_sec.toInt()
-        val (dz, it) = coroutineScope {
-            val a = async { runCatching { deezer(term) }.getOrDefault(emptyList()) }
-            val b = async { runCatching { itunes(term) }.getOrDefault(emptyList()) }
-            a.await() to b.await()
-        }
-        pickExternal(dz, s.title, s.artist, dur)?.let { return it }
-        pickExternal(it, s.title, s.artist, dur)?.let { return it }
-        for (country in extraStorefronts(s.title, s.artist)) {
-            val more = runCatching { itunes(term, country) }.getOrDefault(emptyList())
-            pickExternal(more, s.title, s.artist, dur)?.let { return it }
-        }
-        return null
-    }
-
-    private suspend fun deezer(term: String): List<ExternalMatch> {
+    private suspend fun deezerRaw(term: String): List<Dz> {
+        deezerGate.pass()
         val res = get(httpsUrl("api.deezer.com", "/search", mapOf("q" to term, "limit" to "8")))
         if (res.status != 200) return emptyList()
-        return objects(parse(res), "data").map { ExternalMatch.fromDeezer(it) }
+        return objects(parse(res), "data").map { o ->
+            Dz(ExternalMatch.fromDeezer(o), ((o["album"] as? JsonObject)?.get("id") as? JsonPrimitive)?.content?.toLongOrNull())
+        }
+    }
+
+    /** Genre and year of a Deezer album. */
+    private suspend fun deezerAlbum(id: Long): Pair<String?, Int?> {
+        deezerGate.pass()
+        val res = get(httpsUrl("api.deezer.com", "/album/$id"))
+        if (res.status != 200) return null to null
+        val root = parse(res) ?: return null to null
+        val genre = objects(root["genres"] as? JsonObject, "data").firstOrNull()?.let { (it["name"] as? JsonPrimitive)?.content }
+        return genre to io.max.paperplay.core.metadata.yearOf((root["release_date"] as? JsonPrimitive)?.content)
+    }
+
+    /** TheAudioDB track lookup (free public key); needs a known artist. */
+    private suspend fun audioDb(title: String, artist: String): List<ExternalMatch> {
+        if (artist.isBlank() || artist == "Unknown artist" || title.isBlank()) return emptyList()
+        audioDbGate.pass()
+        val res = get(httpsUrl("www.theaudiodb.com", "/api/v1/json/2/searchtrack.php", mapOf("s" to artist, "t" to title)))
+        if (res.status != 200) return emptyList()
+        fun JsonObject.s(k: String) = (this[k] as? JsonPrimitive)?.takeIf { it.isString }?.content?.takeIf { it.isNotBlank() }
+        return objects(parse(res), "track").map { o ->
+            ExternalMatch(
+                source = "TheAudioDB", title = o.s("strTrack") ?: "", artist = o.s("strArtist") ?: "", album = o.s("strAlbum") ?: "",
+                lengthSec = (o.s("intDuration")?.toIntOrNull() ?: 0) / 1000,
+                coverUrl = o.s("strTrackThumb"), genre = o.s("strGenre"),
+            )
+        }
     }
 
     private suspend fun itunes(term: String, country: String? = null): List<ExternalMatch> {
-        val wait = reserve(itunesIntervalMs, true)
-        if (wait > 0) delay(wait)
+        itunesGate.pass()
         val res = get(httpsUrl("itunes.apple.com", "/search", mapOf("term" to term, "media" to "music", "entity" to "song", "limit" to "8", "country" to country)))
         if (res.status != 200) return emptyList()
         return objects(parse(res), "results").map { ExternalMatch.fromItunes(it) }
@@ -316,16 +439,8 @@ class MetadataEnricher(
 
     /** MusicBrainz allows one request a second, so calls are spaced. */
     private suspend fun mbGet(url: String): HttpResponse {
-        val wait = reserve(mbIntervalMs, false)
-        if (wait > 0) delay(wait)
+        mbGate.pass()
         return get(url)
-    }
-
-    private fun reserve(interval: Long, itunes: Boolean): Long {
-        val now = clock()
-        val at = maxOf(now, if (itunes) nextItunesAt else nextMbAt)
-        if (itunes) nextItunesAt = at + interval else nextMbAt = at + interval
-        return at - now
     }
 
     private suspend fun get(url: String): HttpResponse =
