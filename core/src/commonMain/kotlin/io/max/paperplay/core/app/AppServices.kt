@@ -102,8 +102,35 @@ class AppServices(
         clock,
     )
 
+    /** Fills title, artist, album and cover from tags inside downloaded files. */
+    val embeddedTags = EmbeddedTagFiller(platform.dataDir, library, clock)
+
     /** Looks songs up on MusicBrainz, Deezer and iTunes and writes the result back. */
     val enricher = MetadataEnricher(platform.dataDir, library, defaultHttpFetcher(), scope, clock)
+
+    /** Deletes duplicate posts and songs: bot, then Bot API, then the owner's account. */
+    val deleteQueue: io.max.paperplay.core.dupes.DeleteQueue by lazy {
+        val rules = io.max.paperplay.core.dupes.DefaultSongRules
+        val caller = object : io.max.paperplay.core.dupes.TdCaller {
+            override suspend fun call(request: kotlinx.serialization.json.JsonObject, timeout: kotlin.time.Duration) =
+                (client ?: throw io.max.paperplay.core.telegram.TdError(500, "The bot is not connected.")).call(request, timeout)
+        }
+        val bot = io.max.paperplay.core.dupes.BotApi({ platform.secrets.get(Keys.BOT_TOKEN) }, io.max.paperplay.core.dupes.defaultHttpPoster())
+        val acct = (account as? io.max.paperplay.core.account.UserSession)?.let { io.max.paperplay.core.account.UserAccountDeleter(it) }
+            ?: object : io.max.paperplay.core.dupes.AccountDeleter {
+                override val isLoggedIn = false
+                override suspend fun deleteBatch(chatId: Long, ids: List<Long>) = ids
+            }
+        io.max.paperplay.core.dupes.DeleteQueue(
+            scope, caller, bot, acct, io.max.paperplay.core.dupes.LibraryDeleteStore(library.repo, rules),
+            rules, { io.max.paperplay.core.filing.parseMainChat(library.pref(io.max.paperplay.core.filing.MAIN_CHAT_KEY)) },
+        )
+    }
+
+    /** Moves songs between forum topics by reposting them. */
+    val topicMover: io.max.paperplay.core.filing.TopicMover by lazy {
+        io.max.paperplay.core.filing.TopicMover(scope, { client }, library.repo)
+    }
 
     /** Created on first use, so a screen that never plays does not load the audio stack. */
     val playback: PlaybackController by lazy { PlaybackController(platform.createPlayer(), resolver, library, scope) }
@@ -266,6 +293,9 @@ class AppServices(
         val completed = (local["is_downloading_completed"] as? JsonPrimitive)?.booleanOrNull == true
         cachePending.update { it + (uid to (downloaded to completed)) }
         if (completed) {
+            local.str("path")?.takeIf { it.isNotEmpty() }?.let { path ->
+                scope.launch(kotlinx.coroutines.Dispatchers.IO) { embeddedTags.apply(uid, path) }
+            }
             cacheFlushJob?.cancel()
             cacheFlushJob = scope.launch { flushCache(c) }
         } else if (cacheFlushJob?.isActive != true) {

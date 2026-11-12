@@ -192,6 +192,8 @@ class CoreBackend(val services: AppServices) {
         return if (services.enricher.retrySongs(listOf(s)) > 0) "Looking up song info" else "Song not found"
     }
 
+    fun songRow(id: String): Song? = byId[id]
+
     fun telegramLink(song: SongUi): String? {
         val s = byId[song.id] ?: return null
         if (s.chat_id > -1_000_000_000_000L) return null
@@ -218,6 +220,70 @@ class CoreBackend(val services: AppServices) {
         }
         return found
     }
+
+    private var lyricsJob: kotlinx.coroutines.Job? = null
+    private var lyricsTask = 0L
+    val lyricsRunning = MutableStateFlow(false)
+
+    /**
+     * Background run: looks up lyrics for every song without them, at the "lookups" rate, retrying a failed
+     * request with growing waits. Progress shows in the task centre. Songs LRCLIB has nothing for are skipped
+     * for this run. Calling it while running does nothing.
+     */
+    fun startLyricsRun() {
+        if (lyricsJob?.isActive == true) return
+        val todo = byId.values.filter { it.lyrics.isNullOrBlank() && !it.instrumental }.map { it.unique_id }
+        if (todo.isEmpty()) return
+        val id = tasks.start(io.max.paperplay.core.app.TaskKind.Info, "Lyrics", todo.size, "Starting", onStop = { stopLyricsRun() })
+        lyricsTask = id
+        lyricsRunning.value = true
+        lyricsJob = scope.launch {
+            var found = 0
+            var missed = 0
+            try {
+                for ((i, uid) in todo.withIndex()) {
+                    val song = byId[uid] ?: continue
+                    tasks.update(id, done = i, detail = song.title)
+                    var result: String? = null
+                    var attempt = 0
+                    while (true) {
+                        try {
+                            result = io.max.paperplay.core.integrations.fetchLyrics(http, song.title, song.artist, song.album, song.duration_sec.toInt())
+                            break
+                        } catch (e: kotlinx.coroutines.CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            if (++attempt > 4) break
+                            tasks.update(id, detail = "Retrying (${song.title})")
+                            kotlinx.coroutines.delay(2_000L shl attempt)
+                        }
+                    }
+                    if (result != null) {
+                        found++
+                        runCatching {
+                            services.driver.execute(null, "UPDATE songs SET lyrics = ? WHERE unique_id = ?", 2) { bindString(0, result); bindString(1, uid) }
+                        }
+                    } else missed++
+                    val rpm = (repo.pref("rate_lookups")?.toLongOrNull() ?: 50L).coerceIn(1L, 1200L)
+                    kotlinx.coroutines.delay(60_000L / rpm)
+                }
+                tasks.update(id, done = todo.size)
+                tasks.finish(id, io.max.paperplay.core.app.TaskState.Done, "$found found, $missed without lyrics")
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } finally {
+                lyricsRunning.value = false
+            }
+        }
+    }
+
+    fun stopLyricsRun() {
+        lyricsJob?.cancel()
+        lyricsRunning.value = false
+        tasks.running.value.firstOrNull { it.id == lyricsTask }?.let { tasks.stop(it.id) }
+    }
+
+    fun seekToMs(ms: Long) = services.playback.seek(ms)
 
     /** Listening totals for the last [days] days (0 for all time): per song and per day. */
     fun listenStats(days: Int): Pair<List<io.max.paperplay.core.library.ListenTotal>, Map<String, Long>> {

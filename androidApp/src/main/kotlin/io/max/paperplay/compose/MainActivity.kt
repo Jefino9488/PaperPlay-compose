@@ -147,6 +147,11 @@ class MainActivity : ComponentActivity() {
                 }
                 photoPending[0]?.invoke(path)
             }
+            val imagePending = remember { arrayOfNulls<(ByteArray?) -> Unit>(1) }
+            val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+                val bytes = uri?.let { runCatching { contentResolver.openInputStream(it)!!.use { s -> s.readBytes() } }.getOrNull() }
+                imagePending[0]?.invoke(bytes)
+            }
             val audioPending = remember { arrayOfNulls<(List<String>, Boolean) -> Unit>(1) }
             val audioPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
                 val cb = audioPending[0]
@@ -171,6 +176,7 @@ class MainActivity : ComponentActivity() {
                     lastCrash = { crashFile.takeIf { it.exists() }?.readText() },
                     clearCrash = { crashFile.delete() },
                     pickAudio = { onPicked -> audioPending[0] = onPicked; audioPicker.launch(arrayOf("audio/*", "application/ogg", "application/octet-stream")) },
+                    pickImage = { onPicked -> imagePending[0] = onPicked; imagePicker.launch(arrayOf("image/*")) },
                     authRedirect = auth,
                     authRedirectUri = SPOTIFY_REDIRECT,
                 )

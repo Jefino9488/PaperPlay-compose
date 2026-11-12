@@ -33,6 +33,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -99,7 +100,7 @@ fun SettingsHost(
 
 internal val subTitles = mapOf(
     "channels" to "Channels", "bots" to "Extra bots", "account" to "Your account", "log" to "Bot activity",
-    "sort" to "Sort General", "dupes" to "Find duplicates", "uploadhub" to "Upload songs", "mixlearn" to "Mixes and learning", "weather" to "Weather",
+    "sort" to "Sort General", "dupes" to "Find duplicates", "missing" to "Song info left", "uploadhub" to "Upload songs", "mixlearn" to "Mixes and learning", "weather" to "Weather",
     "conn" to "Connection", "index" to "Chats and channels", "eq" to "Equalizer", "listenbrainz" to "ListenBrainz", "stats" to "Listening statistics", "credentials" to "Bot credentials", "profile" to "Profile",
 )
 
@@ -206,8 +207,16 @@ internal fun SettingsPage(
             RateSlider("filing", backend, notice)
             NavRow("Sort General", "Suggests topics for songs in General. Nothing moves till you confirm", Icons.Rounded.DriveFileMove) { stack.add("sort") }
             NavRow("Find duplicates", "Repeated songs in your main chat, and deleting them", Icons.Rounded.ContentCopy) { stack.add("dupes") }
+            NavRow("Song info left", "Songs still lacking info or a cover", Icons.Rounded.Rule) { stack.add("missing") }
             SettingsRow("Full rescan", icon = Icons.Rounded.Sync, subtitle = "Also removes songs deleted while the app was closed", onClick = { confirm = "rescan" })
             RateSlider("lookups", backend, notice)
+            val lyricsRunning by backend.lyricsRunning.collectAsState()
+            SettingsRow(
+                if (lyricsRunning) "Stop fetching lyrics" else "Fetch missing lyrics",
+                icon = Icons.Rounded.Lyrics,
+                subtitle = "Looks up lyrics on LRCLIB for songs without them. Progress shows in Tasks",
+                onClick = { if (lyricsRunning) backend.stopLyricsRun() else backend.startLyricsRun() },
+            )
             RateSlider("covers", backend, notice)
             SettingsRow("Songs in your library", icon = Icons.Rounded.MusicNote, subtitle = "$songCount")
         }
@@ -277,6 +286,8 @@ internal fun SettingsPage(
         "conn" -> ConnectionPage(conn, backend)
         "log" -> LogPage(backend)
         "dupes" -> DuplicatesPage(backend)
+        "sort" -> SortPage(backend)
+        "missing" -> MissingInfoPage(backend)
         "uploadhub" -> UploadsPage(backend)
         "account" -> AccountPage(backend) { confirm = "accountout" }
         "index" -> IndexPage(backend, stack)

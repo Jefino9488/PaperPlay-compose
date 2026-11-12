@@ -115,7 +115,7 @@ fun ProfileScreen(
                         onSettings("library")
                     }
                     NavRow("Song info left", icon = Icons.Rounded.Rule, subtitle = "See which songs still lack info or a cover") {
-                        onSettings("library")
+                        onSettings("missing")
                     }
                 }
             }

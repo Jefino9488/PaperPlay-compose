@@ -423,7 +423,7 @@ internal fun LyricsDialog(id: String, title: String, positionMs: Long, backend: 
                 else -> androidx.compose.foundation.lazy.LazyColumn(state = list, modifier = Modifier.heightIn(max = 360.dp)) {
                     itemsIndexed(lines) { i, l ->
                         Text(
-                            l.text.ifBlank { " " }, Modifier.padding(vertical = 4.dp),
+                            l.text.ifBlank { " " }, Modifier.clickable { backend.seekToMs(l.timeMs) }.padding(vertical = 4.dp),
                             style = MaterialTheme.typography.titleMedium,
                             color = if (i == current) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                         )

@@ -64,6 +64,8 @@ class ListActions(
     val playNext: (SongUi) -> Unit = {},
     val telegramLink: (SongUi) -> String? = { null },
     val findMetadata: (SongUi) -> Unit = {},
+    val editTags: (SongUi) -> Unit = {},
+    val changeCover: (SongUi) -> Unit = {},
 )
 
 internal fun ListActions.rowActions(onRemove: ((SongUi) -> Unit)? = null) = object : SongActions {
@@ -77,6 +79,8 @@ internal fun ListActions.rowActions(onRemove: ((SongUi) -> Unit)? = null) = obje
     override fun telegramLink(song: SongUi): String? = this@rowActions.telegramLink(song)
     override fun notice(text: String) = this@rowActions.notice(text)
     override fun findMetadata(song: SongUi) = this@rowActions.findMetadata(song)
+    override fun editTags(song: SongUi) = this@rowActions.editTags(song)
+    override fun changeCover(song: SongUi) = this@rowActions.changeCover(song)
 }
 
 /**

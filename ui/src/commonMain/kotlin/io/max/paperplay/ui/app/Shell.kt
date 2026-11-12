@@ -85,6 +85,7 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
     val loader = remember { FileCoverLoader() }
     val backdrop = rememberLayerBackdrop()
 
+    val tagDialogs = remember { TagDialogState() }
     val actions = remember(backend) {
         ListActions(
             play = backend::play,
@@ -94,7 +95,9 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
             notice = { scope.launch { snack.showSnackbar(it) } },
             playNext = { s -> backend.playNext(s); scope.launch { snack.showSnackbar("Plays next") } },
             telegramLink = backend::telegramLink,
-            findMetadata = { s -> scope.launch { snack.showSnackbar(backend.findMetadata(s)) } },
+            findMetadata = { s -> tagDialogs.match = s },
+            editTags = { s -> tagDialogs.tags = s },
+            changeCover = { s -> tagDialogs.cover = s },
         )
     }
 
@@ -131,6 +134,7 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
     val pageBg = if (prefs.coverGradient) Modifier.background(Brush.verticalGradient(0f to g0, 0.45f to g1, 1f to base)) else Modifier.background(base)
 
     CompositionLocalProvider(LocalCoverLoader provides loader, LocalOnMissingCover provides backend::ensureCover) {
+        TagDialogHost(backend, tagDialogs) { m -> scope.launch { snack.showSnackbar(m) } }
         Box(Modifier.fillMaxSize().then(pageBg)) {
             if (isPhone) {
                 val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()

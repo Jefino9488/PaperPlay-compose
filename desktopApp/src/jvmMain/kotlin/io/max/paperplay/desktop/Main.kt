@@ -49,6 +49,11 @@ fun main() {
             ),
             libraryExists = { File(dir, "library.sqlite").exists() },
             createServices = { AppServices(DesktopPlatform(dir)) },
+            pickImage = { onPicked ->
+                val chooser = JFileChooser().apply { fileFilter = FileNameExtensionFilter("Pictures", "jpg", "jpeg", "png", "webp") }
+                if (chooser.showOpenDialog(null) != JFileChooser.APPROVE_OPTION) onPicked(null)
+                else onPicked(runCatching { chooser.selectedFile.readBytes() }.getOrNull())
+            },
             pickPhoto = { onPicked ->
                 val chooser = JFileChooser().apply { fileFilter = FileNameExtensionFilter("Pictures", "jpg", "jpeg", "png", "webp") }
                 if (chooser.showOpenDialog(null) != JFileChooser.APPROVE_OPTION) onPicked(null)

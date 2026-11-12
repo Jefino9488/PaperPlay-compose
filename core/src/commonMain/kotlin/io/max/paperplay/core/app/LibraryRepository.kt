@@ -105,6 +105,9 @@ class LibraryRepository(val repo: LibraryRepo, private val clock: () -> Long) {
         }
         if (notify) write { block() } else block()
     }
+    fun fillEmbeddedTags(
+        uniqueId: String, title: String?, artist: String?, album: String?, year: Long?, genre: String?, coverPath: String?,
+    ) = write { songs.fillEmbeddedTags(title, artist, album, year, genre, coverPath, uniqueId) }
     fun chatList(): List<LibraryChat> = misc.chats().executeAsList()
     fun chat(id: Long): LibraryChat? = chatList().firstOrNull { it.id == id }
 
