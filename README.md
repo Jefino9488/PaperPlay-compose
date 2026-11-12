@@ -22,6 +22,8 @@ Telegram bot and chats as storage. It targets Android and desktop JVM.
   - library sorting bottom sheet
   - swipe-up queue opening and long-press seek preview
   - recent search chips above genre tiles
+- Back (swipe or button) on the phone returns to where you came from: previous
+  tab, album or playlist, Profile page or Settings page, not always Home.
 - Profile cards and statistics are interactive on Android and desktop:
   profile editing, library tabs, channels, tasks, listening, duplicates/song
   info settings, devices, storage, and playlist browsing all route to their
@@ -152,6 +154,20 @@ documented in the git history. After copying, run
 If VLC is installed on the developer machine but the bundled directory is
 absent, `VlcLoader` falls back to the system install automatically.
 
+## Previews (Android Studio)
+
+Shared UI has `@Preview` functions for phone and desktop sizes, using
+`org.jetbrains.compose.ui.tooling.preview.Preview`. Open a file in the `ui`
+module and use the Split or Design view.
+
+- `ui/.../PreviewSupport.kt` holds the theme wrapper, sample songs, fake
+  `PlayerControls` and fake prefs used by previews.
+- Screens that read the database or Telegram through `CoreBackend` have no
+  preview yet; the player, search and settings list use small interfaces or
+  plain parameters instead so they can be previewed with fake data.
+- Previews use the fallback theme, default prefs and no cover images, so colours
+  and glass effects can differ from the running app.
+
 ## Configuration
 
 You provide your own Telegram API ID, API hash, and bot token. PaperPlay does
@@ -159,6 +175,7 @@ not upload this configuration to another service.
 
 ## Known limitations & upcoming ports
 
+- **Previews**: pages that still take `CoreBackend` (bots, sort, uploads, Spotify, tag dialogs, index, detail, setup, main shell) cannot be previewed yet.
 - **Not built yet**: uploads and the Android share receiver, auto filing and topic moving, extra bots,
   the task centre, LAN sync and device pairing, offline pinning, loudness normalising, audio output choice,
   a backup writer, the metadata enricher run, and desktop tray and keyboard shortcuts.

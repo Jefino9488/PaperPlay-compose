@@ -312,7 +312,7 @@ private fun DetailHero(detail: Detail, title: String, songs: List<SongUi>) {
     }
     val extra = when (detail) {
         is Detail.Album -> listOfNotNull(
-            songs.firstOrNull()?.artist?.takeIf { it.isNotBlank() },
+            songs.map { it.artist }.filter { it.isNotBlank() }.distinct().let { if (it.size > 1) "Various artists" else it.firstOrNull() },
             songs.mapNotNull { it.year }.maxOrNull()?.toString(),
         ).joinToString(" · ")
         is Detail.Artist -> songs.map { it.album }.filter { it.isNotBlank() }.distinct().size.let { if (it == 0) "" else if (it == 1) "1 album" else "$it albums" }
@@ -330,7 +330,7 @@ private fun DetailHero(detail: Detail, title: String, songs: List<SongUi>) {
 @OptIn(FlowPreview::class)
 @Composable
 fun SearchScreen(
-    backend: CoreBackend, songs: List<SongUi>, currentId: String?, actions: ListActions, onOpen: (Detail) -> Unit,
+    search: (String) -> kotlinx.coroutines.flow.Flow<List<SongUi>>, songs: List<SongUi>, currentId: String?, actions: ListActions, onOpen: (Detail) -> Unit,
     bottomPadding: Dp, modifier: Modifier = Modifier,
 ) {
     var query by remember { mutableStateOf("") }
@@ -339,7 +339,7 @@ fun SearchScreen(
     LaunchedEffect(Unit) {
         snapshotFlow { query }.debounce(150).collect { q ->
             if (q.isBlank()) results = emptyList()
-            else backend.search(q).collect {
+            else search(q).collect {
                 results = it
                 if (it.isNotEmpty()) {
                     recent.remove(q)
@@ -405,3 +405,34 @@ private fun LibraryScreenPreview() {
     )
 }
 
+
+@Preview(name = "Group grid", showBackground = true)
+@Composable
+private fun GroupGridPreview() = io.max.paperplay.ui.PreviewFrame {
+    GroupGrid(
+        groups = listOf(GroupUi("1", "Black Holes and Revelations", "Muse"), GroupUi("2", "A Night at the Opera", "Queen")),
+        bottomPadding = 0.dp, empty = "Nothing here", onClick = {},
+    )
+}
+
+@Preview(name = "Group grid empty", showBackground = true)
+@Composable
+private fun GroupGridEmptyPreview() = io.max.paperplay.ui.PreviewFrame {
+    GroupGrid(groups = emptyList(), bottomPadding = 0.dp, empty = "Nothing here", onClick = {})
+}
+
+@Preview(name = "Detail hero", showBackground = true)
+@Composable
+private fun DetailHeroPreview() = io.max.paperplay.ui.PreviewFrame {
+    DetailHero(Detail.Album("Black Holes and Revelations"), "Black Holes and Revelations", io.max.paperplay.ui.previewSongs)
+}
+
+@Preview(name = "Search phone", widthDp = 390, heightDp = 800, showBackground = true)
+@Composable
+private fun SearchScreenPreview() = io.max.paperplay.ui.PreviewFrame {
+    SearchScreen(
+        search = { q -> flowOf(io.max.paperplay.ui.previewSongs.filter { it.title.contains(q, true) || it.artist.contains(q, true) }) },
+        songs = io.max.paperplay.ui.previewSongs, currentId = "1", actions = io.max.paperplay.ui.previewActions(),
+        onOpen = {}, bottomPadding = 0.dp,
+    )
+}

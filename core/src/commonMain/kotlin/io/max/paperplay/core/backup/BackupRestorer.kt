@@ -264,7 +264,7 @@ class BackupRestorer {
                 put(SecretKeys.API_HASH, creds.getValue("apiHash").jsonPrimitive.content)
                 put(SecretKeys.BOT_TOKEN, creds.getValue("botToken").jsonPrimitive.content)
             }
-            item("Extra bots", creds?.get("extraBots") != null) { put(SecretKeys.EXTRA_BOTS, creds!!.getValue("extraBots").toString()) }
+            item("Extra bots", creds?.get("extraBots") != null) { put("restoredExtraBots", creds!!.getValue("extraBots").toString()) }
             item("Spotify", str("spotifyRefreshToken") != null) {
                 put(SecretKeys.SPOTIFY_REFRESH_TOKEN, str("spotifyRefreshToken")!!)
                 str("spotifyClientId")?.let { put(SecretKeys.SPOTIFY_CLIENT_ID, it) }

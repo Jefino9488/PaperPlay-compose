@@ -20,6 +20,8 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -93,7 +95,7 @@ import io.max.paperplay.ui.theme.schemeFromSeed
  * phone the queue replaces the song; from 900dp the two sit side by side.
  */
 @Composable
-fun FullPlayer(state: PlaybackUiState, error: String?, backend: CoreBackend, actions: ListActions, onClose: () -> Unit, modifier: Modifier = Modifier) {
+fun FullPlayer(state: PlaybackUiState, error: String?, backend: PlayerControls, actions: ListActions, onClose: () -> Unit, modifier: Modifier = Modifier) {
     val song = state.current ?: return
     val base = MaterialTheme.colorScheme
     val scheme = coverScheme(song.coverUri) ?: remember(base.primary) { schemeFromSeed(base.primary.toArgb(), dark = true) }
@@ -138,7 +140,7 @@ fun FullPlayer(state: PlaybackUiState, error: String?, backend: CoreBackend, act
 
 @Composable
 private fun PlayerBody(
-    song: SongUi, state: PlaybackUiState, error: String?, backend: CoreBackend, actions: ListActions, onClose: () -> Unit,
+    song: SongUi, state: PlaybackUiState, error: String?, backend: PlayerControls, actions: ListActions, onClose: () -> Unit,
     grabber: Boolean, modifier: Modifier = Modifier, onQueue: (() -> Unit)? = null,
 ) {
     val scheme = MaterialTheme.colorScheme
@@ -240,7 +242,7 @@ private fun PlayPauseButton(playing: Boolean, onToggle: () -> Unit) {
 }
 
 @Composable
-private fun Progress(song: SongUi, state: PlaybackUiState, backend: CoreBackend) {
+private fun Progress(song: SongUi, state: PlaybackUiState, backend: PlayerControls) {
     val scheme = MaterialTheme.colorScheme
     val muted = MaterialTheme.typography.labelMedium.copy(color = scheme.onSurface.copy(alpha = 0.65f))
     var info by remember { mutableStateOf(false) }
@@ -293,7 +295,7 @@ private fun SongInfoDialog(song: SongUi, onDismiss: () -> Unit) {
 
 /** The queue; tap to play. Reorder and swipe-to-remove come with the queue work in the player engine. */
 @Composable
-private fun QueueList(state: PlaybackUiState, backend: CoreBackend, modifier: Modifier = Modifier) {
+private fun QueueList(state: PlaybackUiState, backend: PlayerControls, modifier: Modifier = Modifier) {
     val keys = remember(state.queue) {
         val seen = HashMap<String, Int>()
         state.queue.map { s -> val n = seen.merge(s.id, 1, Int::plus)!!; "${s.id}#$n" }
@@ -329,7 +331,7 @@ fun CoverTinted(uri: String?, content: @Composable (ColorScheme?) -> Unit) {
 
 /** The desktop side panel: the current song large, with what comes next. Shown on wide windows while the pref is on. */
 @Composable
-fun NowPlayingPanel(state: PlaybackUiState, backend: CoreBackend, actions: ListActions, onOpen: () -> Unit, onHide: () -> Unit, modifier: Modifier = Modifier) {
+fun NowPlayingPanel(state: PlaybackUiState, backend: PlayerControls, actions: ListActions, onOpen: () -> Unit, onHide: () -> Unit, modifier: Modifier = Modifier) {
     val song = state.current ?: return
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     val next = remember(state.queue, state.queueIndex) { if (state.queueIndex < 0) emptyList() else state.queue.drop(state.queueIndex + 1).take(10) }
@@ -409,7 +411,7 @@ private fun SongInfoDialogPreview() {
 
 /** The song's lyrics. Timed lyrics follow the song; plain ones just scroll. */
 @Composable
-internal fun LyricsDialog(id: String, title: String, backend: CoreBackend, onClose: () -> Unit) {
+internal fun LyricsDialog(id: String, title: String, backend: PlayerControls, onClose: () -> Unit) {
     var text by remember(id) { mutableStateOf<String?>(null) }
     var loaded by remember(id) { mutableStateOf(false) }
     androidx.compose.runtime.LaunchedEffect(id) { text = backend.lyricsFor(id); loaded = true }
@@ -418,32 +420,37 @@ internal fun LyricsDialog(id: String, title: String, backend: CoreBackend, onClo
     val current by remember(lines) { androidx.compose.runtime.derivedStateOf { lines.indexOfLast { it.timeMs <= pos.value.positionMs } } }
     val list = androidx.compose.foundation.lazy.rememberLazyListState()
     androidx.compose.runtime.LaunchedEffect(current) { if (current >= 0) list.animateScrollToItem(maxOf(0, current - 2)) }
-    androidx.compose.material3.AlertDialog(
+    androidx.compose.ui.window.Dialog(
         onDismissRequest = onClose,
-        title = { Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-        text = {
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).statusBarsPadding().navigationBarsPadding()) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClose) { AppIcon(Icons.Rounded.KeyboardArrowDown, "Back") }
+                Text(title, Modifier.padding(start = 12.dp), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleLarge)
+            }
+            val big = MaterialTheme.typography.headlineSmall
             when {
-                !loaded -> Text("Looking for lyrics")
-                text == null -> Text("No lyrics found for this song.")
-                lines.isEmpty() -> Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState())) { Text(text.orEmpty()) }
-                else -> androidx.compose.foundation.lazy.LazyColumn(state = list, modifier = Modifier.heightIn(max = 360.dp)) {
+                !loaded -> Text("Looking for lyrics", Modifier.padding(24.dp), style = big)
+                text == null -> Text("No lyrics found for this song.", Modifier.padding(24.dp), style = big)
+                lines.isEmpty() -> Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState()).padding(24.dp)) { Text(text.orEmpty(), style = big) }
+                else -> androidx.compose.foundation.lazy.LazyColumn(state = list, modifier = Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 24.dp, vertical = 24.dp)) {
                     itemsIndexed(lines) { i, l ->
                         Text(
-                            l.text.ifBlank { " " }, Modifier.clickable { backend.seekToMs(l.timeMs) }.padding(vertical = 4.dp),
-                            style = MaterialTheme.typography.titleMedium,
-                            color = if (i == current) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            l.text.ifBlank { " " }, Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable { backend.seekToMs(l.timeMs) }.padding(vertical = 10.dp),
+                            style = big.copy(fontWeight = if (i == current) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Medium),
+                            color = if (i == current) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.4f),
                         )
                     }
                 }
             }
-        },
-        confirmButton = { androidx.compose.material3.TextButton(onClose) { Text("Close") } },
-    )
+        }
+    }
 }
 
 /** Pauses playback after a chosen time. */
 @Composable
-internal fun SleepTimerDialog(backend: CoreBackend, onClose: () -> Unit) {
+internal fun SleepTimerDialog(backend: PlayerControls, onClose: () -> Unit) {
     val sleepAt by backend.sleepAt.collectAsState()
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onClose,
@@ -459,4 +466,58 @@ internal fun SleepTimerDialog(backend: CoreBackend, onClose: () -> Unit) {
         confirmButton = { androidx.compose.material3.TextButton({ backend.setSleepTimer(null); onClose() }) { Text("Turn off") } },
         dismissButton = { androidx.compose.material3.TextButton(onClose) { Text("Close") } },
     )
+}
+
+@Preview(name = "Artwork", showBackground = true)
+@Composable
+private fun ArtworkPreview() = io.max.paperplay.ui.PreviewFrame {
+    Artwork(io.max.paperplay.ui.previewSongs[0], playing = true, size = 240.dp)
+}
+
+@Preview(name = "Full player phone", widthDp = 390, heightDp = 844)
+@Composable
+private fun FullPlayerPhonePreview() = io.max.paperplay.ui.PreviewFrame(dark = true) {
+    FullPlayer(io.max.paperplay.ui.previewPlayback(), null, io.max.paperplay.ui.FakePlayerControls(), io.max.paperplay.ui.previewActions(), onClose = {})
+}
+
+@Preview(name = "Full player error", widthDp = 390, heightDp = 844)
+@Composable
+private fun FullPlayerErrorPreview() = io.max.paperplay.ui.PreviewFrame(dark = true) {
+    FullPlayer(io.max.paperplay.ui.previewPlayback(false), "Could not load the song", io.max.paperplay.ui.FakePlayerControls(), io.max.paperplay.ui.previewActions(), onClose = {})
+}
+
+@Preview(name = "Full player desktop", widthDp = 1100, heightDp = 700)
+@Composable
+private fun FullPlayerDesktopPreview() = io.max.paperplay.ui.PreviewFrame(dark = true) {
+    FullPlayer(io.max.paperplay.ui.previewPlayback(), null, io.max.paperplay.ui.FakePlayerControls(), io.max.paperplay.ui.previewActions(), onClose = {})
+}
+
+@Preview(name = "Progress", widthDp = 390, showBackground = true)
+@Composable
+private fun ProgressPreview() = io.max.paperplay.ui.PreviewFrame {
+    Column(Modifier.padding(16.dp)) { Progress(io.max.paperplay.ui.previewSongs[0], io.max.paperplay.ui.previewPlayback(), io.max.paperplay.ui.FakePlayerControls()) }
+}
+
+@Preview(name = "Queue", widthDp = 390, heightDp = 500, showBackground = true)
+@Composable
+private fun QueueListPreview() = io.max.paperplay.ui.PreviewFrame {
+    QueueList(io.max.paperplay.ui.previewPlayback(), io.max.paperplay.ui.FakePlayerControls())
+}
+
+@Preview(name = "Now playing panel", widthDp = 320, heightDp = 640, showBackground = true)
+@Composable
+private fun NowPlayingPanelPreview() = io.max.paperplay.ui.PreviewFrame {
+    NowPlayingPanel(io.max.paperplay.ui.previewPlayback(), io.max.paperplay.ui.FakePlayerControls(), io.max.paperplay.ui.previewActions(), onOpen = {}, onHide = {})
+}
+
+@Preview(name = "Lyrics dialog")
+@Composable
+private fun LyricsDialogPreview() = io.max.paperplay.ui.PreviewFrame {
+    LyricsDialog("1", "Supermassive Black Hole", io.max.paperplay.ui.FakePlayerControls(), onClose = {})
+}
+
+@Preview(name = "Sleep timer dialog")
+@Composable
+private fun SleepTimerDialogPreview() = io.max.paperplay.ui.PreviewFrame {
+    SleepTimerDialog(io.max.paperplay.ui.FakePlayerControls(sleepAt = 1L), onClose = {})
 }

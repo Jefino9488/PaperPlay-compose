@@ -41,6 +41,13 @@ import androidx.compose.material3.AssistChip
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
@@ -73,6 +80,7 @@ private val cardSize = 150.dp
 fun HomeScreen(
     lib: LibraryUi, home: HomeUi, favorites: List<SongUi>, currentId: String?,
     conn: ConnectionUi, scan: State<ScanUi?>, actions: ListActions, onOpen: (Detail) -> Unit, bottomPadding: Dp, modifier: Modifier = Modifier,
+    name: String = "",
 ) {
     val songs = (lib.songs as? Load.Ready)?.value.orEmpty()
     // Quick tiles: favorites, up to three playlists, then generated collections to make six.
@@ -84,11 +92,7 @@ fun HomeScreen(
         }.chunked(2)
     }
     LazyColumn(modifier, contentPadding = PaddingValues(bottom = bottomPadding)) {
-        item {
-            val h = io.max.paperplay.ui.currentHour()
-            TopBar(if (h < 12) "Good morning" else if (h < 18) "Good afternoon" else "Good evening")
-        }
-        item { StatusLine(conn, scan, songs.size) }
+        item { HomeHeader(name) }
         if (tileRows.isNotEmpty()) item {
             Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 tileRows.forEach { pair ->
@@ -149,8 +153,27 @@ fun HomeScreen(
     }
 }
 
+private val homeMessages = listOf(
+    "Ready when you are.", "What are we playing today?", "Your music, your way.", "Good tunes are waiting.",
+    "Press play on something great.", "Let the music pick the mood.", "Find your next favorite song.", "Turn it up.",
+)
+
+/** Greeting with the user's name and one message that stays fixed while the screen is open. */
 @Composable
-private fun StatusLine(conn: ConnectionUi, scanState: State<ScanUi?>, songCount: Int) {
+private fun HomeHeader(name: String) {
+    val h = io.max.paperplay.ui.currentHour()
+    val greeting = if (h < 12) "Good morning" else if (h < 18) "Good afternoon" else "Good evening"
+    val message = remember { homeMessages.random() }
+    val who = name.trim()
+    Column(Modifier.barSurface().padding(start = 16.dp, end = 16.dp, top = 28.dp, bottom = 16.dp)) {
+        Text(if (who.isEmpty()) greeting else "$greeting, $who", style = MaterialTheme.typography.displaySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Text(message, Modifier.padding(top = 4.dp), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+/** Connection and scan status as a small toast over the page: swipe it sideways to dismiss; it takes the page colour. */
+@Composable
+fun StatusToast(conn: ConnectionUi, scanState: State<ScanUi?>, songCount: Int, tint: Color, modifier: Modifier = Modifier) {
     val scan = scanState.value
     val text = when {
         conn.error != null -> conn.error
@@ -158,18 +181,41 @@ private fun StatusLine(conn: ConnectionUi, scanState: State<ScanUi?>, songCount:
         scan != null -> scan.text
         songCount == 0 && conn.ready -> "No songs yet. Add the chat that holds your music in Settings."
         else -> null
-    } ?: return
-    Column(Modifier.padding(horizontal = 16.dp, vertical = 2.dp)) {
-        AssistChip(
-            onClick = {},
-            enabled = false,
-            label = { Text(text, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-            modifier = Modifier.fillMaxWidth(),
-        )
-        if (scan != null && conn.error == null) {
-            val f = scan.fraction
-            if (f != null) LinearProgressIndicator({ f.toFloat() }, Modifier.fillMaxWidth().padding(top = 6.dp))
-            else LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 6.dp))
+    }
+    var dismissed by remember { mutableStateOf<String?>(null) }
+    var offset by remember { mutableStateOf(0f) }
+    var last by remember { mutableStateOf("") }
+    if (text != null) last = text
+    if (text == null) dismissed = null
+    androidx.compose.animation.AnimatedVisibility(
+        visible = text != null && text != dismissed,
+        modifier = modifier,
+        enter = androidx.compose.animation.slideInVertically { -it } + androidx.compose.animation.fadeIn(),
+        exit = androidx.compose.animation.slideOutVertically { -it } + androidx.compose.animation.fadeOut(),
+    ) {
+        val scheme = MaterialTheme.colorScheme
+        val bg = androidx.compose.ui.graphics.lerp(tint, scheme.onSurface, 0.16f)
+        val fg = if (bg.luminance() < 0.5f) Color.White else Color.Black
+        Column(
+            Modifier.padding(horizontal = 16.dp).widthIn(max = 520.dp)
+                .offset { androidx.compose.ui.unit.IntOffset(offset.toInt(), 0) }
+                .graphicsLayer { alpha = (1f - kotlin.math.abs(offset) / 600f).coerceIn(0f, 1f) }
+                .shadow(6.dp, RoundedCornerShape(20.dp)).clip(RoundedCornerShape(20.dp)).background(bg)
+                .pointerInput(text) {
+                    detectHorizontalDragGestures(
+                        onDragEnd = { if (kotlin.math.abs(offset) > 120f) dismissed = text; offset = 0f },
+                        onDragCancel = { offset = 0f },
+                    ) { _, dx -> offset += dx }
+                }
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+        ) {
+            Text(text ?: last, color = fg, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
+            if (scan != null && conn.error == null) {
+                val f = scan.fraction
+                val m = Modifier.fillMaxWidth().padding(top = 8.dp)
+                if (f != null) LinearProgressIndicator({ f.toFloat() }, m, color = fg, trackColor = fg.copy(alpha = 0.25f))
+                else LinearProgressIndicator(m, color = fg, trackColor = fg.copy(alpha = 0.25f))
+            }
         }
     }
 }
@@ -310,3 +356,22 @@ private fun HomeScreenPreview() {
     )
 }
 
+
+@Preview(name = "Header", showBackground = true)
+@Composable
+private fun HomeHeaderPreview() = io.max.paperplay.ui.PreviewFrame { HomeHeader("Max") }
+
+@Preview(name = "Status toast", showBackground = true)
+@Composable
+private fun StatusToastPreview() = io.max.paperplay.ui.PreviewFrame {
+    StatusToast(
+        conn = ConnectionUi(ready = true), scanState = remember { mutableStateOf<ScanUi?>(ScanUi("Reading channel 3 of 5", 0.4)) },
+        songCount = 120, tint = MaterialTheme.colorScheme.primary,
+    )
+}
+
+@Preview(name = "Mix card", showBackground = true)
+@Composable
+private fun MixCardPreview() = io.max.paperplay.ui.PreviewFrame {
+    MixCard(CollectionUi(id = "mix1", name = "Daily Mix 1", subtitle = "Muse, Queen and more"), onClick = {})
+}

@@ -37,8 +37,9 @@ import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material.icons.rounded.MusicNote
-import androidx.compose.material.icons.rounded.OpenInFull
+import androidx.compose.material.icons.rounded.Fullscreen
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.PlayArrow
@@ -46,6 +47,7 @@ import androidx.compose.material.icons.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Repeat
 import androidx.compose.material.icons.rounded.RepeatOne
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
@@ -110,6 +112,16 @@ internal val toolPages = listOf(
     SidePage("missing", "Song info left", Icons.Rounded.Rule),
 )
 
+/** Tints the native title bar with the colour the page gradient starts from, so the two meet without a seam. */
+@Composable
+fun WindowTint(color: Color) {
+    val windowTheme = io.max.paperplay.ui.LocalAppEnv.current?.windowTheme
+    androidx.compose.runtime.LaunchedEffect(color, windowTheme) {
+        val dark = color.luminance() < 0.5f
+        windowTheme?.invoke(dark, color.toArgb(), (if (dark) Color.White else Color.Black).toArgb())
+    }
+}
+
 /** The desktop card: rounded, a shade above the page background. */
 @Composable
 fun Modifier.deskCard(): Modifier = partSurface(LookGroup.Cards, MaterialTheme.colorScheme.surfaceContainerLow, RoundedCornerShape(16.dp))
@@ -117,14 +129,10 @@ fun Modifier.deskCard(): Modifier = partSurface(LookGroup.Cards, MaterialTheme.c
 @Composable
 fun Sidebar(
     page: String, playlistId: String?, playlists: List<GroupUi>,
+    expanded: Boolean, onToggle: () -> Unit,
     onPage: (String) -> Unit, onPlaylist: (GroupUi) -> Unit, onNewPlaylist: () -> Unit, modifier: Modifier = Modifier,
 ) {
     val scheme = MaterialTheme.colorScheme
-    // The Windows title bar follows the app colours instead of staying light.
-    val windowTheme = io.max.paperplay.ui.LocalAppEnv.current?.windowTheme
-    androidx.compose.runtime.LaunchedEffect(scheme.background, windowTheme) {
-        windowTheme?.invoke(scheme.background.luminance() < 0.5f, scheme.background.toArgb(), scheme.onSurface.toArgb())
-    }
     @Composable
     fun item(id: String, label: String, icon: @Composable () -> Unit, selected: Boolean, onClick: () -> Unit) {
         Row(
@@ -132,24 +140,37 @@ fun Sidebar(
                 .background(if (selected) scheme.surfaceContainerHighest else Color.Transparent)
                 .clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 9.dp),
             verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = if (expanded) Arrangement.Start else Arrangement.Center,
         ) {
             icon()
-            Text(label, Modifier.padding(start = 12.dp), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyLarge, fontWeight = if (selected) FontWeight.Bold else null)
+            if (expanded) {
+                Text(label, Modifier.padding(start = 12.dp), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyLarge, fontWeight = if (selected) FontWeight.Bold else null)
+            }
         }
     }
     @Composable
     fun label(text: String, trailing: (@Composable () -> Unit)? = null) {
-        Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 14.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(text, Modifier.weight(1f), style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant)
-            trailing?.invoke()
+        if (expanded) {
+            Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 14.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(text, Modifier.weight(1f), style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant)
+                trailing?.invoke()
+            }
+        } else {
+            Spacer(Modifier.height(16.dp))
         }
     }
     LazyColumn(modifier.deskCard().padding(vertical = 8.dp)) {
+        item {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), horizontalArrangement = if (expanded) Arrangement.End else Arrangement.Center) {
+                IconButton(onToggle) { AppIcon(Icons.Rounded.Menu, "Toggle Sidebar") }
+            }
+        }
         items(mainPages, key = { it.id }) { p -> item(p.id, p.label, { AppIcon(p.icon, null, Modifier.size(22.dp)) }, page == p.id && playlistId == null) { onPage(p.id) } }
         item { label("Your library") }
         items(libraryPages, key = { it.id }) { p -> item(p.id, p.label, { AppIcon(p.icon, null, Modifier.size(22.dp)) }, page == p.id && playlistId == null) { onPage(p.id) } }
         item { label("Tools") }
         items(toolPages, key = { it.id }) { p -> item(p.id, p.label, { AppIcon(p.icon, null, Modifier.size(22.dp)) }, false) { onPage(p.id) } }
+        item { item("settings", "Settings", { AppIcon(Icons.Rounded.Settings, null, Modifier.size(22.dp)) }, false) { onPage("settings") } }
         item { label("Playlists") { IconButton(onNewPlaylist, Modifier.size(32.dp)) { AppIcon(Icons.Rounded.Add, "New playlist", Modifier.size(20.dp)) } } }
         items(playlists, key = { it.id }) { g -> item(g.id, g.name, { CoverGrid(g.coverUris, g.id, 28.dp, 6.dp) }, playlistId == g.id) { onPlaylist(g) } }
         item { Spacer(Modifier.height(8.dp)) }
@@ -158,8 +179,9 @@ fun Sidebar(
 
 /** The bar along the bottom of a desktop window: song, transport and seek, then panel, queue, volume and full screen. */
 @Composable
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 fun PlayerBar(
-    state: PlaybackUiState, volume: Float, panelOn: Boolean, backend: CoreBackend, actions: ListActions,
+    state: PlaybackUiState, volume: Float, panelOn: Boolean, backend: PlayerControls?, actions: ListActions,
     onOpen: () -> Unit, onTogglePanel: () -> Unit, modifier: Modifier = Modifier,
 ) {
     val song = state.current
@@ -180,14 +202,14 @@ fun PlayerBar(
         }
         Column(Modifier.weight(1.5f), horizontalAlignment = Alignment.CenterHorizontally) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                IconButton(backend::toggleShuffle) { AppIcon(Icons.Rounded.Shuffle, "Shuffle", tint = if (state.shuffle) scheme.primary else scheme.onSurface) }
-                IconButton(backend::previous) { AppIcon(Icons.Rounded.SkipPrevious, "Previous") }
+                IconButton({ backend?.toggleShuffle() }) { AppIcon(Icons.Rounded.Shuffle, "Shuffle", tint = if (state.shuffle) scheme.primary else scheme.onSurface) }
+                IconButton({ backend?.previous() }) { AppIcon(Icons.Rounded.SkipPrevious, "Previous") }
                 FilledIconButton(
-                    backend::togglePlay, Modifier.size(44.dp), shape = CircleShape,
+                    { backend?.togglePlay() }, Modifier.size(44.dp), shape = CircleShape,
                     colors = IconButtonDefaults.filledIconButtonColors(containerColor = scheme.onSurface, contentColor = scheme.surface),
                 ) { AppIcon(if (state.playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (state.playing) "Pause" else "Play") }
-                IconButton(backend::next) { AppIcon(Icons.Rounded.SkipNext, "Next") }
-                IconButton(backend::cycleRepeat) {
+                IconButton({ backend?.next() }) { AppIcon(Icons.Rounded.SkipNext, "Next") }
+                IconButton({ backend?.cycleRepeat() }) {
                     AppIcon(if (state.repeat == RepeatUi.One) Icons.Rounded.RepeatOne else Icons.Rounded.Repeat, "Repeat", tint = if (state.repeat != RepeatUi.Off) scheme.primary else scheme.onSurface)
                 }
             }
@@ -197,30 +219,37 @@ fun PlayerBar(
             }
         }
         Row(Modifier.weight(1f), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onTogglePanel) { AppIcon(Icons.Rounded.ViewSidebar, if (panelOn) "Hide the now playing panel" else "Show the now playing panel", tint = if (panelOn) scheme.primary else scheme.onSurface) }
-            IconButton(onOpen) { AppIcon(Icons.Rounded.QueueMusic, "Queue") }
             var showLyrics by remember { mutableStateOf(false) }
             var showSleep by remember { mutableStateOf(false) }
-            IconButton({ showLyrics = true }, enabled = song != null) { AppIcon(Icons.Outlined.Lyrics, "Lyrics") }
-            IconButton({ showSleep = true }) { AppIcon(Icons.Outlined.Bedtime, "Sleep timer") }
-            if (showLyrics) song?.let { LyricsDialog(it.id, it.title, backend) { showLyrics = false } }
-            if (showSleep) SleepTimerDialog(backend) { showSleep = false }
-            IconButton({ backend.setVolume(if (volume > 0f) 0f else 1f) }) { AppIcon(if (volume > 0f) Icons.Rounded.VolumeUp else Icons.Rounded.VolumeOff, "Mute") }
+            val on = scheme.primary
+            val off = scheme.onSurfaceVariant
+            val sz = Modifier.size(22.dp)
+            IconButton(onTogglePanel) { AppIcon(Icons.Rounded.ViewSidebar, if (panelOn) "Hide the now playing panel" else "Show the now playing panel", sz, tint = if (panelOn) on else off) }
+            IconButton(onOpen) { AppIcon(Icons.Rounded.QueueMusic, "Queue", sz, tint = off) }
+            IconButton({ showLyrics = true }, enabled = song != null) { AppIcon(Icons.Outlined.Lyrics, "Lyrics", sz, tint = off.copy(alpha = if (song != null) 1f else 0.4f)) }
+            IconButton({ showSleep = true }) { AppIcon(Icons.Outlined.Bedtime, "Sleep timer", sz, tint = off) }
+            if (showLyrics && backend != null) song?.let { LyricsDialog(it.id, it.title, backend) { showLyrics = false } }
+            if (showSleep && backend != null) SleepTimerDialog(backend) { showSleep = false }
+            Spacer(Modifier.width(8.dp))
+            IconButton({ backend?.setVolume(if (volume > 0f) 0f else 1f) }) { AppIcon(if (volume > 0f) Icons.Rounded.VolumeUp else Icons.Rounded.VolumeOff, "Mute", sz, tint = off) }
             Slider(
-                volume, backend::setVolume, Modifier.width(110.dp),
-                colors = SliderDefaults.colors(thumbColor = scheme.onSurface, activeTrackColor = scheme.onSurface, inactiveTrackColor = scheme.onSurface.copy(alpha = 0.2f)),
+                volume, { backend?.setVolume(it) }, Modifier.width(100.dp),
+                thumb = { Box(Modifier.size(10.dp).clip(CircleShape).background(scheme.onSurface)) },
+                track = { st -> SliderDefaults.Track(st, Modifier.height(4.dp), thumbTrackGapSize = 0.dp, drawStopIndicator = null,
+                    colors = SliderDefaults.colors(activeTrackColor = scheme.onSurface, inactiveTrackColor = scheme.onSurface.copy(alpha = 0.2f))) },
             )
-            IconButton(onOpen) { AppIcon(Icons.Rounded.OpenInFull, "Full screen player", Modifier.size(20.dp)) }
+            Spacer(Modifier.width(4.dp))
+            IconButton(onOpen) { AppIcon(Icons.Rounded.Fullscreen, "Full screen player", Modifier.size(26.dp), tint = off) }
         }
     }
 }
 
 /** Elapsed time and the thin seek bar; the only part of the player bar that follows the position. */
 @Composable
-private fun ElapsedSeek(backend: CoreBackend, durationMs: Long, style: androidx.compose.ui.text.TextStyle, modifier: Modifier, enabled: Boolean) {
-    val pos = backend.position.collectAsState()
-    Text(formatDuration(pos.value.positionMs / 1000), style = style)
-    ThinSeek({ pos.value.progress(durationMs) }, backend::seekTo, modifier.padding(horizontal = 10.dp), enabled = enabled)
+private fun ElapsedSeek(backend: PlayerControls?, durationMs: Long, style: androidx.compose.ui.text.TextStyle, modifier: Modifier, enabled: Boolean) {
+    val pos = backend?.position?.collectAsState()?.value ?: io.max.paperplay.ui.state.PositionUi(0, 0)
+    Text(formatDuration(pos.positionMs / 1000), style = style)
+    ThinSeek({ pos.progress(durationMs) }, { backend?.seekTo(it) }, modifier.padding(horizontal = 10.dp), enabled = enabled)
 }
 
 /** A thin seek bar: tap or drag; the seek is sent when the drag ends. */
@@ -312,7 +341,13 @@ fun DesktopSettings(
             val title = categories.firstOrNull { it.id == page }?.title ?: settingsPageTitle(page) ?: "Settings"
             if (stack.size > 1) BackTopBar(title, onBack = { stack.removeAt(stack.lastIndex) })
             else Text(title, Modifier.padding(start = 20.dp, end = 16.dp, top = 24.dp, bottom = 8.dp), style = MaterialTheme.typography.headlineMedium)
-            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
+
+            val isLazy = page == "missing" || page == "index" || page?.startsWith("index:") == true
+            Column(
+                Modifier.fillMaxSize()
+                    .then(if (isLazy) Modifier else Modifier.verticalScroll(rememberScrollState()))
+                    .padding(bottom = 24.dp)
+            ) {
                 if (page != null) SettingsPage(page, stack, prefs, conn, songCount, backend, onRestore)
             }
         }
@@ -322,22 +357,44 @@ fun DesktopSettings(
 
 @Preview
 @Composable
-private fun SidebarPreview() {
+fun SidebarPreview() {
     Sidebar(
         page = "home", playlistId = null,
         playlists = listOf(GroupUi("1", "Chill Vibes", "10 songs"), GroupUi("2", "Workout", "25 songs")),
+        expanded = true, onToggle = {},
         onPage = {}, onPlaylist = {}, onNewPlaylist = {}, modifier = Modifier.width(240.dp).height(640.dp),
     )
 }
 
 @Preview
 @Composable
-private fun ThinSeekPreview() {
+fun ThinSeekPreview() {
     ThinSeek(progress = { 0.4f }, onSeek = {}, modifier = Modifier.width(320.dp))
 }
 
 @Preview
 @Composable
-private fun TasksPagePreview() {
+fun TasksPagePreview() {
     TasksPage(ScanUi("Reading channel 3 of 5", null))
 }
+
+@Composable
+private fun PlayerBarPreviewContent(state: PlaybackUiState, dark: Boolean) = io.max.paperplay.ui.PreviewFrame(dark) {
+    PlayerBar(
+        state = state, volume = 0.8f, panelOn = true, backend = io.max.paperplay.ui.FakePlayerControls(),
+        actions = io.max.paperplay.ui.previewActions(), onOpen = {}, onTogglePanel = {},
+        modifier = Modifier.background(MaterialTheme.colorScheme.surfaceContainer),
+    )
+}
+
+@Preview(name = "Player bar 1280", widthDp = 1280, heightDp = 84, showBackground = true)
+@Composable
+fun PlayerBarPreview() = PlayerBarPreviewContent(io.max.paperplay.ui.previewPlayback(), dark = false)
+
+@Preview(name = "Player bar 900 dark", widthDp = 900, heightDp = 84, showBackground = true)
+@Composable
+fun PlayerBarNarrowPreview() = PlayerBarPreviewContent(io.max.paperplay.ui.previewPlayback(false), dark = true)
+
+@Preview(name = "Player bar idle", widthDp = 1280, heightDp = 84, showBackground = true)
+@Composable
+fun PlayerBarIdlePreview() = PlayerBarPreviewContent(PlaybackUiState(), dark = false)

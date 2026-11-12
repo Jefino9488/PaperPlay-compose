@@ -84,7 +84,7 @@ fun ProfileScreen(
     modifier: Modifier = Modifier,
     scan: androidx.compose.runtime.State<ScanUi?>? = null,
 ) {
-    LazyColumn(modifier, contentPadding = PaddingValues(bottom = bottomPadding)) {
+    LazyColumn(modifier, contentPadding = PaddingValues(bottom = bottomPadding + 32.dp)) {
         item {
             TopBar("Profile") { IconButton({ onSettings(null) }) { AppIcon(Icons.Rounded.Settings, "Settings") } }
         }
@@ -207,3 +207,17 @@ private fun ProfileScreenPreview() {
     )
 }
 
+
+@Preview(name = "Stat", showBackground = true)
+@Composable
+private fun StatPreview() = io.max.paperplay.ui.PreviewFrame {
+    Stat(androidx.compose.material.icons.Icons.Rounded.MusicNote, 120, "Songs", Modifier, onClick = {})
+}
+
+@Preview(name = "Section", showBackground = true)
+@Composable
+private fun ProfileSectionPreview() = io.max.paperplay.ui.PreviewFrame {
+    ProfileSection("preview", "Account", androidx.compose.material.icons.Icons.Rounded.Person, io.max.paperplay.ui.previewPrefs(), defaultOpen = true) {
+        Text("Section content", Modifier.padding(20.dp))
+    }
+}

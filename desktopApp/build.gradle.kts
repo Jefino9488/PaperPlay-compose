@@ -66,7 +66,7 @@ val stagePackagingResources = tasks.register<Copy>("stagePackagingResources") {
 // player is released, caches) at runtime instead.
 stagePackagingResources.configure {
     doLast {
-        val vlcDir = packagingResources.get().dir("windows/vlc").asFile
+        val vlcDir = packagingResources.get().dir("windows/vlc/windows").asFile
         if (!File(vlcDir, "plugins").isDirectory) return@doLast
         val gen = listOfNotNull(System.getenv("PAPERPLAY_VLC"), "C:/Program Files/VideoLAN/VLC", "C:/Program Files (x86)/VideoLAN/VLC")
             .map { File(it, "vlc-cache-gen.exe") }.firstOrNull { it.exists() }

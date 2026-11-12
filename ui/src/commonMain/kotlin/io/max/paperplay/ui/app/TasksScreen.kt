@@ -124,3 +124,15 @@ private fun RunningRowPreview() {
     )
     RunningRow(t = sampleTask, onStop = {})
 }
+
+@Preview(name = "History row", showBackground = true)
+@Composable
+private fun HistoryRowPreview() = io.max.paperplay.ui.PreviewFrame {
+    HistoryRow(
+        t = io.max.paperplay.core.app.TaskItem(
+            id = 2, kind = io.max.paperplay.core.app.TaskKind.Index, title = "Indexing chats",
+            done = 10, total = 10, detail = "", startedAt = 0, state = io.max.paperplay.core.app.TaskState.Done,
+        ),
+        onRemove = {},
+    )
+}

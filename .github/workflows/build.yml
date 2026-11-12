@@ -1,20 +1,41 @@
 name: Build PaperPlay
 
+# Pushes and pull requests build and test. Push a tag like v1.0.1, or run this workflow by hand
+# with "release" ticked, to also publish a GitHub Release with every build attached.
 on:
   push:
     branches: [ main ]
+    tags: [ 'v*' ]
   pull_request:
     branches: [ main ]
   workflow_dispatch:
+    inputs:
+      release:
+        description: 'Publish a GitHub Release with all builds'
+        type: boolean
+        default: false
+      tag:
+        description: 'Release tag (used when release is ticked), e.g. v1.0.1'
+        type: string
+        default: ''
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: write
+
 jobs:
   android:
-    name: Android (Tests & Debug APK)
+    name: Android (tests, debug and release APK)
     runs-on: ubuntu-latest
+    env:
+      # Optional repository secrets for signing. Without them the release APK is signed with the debug key.
+      KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
 
@@ -32,28 +53,96 @@ jobs:
             (yes || true) | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
           fi
 
-      - name: Test and build Android Debug APK
-        run: ./gradlew :core:jvmTest :player:jvmTest :androidApp:assembleDebug --no-daemon
+      - name: Set up signing key (only when the secrets exist)
+        if: env.KEYSTORE_BASE64 != ''
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+          {
+            echo "keystore.path=$RUNNER_TEMP/release.keystore"
+            echo "keystore.password=$KEYSTORE_PASSWORD"
+            echo "key.alias=$KEY_ALIAS"
+            echo "key.password=$KEY_PASSWORD"
+          } > "$RUNNER_TEMP/signing.properties"
+          echo "signing.file=$RUNNER_TEMP/signing.properties" >> local.properties
+
+      - name: Test and build Android APKs
+        run: ./gradlew :core:jvmTest :player:jvmTest :androidApp:assembleDebug :androidApp:assembleRelease --no-daemon
+
+      - name: Name the APKs
+        run: |
+          mkdir -p dist
+          cp androidApp/build/outputs/apk/debug/*.apk dist/PaperPlay-Android-debug.apk
+          cp androidApp/build/outputs/apk/release/*.apk dist/PaperPlay-Android-release.apk
 
       - uses: actions/upload-artifact@v4
         with:
-          name: PaperPlay-Android-Debug
-          path: androidApp/build/outputs/apk/debug/*.apk
+          name: PaperPlay-Android
+          path: dist/*.apk
           if-no-files-found: error
 
-  desktop:
-    name: Desktop (${{ matrix.label }})
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - label: Linux
-            os: ubuntu-latest
-            artifact: PaperPlay-Linux-x64.tar.gz
-          - label: Windows
-            os: windows-latest
-            artifact: PaperPlay-Windows-x64.zip
-    runs-on: ${{ matrix.os }}
+  desktop-windows:
+    name: Desktop (Windows zip, MSI and setup exe)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # libvlc and TDLib are not in the repository. libvlc comes from the official VLC zip.
+      # TDLib comes from a release named "deps" in this repository (asset tdlib-windows.zip holding
+      # tdjson.dll and its DLLs). Without it the app still builds but cannot reach Telegram.
+      - name: Get libvlc
+        shell: pwsh
+        run: |
+          $v = '3.0.21'
+          Invoke-WebRequest "https://get.videolan.org/vlc/$v/win64/vlc-$v-win64.zip" -OutFile "$env:RUNNER_TEMP\vlc.zip"
+          Expand-Archive "$env:RUNNER_TEMP\vlc.zip" -DestinationPath "$env:RUNNER_TEMP\vlc" -Force
+          $src = Get-ChildItem "$env:RUNNER_TEMP\vlc" -Directory | Select-Object -First 1
+          $dst = "desktopApp\src\jvmMain\resources\vlc\windows"
+          New-Item -ItemType Directory -Force $dst | Out-Null
+          Copy-Item "$($src.FullName)\libvlc.dll", "$($src.FullName)\libvlccore.dll" $dst
+          Copy-Item "$($src.FullName)\plugins" "$dst\plugins" -Recurse
+          "PAPERPLAY_VLC=$($src.FullName)" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+
+      - name: Get TDLib for Windows
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download deps --repo "${{ github.repository }}" --pattern "tdlib-windows.zip" --dir "$env:RUNNER_TEMP" 2>$null
+          if (Test-Path "$env:RUNNER_TEMP\tdlib-windows.zip") {
+            Expand-Archive "$env:RUNNER_TEMP\tdlib-windows.zip" -DestinationPath "$env:RUNNER_TEMP\tdlib" -Force
+            "PAPERPLAY_TDLIB=$env:RUNNER_TEMP\tdlib" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          } else {
+            Write-Warning "No 'deps' release with tdlib-windows.zip: the Windows build will not include TDLib."
+          }
+
+      - name: Build app image, MSI and setup exe
+        shell: cmd
+        run: gradlew.bat :desktopApp:packageDistributionForCurrentOS --no-daemon
+
+      - name: Collect files
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Compress-Archive -Path "desktopApp\build\compose\binaries\main\app\PaperPlay" -DestinationPath "dist\PaperPlay-Windows-x64.zip" -Force
+          Copy-Item (Get-ChildItem "desktopApp\build\compose\binaries\main\msi\*.msi" | Select-Object -First 1) "dist\PaperPlay-Windows-x64.msi"
+          Copy-Item (Get-ChildItem "desktopApp\build\compose\binaries\main\exe\*.exe" | Select-Object -First 1) "dist\PaperPlay-Windows-x64-setup.exe"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PaperPlay-Windows
+          path: dist/*
+          if-no-files-found: error
+
+  desktop-linux:
+    name: Desktop (Linux archive)
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -65,25 +154,41 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
 
       - name: Build desktop distribution
-        if: runner.os == 'Linux'
         run: ./gradlew :desktopApp:createDistributable --no-daemon
 
-      - name: Build desktop distribution
-        if: runner.os == 'Windows'
-        shell: cmd
-        run: gradlew.bat :desktopApp:createDistributable --no-daemon
-
       - name: Package Linux archive
-        if: runner.os == 'Linux'
-        run: tar -czf desktopApp/build/${{ matrix.artifact }} -C desktopApp/build/compose/binaries/main/app .
-
-      - name: Package Windows archive
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: Compress-Archive -Path "desktopApp\build\compose\binaries\main\app\*" -DestinationPath "desktopApp\build\${{ matrix.artifact }}" -Force
+        run: |
+          mkdir -p dist
+          tar -czf dist/PaperPlay-Linux-x64.tar.gz -C desktopApp/build/compose/binaries/main/app .
 
       - uses: actions/upload-artifact@v4
         with:
-          name: PaperPlay-${{ matrix.label }}-x64
-          path: desktopApp/build/${{ matrix.artifact }}
+          name: PaperPlay-Linux
+          path: dist/*
           if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    needs: [ android, desktop-windows, desktop-linux ]
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.release)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-files
+          merge-multiple: true
+
+      - name: Work out the tag
+        id: tag
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then t="${GITHUB_REF_NAME}"; else t="${{ inputs.tag }}"; fi
+          if [ -z "$t" ]; then t="build-$(date +%Y%m%d-%H%M)"; fi
+          echo "name=$t" >> "$GITHUB_OUTPUT"
+
+      - name: Create the release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.name }}
+          name: PaperPlay ${{ steps.tag.outputs.name }}
+          generate_release_notes: true
+          files: release-files/*

@@ -327,3 +327,15 @@ internal fun SongPostRowPreview() {
     )
     SongPostRow(r = sampleSong.toRow(), picked = true, onToggle = {}, onCopy = {})
 }
+
+@Preview(name = "Progress text", showBackground = true)
+@Composable
+private fun IndexProgressTextPreview() = io.max.paperplay.ui.PreviewFrame {
+    IndexProgressText(remember { mutableStateOf<IndexProgress?>(IndexProgress(1, "My Music", 42, true)) })
+}
+
+@Preview(name = "Live header", showBackground = true)
+@Composable
+private fun ChatLiveHeaderPreview() = io.max.paperplay.ui.PreviewFrame {
+    ChatLiveHeader(remember { mutableStateOf<IndexProgress?>(IndexProgress(1, "My Music", 42, true)) }, chatId = 1, total = 120)
+}

@@ -200,3 +200,13 @@ private fun JobRowDesktopPreview() {
         }
     }
 }
+
+@org.jetbrains.compose.ui.tooling.preview.Preview(name = "Target dialog", showBackground = true)
+@Composable
+private fun TargetDialogPreview() = io.max.paperplay.ui.PreviewFrame {
+    TargetDialog(
+        chats = listOf(1L to "My Music", 2L to "Archive"),
+        topics = listOf(Triple(1L, 10L, "Rock"), Triple(1L, 11L, "Jazz")),
+        current = null, onPick = {}, onDismiss = {},
+    )
+}

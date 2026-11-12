@@ -57,6 +57,11 @@ import io.max.paperplay.ui.state.Load
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 
+private data class NavSnapshot(
+    val tab: Int, val libraryTab: Int?, val profilePage: String?, val detail: Detail?,
+    val settings: Boolean, val settingsStack: List<String>, val settingsDeep: Boolean,
+)
+
 @Composable
 fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open: MutableStateFlow<String?>? = null) {
     val lib by backend.library.collectAsState()
@@ -83,6 +88,30 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
     // True when a page was opened straight from Profile or a library link: Back then returns there, not to the Settings list.
     var settingsDeep by remember { mutableStateOf(false) }
     var showPlayer by remember { mutableStateOf(false) }
+    // Where the phone came from, so Back returns there instead of jumping to Home or Settings.
+    val history = remember { mutableStateListOf<NavSnapshot>() }
+    fun snapshot() = NavSnapshot(tab, libraryTab, profilePage, detail, settings, settingsStack.toList(), settingsDeep)
+    fun navigate(change: () -> Unit) {
+        val before = snapshot()
+        change()
+        if (snapshot() != before) {
+            history.add(before)
+            if (history.size > 40) history.removeAt(0)
+        }
+    }
+    fun goBack() {
+        val to = history.removeLastOrNull()
+        if (to != null) {
+            tab = to.tab; libraryTab = to.libraryTab; profilePage = to.profilePage; detail = to.detail
+            settings = to.settings; settingsDeep = to.settingsDeep
+            settingsStack.clear(); settingsStack.addAll(to.settingsStack)
+        } else when {
+            settings -> { settings = false; settingsStack.clear() }
+            detail != null -> detail = null
+            profilePage != null -> profilePage = null
+            else -> tab = 0
+        }
+    }
     var pickFor by remember { mutableStateOf<Set<String>?>(null) }
     var newPlaylist by remember { mutableStateOf(false) }
     // Songs waiting for a playlist that is about to be created.
@@ -118,18 +147,16 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
         when (openRequest) {
             "player" -> showPlayer = true
             "upload" -> { page = "upload"; detail = null; settings = false; showPlayer = false }
-            "tasks" -> { tab = 3; profilePage = "tasks"; page = "tasks"; detail = null; settings = false; showPlayer = false }
+            "tasks" -> { navigate { tab = 3; profilePage = "tasks"; detail = null; settings = false }; page = "tasks"; showPlayer = false }
         }
         if (openRequest != null) open?.value = null
     }
     // One handler: several enabled handlers would let the last one win.
-    PlatformBackHandler(showPlayer || settings || detail != null || profilePage != null || tab != 0) {
+    PlatformBackHandler(showPlayer || settings || detail != null || profilePage != null || tab != 0 || history.isNotEmpty()) {
         when {
             showPlayer -> showPlayer = false
-            settings -> if (settingsStack.isEmpty() || (settingsDeep && settingsStack.size <= 1)) { settings = false; settingsStack.clear() } else settingsStack.removeAt(settingsStack.lastIndex)
-            detail != null -> detail = null
-            tab == 3 && profilePage != null -> profilePage = null
-            else -> tab = 0
+            settings && settingsStack.isNotEmpty() && !(settingsDeep && settingsStack.size <= 1) -> settingsStack.removeAt(settingsStack.lastIndex)
+            else -> goBack()
         }
     }
 
@@ -159,27 +186,31 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
                 Box((if (navGlass) Modifier.fillMaxSize().layerBackdrop(backdrop) else Modifier.fillMaxSize()).padding(top = top)) {
                     val d = detail
                     when {
-                        settings -> SettingsHost(settingsStack, prefs, conn, songs.size, backend, onRestore, { settings = false; settingsStack.clear() }, barsHeight, deep = settingsDeep)
-                        d != null -> DetailScreen(d, backend, currentId, actions, { detail = null }, barsHeight)
-                        tab == 0 -> HomeScreen(lib, home, favorites, currentId, conn, scan, actions, { detail = it }, barsHeight)
-                        tab == 1 -> SearchScreen(backend, songs, currentId, actions, { detail = it }, barsHeight)
-                        tab == 2 -> LibraryScreen(lib, favorites, currentId, actions, { detail = it }, { newPlaylist = true }, barsHeight, selectedTab = libraryTab,
-                            recents = recents, onImportSpotify = { settings = true; settingsDeep = true; settingsStack.clear(); settingsStack.add("spotify") })
-                        tab == 3 && profilePage == "tasks" -> TasksScreen(backend.tasks, Modifier.fillMaxSize().padding(bottom = barsHeight), onBack = { profilePage = null })
+                        settings -> SettingsHost(settingsStack, prefs, conn, songs.size, backend, onRestore, ::goBack, barsHeight, deep = settingsDeep)
+                        d != null -> DetailScreen(d, backend, currentId, actions, ::goBack, barsHeight)
+                        tab == 0 -> HomeScreen(lib, home, favorites, currentId, conn, scan, actions, { d2 -> navigate { detail = d2 } }, barsHeight, name = prefs.profileName)
+                        tab == 1 -> SearchScreen(backend::search, songs, currentId, actions, { d2 -> navigate { detail = d2 } }, barsHeight)
+                        tab == 2 -> LibraryScreen(lib, favorites, currentId, actions, { d2 -> navigate { detail = d2 } }, { newPlaylist = true }, barsHeight, selectedTab = libraryTab,
+                            recents = recents, onImportSpotify = { navigate { settings = true; settingsDeep = true; settingsStack.clear(); settingsStack.add("spotify") } })
+                        tab == 3 && profilePage == "tasks" -> TasksScreen(backend.tasks, Modifier.fillMaxSize().padding(bottom = barsHeight), onBack = ::goBack)
                         else -> ProfileScreen(
                             songs.size, favorites.size, lib.playlists.size, conn, prefs,
                             mainChatTitle,
                             onSettings = { id ->
-                                settings = true
-                                settingsDeep = id != null
-                                settingsStack.clear()
-                                id?.let(settingsStack::add)
+                                navigate {
+                                    settings = true
+                                    settingsDeep = id != null
+                                    settingsStack.clear()
+                                    id?.let(settingsStack::add)
+                                }
                             },
-                            onTasks = { profilePage = "tasks" },
+                            onTasks = { navigate { profilePage = "tasks" } },
                             onLibraryTab = { selected ->
-                                profilePage = null
-                                libraryTab = selected
-                                tab = 2
+                                navigate {
+                                    profilePage = null
+                                    libraryTab = selected
+                                    tab = 2
+                                }
                             },
                             barsHeight,
                             scan = scan,
@@ -198,7 +229,7 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
                         backdrop = backdrop,
                         prefs = prefs,
                         inset = bottomInset,
-                        onSelect = { tab = it; detail = null; settings = false; settingsStack.clear() },
+                        onSelect = { sel -> navigate { tab = sel; detail = null; settings = false; settingsStack.clear(); profilePage = null } },
                         taskRunning = scanning,
                     )
                 }
@@ -209,17 +240,21 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
                 LaunchedEffect(settings) { if (settings && settingsStack.isEmpty()) settingsStack.add("style") }
                 val playlistId = (detail as? Detail.Playlist)?.id
                 val panel = prefs.nowPlayingPanel && pb.current != null
+                var sidebarExpanded by remember { mutableStateOf(true) }
+                WindowTint(g0.value)
                 Column(Modifier.fillMaxSize()) {
                     Row(Modifier.weight(1f).fillMaxWidth().padding(start = 12.dp, top = 12.dp, end = 12.dp)) {
                         Sidebar(
                             page, playlistId, lib.playlists,
+                            expanded = sidebarExpanded,
+                            onToggle = { sidebarExpanded = !sidebarExpanded },
                             onPage = {
                                 detail = null; settingsStack.clear()
-                                if (it in toolPages.map { t -> t.id }) { settings = true; settingsStack.add(it) } else { page = it; settings = false }
+                                if (it == "settings") { settings = true; settingsDeep = false } else if (it in toolPages.map { t -> t.id }) { settings = true; settingsStack.add(it) } else { page = it; settings = false }
                             },
                             onPlaylist = { detail = Detail.Playlist(it.id, it.name); settings = false },
                             onNewPlaylist = { newPlaylist = true },
-                            modifier = Modifier.width(240.dp).fillMaxHeight(),
+                            modifier = Modifier.width(if (sidebarExpanded) 240.dp else 72.dp).fillMaxHeight(),
                         )
                         Spacer(Modifier.width(12.dp))
                         Box(Modifier.weight(1f).fillMaxHeight().deskCard()) {
@@ -228,8 +263,8 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
                             when {
                                 settings -> DesktopSettings(settingsStack, prefs, conn, songs.size, backend, onRestore, { settings = false; settingsStack.clear() }, Modifier.fillMaxSize())
                                 d != null -> DetailScreen(d, backend, currentId, actions, { detail = null }, pad)
-                                page == "home" -> HomeScreen(lib, home, favorites, currentId, conn, scan, actions, { detail = it }, pad)
-                                page == "search" -> SearchScreen(backend, songs, currentId, actions, { detail = it }, pad)
+                                page == "home" -> HomeScreen(lib, home, favorites, currentId, conn, scan, actions, { detail = it }, pad, name = prefs.profileName)
+                                page == "search" -> SearchScreen(backend::search, songs, currentId, actions, { detail = it }, pad)
                                 page == "profile" -> ProfileScreen(
                                     songs.size, favorites.size, lib.playlists.size, conn, prefs,
                                     mainChatTitle,
@@ -274,6 +309,10 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
                 if (showPlayer) FullPlayer(pb, pbError, backend, actions, { showPlayer = false })
                 SnackbarHost(snack, Modifier.align(Alignment.BottomCenter).padding(bottom = 96.dp))
             }
+            StatusToast(
+                conn, scan, if (lib.songs is Load.Ready) songs.size else 1, g0.value,
+                Modifier.align(Alignment.TopCenter).padding(top = if (isPhone) WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 8.dp else 16.dp),
+            )
         }
 
         pickFor?.let { ids ->

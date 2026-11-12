@@ -237,3 +237,13 @@ private fun PlaylistsTabPreview() {
         onImportSpotify = {},
     )
 }
+
+@Preview(name = "Missing row", showBackground = true)
+@Composable
+private fun MissingRowPreview() = io.max.paperplay.ui.PreviewFrame { MissingRow(count = 3, onClick = {}) }
+
+@Preview(name = "Action row", showBackground = true)
+@Composable
+private fun PlaylistActionRowPreview() = io.max.paperplay.ui.PreviewFrame {
+    PlaylistActionRow(androidx.compose.material.icons.Icons.Rounded.Add, "New playlist", onClick = {})
+}

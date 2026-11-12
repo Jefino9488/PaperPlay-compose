@@ -256,3 +256,7 @@ private fun SongMenuPreview() {
     SongMenu(song = previewSong, actions = dummyActions)
 }
 
+
+@org.jetbrains.compose.ui.tooling.preview.Preview(name = "Badge", showBackground = true)
+@Composable
+private fun BadgePreview() = io.max.paperplay.ui.PreviewFrame { Badge("FLAC") }

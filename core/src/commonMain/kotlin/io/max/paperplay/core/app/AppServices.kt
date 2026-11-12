@@ -238,6 +238,15 @@ class AppServices(
                 c.ready()
                 playlistSync.start()
                 botPool.load()
+                
+                platform.secrets.get("restoredExtraBots")?.let { raw ->
+                    val array = runCatching { kotlinx.serialization.json.Json.parseToJsonElement(raw) as? kotlinx.serialization.json.JsonArray }.getOrNull()
+                    if (array != null) {
+                        botPool.adopt(array.mapNotNull { (it as? kotlinx.serialization.json.JsonPrimitive)?.content })
+                    }
+                    platform.secrets.remove("restoredExtraBots")
+                }
+
                 // Songs read through the account need its client running before they are played.
                 launch {
                     if (!account.loggedIn.value) return@launch

@@ -401,3 +401,7 @@ private fun ClickableRowPreview() {
     }
 }
 
+
+@Preview(name = "Gap", showBackground = true)
+@Composable
+private fun GapPreview() = io.max.paperplay.ui.PreviewFrame { Gap(24) }

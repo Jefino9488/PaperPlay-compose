@@ -189,3 +189,9 @@ private fun MiniPlayerPreview() {
     MiniPlayer(state = state, onOpen = {}, onToggle = {}, onNext = {}, onPrevious = {}, progress = { 0.25f })
 }
 
+
+@org.jetbrains.compose.ui.tooling.preview.Preview(name = "Nav item", showBackground = true)
+@Composable
+private fun NavItemPreview() = io.max.paperplay.ui.PreviewFrame {
+    NavItem(entries[0], on = true, prefs = io.max.paperplay.ui.previewPrefs(), modifier = Modifier, taskRunning = true, onClick = {})
+}

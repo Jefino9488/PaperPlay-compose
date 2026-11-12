@@ -94,10 +94,15 @@ fun SettingsHost(
     Column(modifier) {
         BackTopBar(title, onBack = { if (stack.isEmpty() || (deep && stack.size <= 1)) onExit() else stack.removeAt(stack.lastIndex) })
         // The chat pages hold long lists, so they scroll lazily instead of inside the shared scroll column.
+        val isLazy = page == "index" || page == "missing" || page?.startsWith("index:") == true
         if (page == "index") IndexPage(backend, stack, bottomPadding)
         else if (page != null && page.startsWith("index:")) ChatSongsPage(backend, page.removePrefix("index:").toLongOrNull() ?: 0L, stack, bottomPadding)
-        else Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = bottomPadding)) {
-            if (page == null) SettingsList(prefs, backend, stack) else SettingsPage(page, stack, prefs, conn, songCount, backend, onRestore)
+        else Column(
+            Modifier.fillMaxSize()
+                .then(if (isLazy) Modifier else Modifier.verticalScroll(rememberScrollState()))
+                .padding(bottom = bottomPadding)
+        ) {
+            if (page == null) SettingsList(prefs, stack) else SettingsPage(page, stack, prefs, conn, songCount, backend, onRestore)
         }
     }
 }
@@ -109,7 +114,7 @@ internal val subTitles = mapOf(
 )
 
 @Composable
-private fun SettingsList(prefs: UiPrefs, backend: CoreBackend, stack: MutableList<String>) {
+private fun SettingsList(prefs: UiPrefs, stack: MutableList<String>) {
     var query by remember { mutableStateOf("") }
     val q = query.trim().lowercase()
     val shown = categories.filter { (!it.phoneOnly || isPhone) && (q.isEmpty() || q in "${it.title} ${it.subtitle} ${it.keywords}".lowercase()) }
@@ -279,6 +284,8 @@ internal fun SettingsPage(
         "storage" -> {
             var limit by remember { mutableStateOf(pref("cache_limit")?.toLongOrNull() ?: (2L shl 30)) }
             val idx = cacheLimits.indexOfFirst { it >= limit }.coerceAtLeast(0)
+            val used by androidx.compose.runtime.produceState(0L to 0L, notice.value) { value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { backend.cacheUsed() } }
+            SettingsRow("Used: ${bytesText(used.second)}", icon = Icons.Rounded.Storage, subtitle = "Pinned songs: ${bytesText(used.first)}, not counted in the limit")
             SettingsRow("Cache limit: ${bytesText(cacheLimits[idx])}", icon = Icons.Rounded.Storage, subtitle = "Pinned songs are not counted")
             SliderRow("Cache size", idx.toFloat(), 0f..(cacheLimits.size - 1f), { limit = cacheLimits[it.toInt()] }, steps = cacheLimits.size - 2,
                 onDone = { backend.setPref("cache_limit", "$limit") })
@@ -477,4 +484,16 @@ private fun GlassPreview(prefs: UiPrefs) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Glass preview", style = MaterialTheme.typography.titleMedium) }
         }
     }
+}
+
+@Preview(name = "Settings list phone", widthDp = 390, heightDp = 844, showBackground = true)
+@Composable
+private fun SettingsListPhonePreview() = io.max.paperplay.ui.PreviewFrame {
+    SettingsList(io.max.paperplay.ui.previewPrefs(), mutableListOf())
+}
+
+@Preview(name = "Settings list desktop", widthDp = 520, heightDp = 800, showBackground = true)
+@Composable
+private fun SettingsListDesktopPreview() = io.max.paperplay.ui.PreviewFrame(dark = true) {
+    SettingsList(io.max.paperplay.ui.previewPrefs(), mutableListOf())
 }

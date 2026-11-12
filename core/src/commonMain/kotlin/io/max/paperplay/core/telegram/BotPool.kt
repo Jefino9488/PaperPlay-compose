@@ -72,7 +72,10 @@ class BotPool(
     fun load() {
         if (loaded) return
         loaded = true
-        for (t in readTokens()) {
+        val tokens = readTokens()
+        val loadedBots = tokens.mapNotNull { t -> botId(t)?.let { id -> PoolBot(id) } }
+        _bots.value = loadedBots
+        for (t in tokens) {
             val id = botId(t) ?: continue
             scope.launch { start(id, t) }
         }

@@ -90,6 +90,20 @@ Profile and navigation (12 Nov, compiles; debug build not yet installed on the p
     progress at draw time, stable queue keys, handwritten baseline profile
 [x] Previews for equalizer, ListenBrainz, account, song info rows, stats and log
 
+Header, status toast, lyrics (12 Nov, compiles; not checked on screen)
+[x] Home header: bigger, "Good morning, <profile name>" with a random message
+[x] Status chip removed from Home; now a swipeable toast in the page colour
+[x] Full-screen lyrics page (phone and desktop), current line bold, tap to seek
+[x] Desktop title bar takes the page gradient start colour
+[x] Desktop player bar right side: same size icons, thin volume slider
+[x] Settings item in the desktop sidebar
+[x] Album page header says "Various artists" when songs differ
+[ ] Albums are grouped by album name only, so a wrong tag merges songs from
+    different artists (e.g. Now That's What WE Call Music! (25)); decide on
+    splitting by artist or fixing the tag
+[ ] Proper DesktopShell preview (PlayerBar needs a backend, so the existing
+    PlayerBarPreview can't really render)
+
 Other
 [x] Task centre page (running tasks, history, clear)
 [x] Home mixes cached so Home opens faster

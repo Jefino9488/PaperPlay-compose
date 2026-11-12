@@ -73,7 +73,24 @@ data class ScanUi(val text: String, val fraction: Double?)
  * Maps the app services onto the plain state the screens render and the actions they call.
  * No Telegram or database types leave this class except [LibraryChat].
  */
-class CoreBackend(val services: AppServices) {
+/** What the player screens need from the backend. Lets them be previewed with fake data. */
+interface PlayerControls {
+    val position: StateFlow<PositionUi>
+    val sleepAt: StateFlow<Long?>
+    fun togglePlay()
+    fun next()
+    fun previous()
+    fun seekTo(fraction: Float)
+    fun seekToMs(ms: Long)
+    fun setVolume(v: Float)
+    fun toggleShuffle()
+    fun cycleRepeat()
+    fun playQueueIndex(index: Int)
+    fun setSleepTimer(minutes: Int?)
+    suspend fun lyricsFor(songId: String): String?
+}
+
+class CoreBackend(val services: AppServices) : PlayerControls {
     private val scope = services.scope
     private val repo = services.library
 
@@ -214,7 +231,7 @@ class CoreBackend(val services: AppServices) {
     }
 
     /** Lyrics for a song: the saved ones, else looked up on LRCLIB (unless lookups are off) and saved. Null when none. */
-    suspend fun lyricsFor(songId: String): String? {
+    override suspend fun lyricsFor(songId: String): String? {
         val song = byId[songId] ?: return null
         song.lyrics?.takeIf { it.isNotBlank() }?.let { return it }
         if (!taste.value.lookups) return null
@@ -334,7 +351,7 @@ class CoreBackend(val services: AppServices) {
         tasks.running.value.firstOrNull { it.id == lyricsTask }?.let { tasks.stop(it.id) }
     }
 
-    fun seekToMs(ms: Long) = player.seek(ms)
+    override fun seekToMs(ms: Long) { player.seek(ms) }
 
     /** Listening totals for the last [days] days (0 for all time): per song and per day. */
     fun listenStats(days: Int): Pair<List<io.max.paperplay.core.library.ListenTotal>, Map<String, Long>> {
@@ -362,10 +379,10 @@ class CoreBackend(val services: AppServices) {
     }
 
     /** Sleep timer: pauses at [sleepAt] (epoch ms). Null when none is set. */
-    val sleepAt = MutableStateFlow<Long?>(null)
+    override val sleepAt = MutableStateFlow<Long?>(null)
     private var sleepJob: kotlinx.coroutines.Job? = null
 
-    fun setSleepTimer(minutes: Int?) {
+    override fun setSleepTimer(minutes: Int?) {
         sleepJob?.cancel()
         if (minutes == null) { sleepAt.value = null; return }
         val end = nowMoment().epochMs + minutes * 60_000L
@@ -375,6 +392,12 @@ class CoreBackend(val services: AppServices) {
             if (playerStarted.value) player.pause()
             sleepAt.value = null
         }
+    }
+
+    /** Bytes of songs stored on this device: (pinned, other). */
+    fun cacheUsed(): Pair<Long, Long> {
+        val rows = repo.cachedSongs()
+        return rows.filter { it.pinned }.sumOf { it.cached_bytes } to rows.filter { !it.pinned }.sumOf { it.cached_bytes }
     }
 
     /** Deletes streamed audio TDLib keeps on disk. Reports what happened as text. */
@@ -633,7 +656,7 @@ class CoreBackend(val services: AppServices) {
     val playback: StateFlow<PlaybackUiState> get() = playbackMeta
 
     /** Position and buffered time. Only the seek bar, mini progress and lyrics should read this. */
-    val position: StateFlow<PositionUi> = nowPlayingFlow.map { PositionUi(it.positionMs, it.bufferedMs) }
+    override val position: StateFlow<PositionUi> = nowPlayingFlow.map { PositionUi(it.positionMs, it.bufferedMs) }
         .distinctUntilChanged()
         .stateIn(scope, SharingStarted.WhileSubscribed(5_000), PositionUi())
 
@@ -716,21 +739,21 @@ class CoreBackend(val services: AppServices) {
         withPlayer { it.setQueue(list, 0) }
     }
 
-    fun togglePlay() = if (playbackMeta.value.playing) player.pause() else player.play()
-    fun next() = player.next()
-    fun previous() = player.previous()
-    fun seekTo(fraction: Float) = player.seek((fraction * playbackMeta.value.durationMs).toLong())
-    fun setVolume(v: Float) {
+    override fun togglePlay() { if (playbackMeta.value.playing) player.pause() else player.play() }
+    override fun next() { player.next() }
+    override fun previous() { player.previous() }
+    override fun seekTo(fraction: Float) { player.seek((fraction * playbackMeta.value.durationMs).toLong()) }
+    override fun setVolume(v: Float) {
         volume.value = v.coerceIn(0f, 1f)
         if (playerStarted.value) player.setVolume(volume.value)
         repo.setPref("player_volume", volume.value.toString())
     }
 
-    fun toggleShuffle() = player.setShuffle(!playbackMeta.value.shuffle)
-    fun cycleRepeat() = player.setRepeat(
+    override fun toggleShuffle() { player.setShuffle(!playbackMeta.value.shuffle) }
+    override fun cycleRepeat() { player.setRepeat(
         when (playbackMeta.value.repeat) { RepeatUi.Off -> Repeat.ALL; RepeatUi.All -> Repeat.ONE; RepeatUi.One -> Repeat.OFF },
-    )
-    fun playQueueIndex(index: Int) {
+    ) }
+    override fun playQueueIndex(index: Int) {
         val q = player.nowPlaying.value.queue
         if (index in q.indices) player.setQueue(q, index)
     }
