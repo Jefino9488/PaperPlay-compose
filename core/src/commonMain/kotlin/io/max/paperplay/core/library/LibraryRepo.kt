@@ -131,6 +131,12 @@ class LibraryRepo(val db: LibraryDatabase, private val clock: () -> Long) {
         moveEntries(s.chat_id, s.message_id, chatId, messageId, keepOrder = true)
     }
 
+    /** Hands [from]'s playlist entries and favorite to [to], before [from] is deleted. */
+    fun moveReferences(from: Song, to: Song) = db.transaction {
+        moveEntries(from.chat_id, from.message_id, to.chat_id, to.message_id)
+        if (from.favorite && !to.favorite) songs.setFavorite(true, clock(), to.chat_id, to.message_id)
+    }
+
     private fun moveEntries(fromChat: Long, fromMessage: Long, toChat: Long, toMessage: Long, keepOrder: Boolean = false) {
         val now = clock()
         for (e in lists.entriesOf(fromChat, fromMessage).executeAsList()) {

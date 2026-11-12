@@ -62,3 +62,5 @@ class BotApi(private val token: suspend () -> String?, private val http: HttpPos
         else reply["description"]?.jsonPrimitive?.contentOrNull ?: "refused"
     }
 }
+
+expect fun defaultHttpPoster(): HttpPoster
