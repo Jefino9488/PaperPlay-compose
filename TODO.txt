@@ -283,5 +283,20 @@ ORDER I'D DO IT IN
 9. Desktop tray and shortcuts, then macOS and Linux
 10. Port the Dart tests as each thing lands
 
-[x] Desktop full player: Queue/Lyrics tabs on the right, window full screen toggle (hides title bar, exit icon), exits when the player closes. Uncompiled.
-[x] Desktop: custom title bar (undecorated window, own min/max/close, drag, edge resize, hidden in full screen); now playing view switches Queue/Lyrics instead of showing both. Uncompiled.
+[x] Desktop full player: Queue/Lyrics tabs on the right, window full screen toggle (native title bar hides, exit icon shows), leaves full screen when the player closes
+[x] Desktop now playing page: one right pane with a Queue/Lyrics switch
+[x] Desktop player bar: lyrics and three-dot buttons removed; custom volume bar (track and thumb share a centre line); Space focus fix
+[x] Player bar customization (Settings > Appearance): Material/Glass look, bar background, corners, per-button switches. Not tried on screen
+[x] Phone player: Devices button (This phone, links to Network play and Connect devices)
+[x] Change cover search: repeats dropped by name, best word matches first
+[x] Desktop glass: blur is off by default (tint and edge only), switch "Blur the background" on the Glass page; covers use mipmapped scaling. Lag fix not measured
+[x] Sort label on song lists no longer cut off on desktop; pinned list bar uses the card colour
+[x] Android debug and release built and installed; desktop installer 1.1.0 built (before the glass and cover changes) and copied to Downloads
+[ ] Custom desktop title bar: tried and reverted (window could not be dragged, app felt laggy). AppTitleBar.kt is unused; retry later and find the drag/lag cause
+[ ] Check the desktop lag is gone with glass blur off; if not, profile (scrolling, progress tick, animated background)
+[ ] Esc to exit window full screen
+[ ] Devices button only links to settings; real control of other devices needs LAN peers and a remote-control protocol
+[ ] Phone shows "Wrong remote file identifier specified: Wrong padding in the string" under the progress bar while the song plays; source of the error not traced
+[ ] Cover search for compilations (e.g. "00s Mixtape") still weak; Deezer/iTunes do not list them
+[ ] bg_*, standby_*, player_* and glass_desktop_blur prefs are not in backups
+[ ] New desktop installer with the latest glass and cover changes; commit and push what is left (other commits landed after 42439b7; check `git status` and `git log origin/main..`)

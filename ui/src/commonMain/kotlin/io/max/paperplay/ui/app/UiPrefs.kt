@@ -149,6 +149,11 @@ class UiPrefs(private val read: (String) -> String?, private val write: (String,
         private set
     fun putSidebarWidth(v: Float) { sidebarWidth = v; write("sidebar_width", "$v") }
 
+    /** Desktop glass can blur the page behind each part, which is heavy; off keeps the tint and rim only. */
+    var desktopBlur by mutableStateOf(read("glass_desktop_blur") == "true")
+        private set
+    fun putDesktopBlur(v: Boolean) { desktopBlur = v; write("glass_desktop_blur", "$v") }
+
     /** Desktop player bar: corner size (0..100), a solid card behind it when the look is Material, and hidden buttons. */
     var playerRadius by mutableStateOf(read("player_radius")?.toFloatOrNull()?.coerceIn(0f, 100f) ?: 40f)
         private set
@@ -300,7 +305,7 @@ fun Modifier.partSurface(group: LookGroup, color: Color, shape: Shape): Modifier
     val reduced = io.max.paperplay.ui.theme.LocalReducedTransparency.current
     val alpha = surfaceAlpha(prefs.glassTint)
     val blurDp = prefs.glassBlur.dp
-    return if (backdrop != null && !reduced) {
+    return if (backdrop != null && !reduced && (io.max.paperplay.ui.isPhone || prefs.desktopBlur)) {
         clip(shape)
             .drawBackdrop(
                 backdrop = backdrop,

@@ -220,6 +220,7 @@ internal fun SettingsPage(
             Text("Applies to every part set to Glass on the Appearance page.", Modifier.padding(horizontal = 20.dp, vertical = 12.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
             val g = prefs.glass
             SectionLabel("Material")
+            if (!isPhone) SwitchRow("Blur the background", prefs.desktopBlur, prefs::putDesktopBlur, null, "Off is much faster; glass is then a tint and an edge line")
             SliderRow("Blur: ${g.blur.toInt()} dp", g.blur, 0f..40f, { prefs.updateGlass(g.copy(blur = it)) })
             if (io.max.paperplay.ui.glassLensSupported()) {
                 SliderRow("Refraction height: ${g.lensHeight.toInt()} dp", g.lensHeight, 0f..48f, { prefs.updateGlass(g.copy(lensHeight = it)) })

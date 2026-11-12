@@ -41,6 +41,7 @@ class FileCoverLoader(private val limit: Int = 200) : CoverLoader {
             if (decoded != null) cache[key] = decoded
             value = decoded
         }
-        return remember(bitmap) { bitmap?.let { BitmapPainter(it) } }
+        // Medium filtering mipmaps the downscale; the default shimmers and shows jagged edges on small covers.
+        return remember(bitmap) { bitmap?.let { BitmapPainter(it, filterQuality = androidx.compose.ui.graphics.FilterQuality.Medium) } }
     }
 }
