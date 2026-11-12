@@ -198,7 +198,6 @@ fun main() {
             androidx.compose.runtime.LaunchedEffect(Unit) { mark(dir, "window first composition") }
             App(env)
         }
-        }
         val miniVisible by io.max.paperplay.ui.app.DesktopMini.visible.collectAsState()
         if (miniVisible) {
             Window(
