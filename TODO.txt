@@ -1,0 +1,169 @@
+PaperPlay Compose - what's done and what's left
+Updated 12 Nov 2026
+
+Marks: [x] done and builds, [~] half done, [ ] not done.
+Heads up: almost nothing here has been tried on the phone yet. "Done" means it
+compiles and I wrote it, not that I've seen it work.
+
+
+WHAT WORKS NOW
+--------------
+App and look
+[x] Home, Search, Library, Profile, Settings, mini player, full player, queue
+[x] Desktop layout (sidebar, now playing panel, player bar)
+[x] Glass and Material styles, themes, accent from the cover colour
+[x] Material 3 Expressive and Tabler icon options
+[x] Scan chip, sticky play/shuffle, sort sheet, swipe up for queue, seek preview,
+    recent searches
+
+Playback
+[x] Android (Media3) and desktop (bundled libvlc, no VLC install needed)
+[x] Shuffle, repeat, saved volume, play next, sleep timer, 5 band equalizer
+[x] Media notification, keep-alive service with scan progress
+[x] Lyrics with synced lines, tap a line to jump there
+
+Telegram and library
+[x] Bot login, credentials, channels, main chat, TDLib on Android and desktop
+[x] Scan, full rescan, forum topics, backup restore
+[x] Own account: phone, code, password, QR login
+[x] Chats and channels page: index a chat, add songs the bot can't see
+    (they play through the account)
+[x] Chats and channels reachable from Channels, Profile and Settings
+[x] Chat page cleanup (More toggle, select all / add all under the chips)
+[x] Index refresh and Spotify refresh in the background
+[x] Duplicates: find them, tick extras, keep best quality, delete through the
+    bot, Bot API or own account
+[x] Sort General: topic suggestions and moving songs between topics
+[x] Uploads hub: queue, retry, rate limit, share to PaperPlay on Android
+
+Playlists and Spotify
+[x] Import a public Spotify playlist link, match review
+[x] Playlist page: sort menu, refresh from link, rename, delete
+[x] "N not in your library yet" sheet with index matches and Add buttons
+[x] Quality, bitrate and size on song rows
+[x] Song menu: Open in Telegram, Song info, Find metadata, Edit tags, Change cover
+[x] Library Playlists tab (Favorites, Recently played, New playlist, Import)
+[x] Spotify login with my own client id (PKCE), reads whole playlists
+    - redirect to register: paperplay://spotify (phone), http://127.0.0.1:8888/callback (desktop)
+
+Metadata, covers, lyrics
+[x] Metadata lookups: MusicBrainz, Deezer, iTunes, TheAudioDB, all at once
+[x] Find metadata picker, edit tags, change cover (file, link or online)
+[x] Song info left page (what's missing, look up again, copy list)
+[x] Read tags and covers from inside the audio files (ID3, FLAC, Ogg, MP4)
+[x] Lyrics from LRCLIB, NetEase, Kugou, QQ Music, lyrics.ovh, run over the
+    whole library, misses skipped for 14 days
+[x] Cover colours, daily mixes, genre tiles, weather mixes
+[x] Listening stats, ListenBrainz, mood code in core
+
+Other
+[x] Task centre page (running tasks, history, clear)
+[x] Home mixes cached so Home opens faster
+[x] Statistics, play next, clear cache, log out, profile photo
+[x] Android debug and release signed with the odo key, blue icon, desktop
+    packaging (libvlc, TDLib, java.sql)
+
+
+HALF DONE, FINISH THESE
+-----------------------
+[~] Mood scan: code written, but nothing starts it yet
+[~] Mixes: MixPage is written but Home still opens a mix as a normal list
+[~] "Doesn't fit" votes: not passed into the daily mixes, no vote screens
+[~] Task centre: scan, index and sync tasks have no stop button, history is lost
+    when the app closes
+[~] Uploads: queue is lost on restart, not shown in the task centre, no folder
+    upload, no drag and drop on desktop, no entry on the phone Profile page
+[~] Metadata: Last.fm, Discogs, Spotify, Genius not used (they need keys)
+[~] Lyrics: Genius and Musixmatch not used (they need keys), lyrics screen is
+    still a small dialog, not full screen
+[~] Covers: online cover thumbnails in Change cover may not show
+[~] Embedded tags: very big Ogg covers get cut, ID3 genre numbers like (17)
+    aren't turned into names
+[~] Sort General: doesn't check the bot can post and delete first, "song is
+    playing" check isn't connected, deletes only go through the bot
+[~] Duplicates: Dart duplicates tests not ported
+[~] Playlist page: Pin for offline only says "not built", Favorites and Recently
+    played open as fixed lists
+[~] Missing info page: no multi select, no "no match found" retry, no save to file
+[~] Offline cache: eviction exists, pinning and cache manager screen don't
+[~] Quality badges: text only, no Hi-Res / Lossless / High badges
+[~] Detail screens: no reorder, no add-songs picker
+[~] Spotify login: if Android kills the app during the browser step the
+    login is lost and you start again
+
+
+NOT STARTED
+-----------
+Fix first
+[ ] Android crash after the merge (error text is in Settings > Telegram > Bot activity)
+[ ] Songs missing: 2753 in the app vs about 3269 posts in Telegram
+[ ] Check everything above on the phone: login, QR, indexing, copying, refresh,
+    cloud restore, uploads, lyrics run, duplicates delete
+[ ] Install the release APK (built, not installed)
+
+Playback
+[ ] Playback speed
+[ ] Loudness normalising
+[ ] Audio output choice
+[ ] Edit the queue (move, remove)
+[ ] Restore last session
+[ ] Remote and group playback
+
+Library
+[ ] Auto filing (new songs go to the right topic by themselves)
+[ ] Extra bots and the bot pool
+[ ] Rate limit recording
+[ ] Backup writer (save the library to a file)
+[ ] Delete from Telegram from the song menu
+[ ] Neighbours view in Discover
+[ ] Export list screen (missing songs to text / M3U, Spotify and Apple links)
+[ ] Library status page
+[ ] Topic picker page
+
+Devices
+[ ] LAN sync, pairing, devices page
+[ ] Library sync merge
+[ ] Remote playback and PC offload
+[ ] Log out of all devices
+[ ] Session export and import
+
+Desktop
+[ ] Tray icon, close to tray
+[ ] Keyboard shortcuts
+[ ] Battery and notification permissions
+[ ] macOS and Linux libvlc and packaging
+[ ] Check release packaging on Windows, macOS and Linux
+
+Ideas I haven't built yet
+[ ] Album pages that fill themselves from all the sources
+[ ] Album-wide cover and info shared across every track of the album
+[ ] Hi-res cover upgrade queue
+[ ] Show lyrics run and metadata run progress on the Home scan chip
+[ ] Pick lyrics source order in Settings
+[ ] Lyrics from the audio file itself (embedded lyrics tag)
+[ ] Per-song "wrong lyrics" button that tries the next source
+
+
+TESTS
+-----
+[x] Kotlin tests: backup, database, TDLib client, audio info, index, selection,
+    auto sync, QR, user session, playback controller, streaming, scanner, covers
+[ ] Dart tests with no Kotlin version yet: album_art, cover, cover_colors,
+    duplicates_view, equalizer, glass_style, home_mix, later_stamp,
+    listen_recorder, listen_stats, listenbrainz, logic, loudness, main_chat,
+    migration, missing_export, mood, neighbours, playlist_import, setup,
+    spotify, sync, taste, td_compat, topic_sort, upload
+[ ] No tests written for anything added in the last two days
+
+
+ORDER I'D DO IT IN
+------------------
+1. Put the new build on the phone and go through the device checks
+2. Fix the crash and the missing songs
+3. Finish the half done list (mood, mixes, task stop buttons, upload queue)
+4. Auto filing, export list, backup writer
+5. Offline pinning, cache manager, quality badges
+6. Queue editing, speed, loudness
+7. LAN sync and devices
+8. Desktop tray and shortcuts, then macOS and Linux
+9. Port the Dart tests as each thing lands
