@@ -24,6 +24,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.jsonObject
@@ -42,7 +43,7 @@ enum class IconSet(val label: String) {
     Tabler("Tabler"),
 }
 enum class LookGroup(val label: String, val hint: String) {
-    Nav("Navigation bar", "The bottom bar"),
+    Nav("Navigation bar", "The bottom bar, or the sidebar on desktop"),
     Bars("Top bars", "App bars at the top of pages"),
     Cards("Cards", "Cards and tiles"),
     Overlays("Dialogs, sheets and menus", "Anything that opens over a page"),
@@ -72,7 +73,42 @@ class UiPrefs(private val read: (String) -> String?, private val write: (String,
         private set
     var floatingNav by mutableStateOf(read("floating_nav") != "false")
         private set
-    var coverGradient by mutableStateOf(read("cover_gradient") == "true")
+    /** The page background. Older installs only stored cover_gradient: absent or "true" is Cover, "false" is Plain. */
+    var background by mutableStateOf(
+        BgMode.entries.firstOrNull { it.name.lowercase() == read("bg_mode") } ?: if (read("cover_gradient") == "false") BgMode.Plain else BgMode.Cover
+    )
+        private set
+    val coverGradient: Boolean get() = background == BgMode.Cover || background == BgMode.CoverBlur
+    /** Standby mode settings (standby_* keys). */
+    val standby = StandbyPrefs(read, write)
+    private fun int(key: String, def: Int) = read(key)?.toIntOrNull() ?: def
+    private fun flt(key: String, def: Float) = read(key)?.toFloatOrNull() ?: def
+    var bgGradC1 by mutableStateOf(int("bg_grad_c1", 0xFF7C5CFF.toInt()))
+        private set
+    var bgGradC2 by mutableStateOf(int("bg_grad_c2", 0xFF101820.toInt()))
+        private set
+    /** Third gradient stop as ARGB; 0 means none. */
+    var bgGradC3 by mutableStateOf(int("bg_grad_c3", 0))
+        private set
+    var bgGradAngle by mutableStateOf(flt("bg_grad_angle", 90f))
+        private set
+    var bgGradCover by mutableStateOf(read("bg_grad_cover") == "true")
+        private set
+    var bgImage by mutableStateOf(read("bg_image")?.takeIf { it.isNotEmpty() })
+        private set
+    var bgBlur by mutableStateOf(flt("bg_blur", 16f))
+        private set
+    var bgDim by mutableStateOf(flt("bg_dim", 0.35f))
+        private set
+    var bgAnim by mutableStateOf(BgAnim.entries.firstOrNull { it.name.lowercase() == read("bg_anim") } ?: BgAnim.Stars)
+        private set
+    var bgAnimC1 by mutableStateOf(int("bg_anim_c1", 0xFFFFFFFF.toInt()))
+        private set
+    var bgAnimC2 by mutableStateOf(int("bg_anim_c2", 0xFF0B1026.toInt()))
+        private set
+    var bgAnimSpeed by mutableStateOf(flt("bg_anim_speed", 1f))
+        private set
+    var bgAnimDensity by mutableStateOf(flt("bg_anim_density", 0.5f))
         private set
     var nowPlayingPanel by mutableStateOf(read("now_playing_panel") != "false")
         private set
@@ -96,13 +132,29 @@ class UiPrefs(private val read: (String) -> String?, private val write: (String,
     var cornerRadius by mutableStateOf(read("nav_radius")?.toFloatOrNull() ?: nav0?.num("barRadius") ?: 100f)
         private set
 
+    /** Desktop sidebar width in dp when expanded. */
+    var sidebarWidth by mutableStateOf(read("sidebar_width")?.toFloatOrNull()?.coerceIn(180f, 320f) ?: 240f)
+        private set
+    fun putSidebarWidth(v: Float) { sidebarWidth = v; write("sidebar_width", "$v") }
+
     val cornerScale: Float get() = (cornerRadius / 100f).coerceIn(0f, 1f)
 
     private val glass0 = runCatching { Json.parseToJsonElement(read("glass_style").orEmpty()).jsonObject }.getOrNull()
-    var glassBlur by mutableStateOf(glass0?.num("blur") ?: 8f)
+    var glass by mutableStateOf(GlassStyle().let { d ->
+        fun bool(k: String, def: Boolean) = (glass0?.get(k) as? JsonPrimitive)?.booleanOrNull ?: def
+        GlassStyle(
+            blur = glass0?.num("blur") ?: d.blur, lensHeight = glass0?.num("lensHeight") ?: d.lensHeight,
+            lensAmount = glass0?.num("lensAmount") ?: d.lensAmount, depth = bool("depth", d.depth), chromatic = bool("chromatic", d.chromatic),
+            saturation = glass0?.num("saturation") ?: d.saturation, tint = glass0?.num("tint") ?: d.tint,
+            edgeWidth = glass0?.num("edgeWidth") ?: d.edgeWidth, edgeAlpha = glass0?.num("edgeAlpha") ?: d.edgeAlpha,
+            edgeStyle = glass0?.num("edgeStyle")?.toInt() ?: d.edgeStyle, shadowRadius = glass0?.num("shadowRadius") ?: d.shadowRadius,
+            shadowAlpha = glass0?.num("shadowAlpha") ?: d.shadowAlpha, innerRadius = glass0?.num("innerRadius") ?: d.innerRadius,
+            innerAlpha = glass0?.num("innerAlpha") ?: d.innerAlpha,
+        )
+    })
         private set
-    var glassTint by mutableStateOf(glass0?.num("tint") ?: 0.35f)
-        private set
+    val glassBlur: Float get() = glass.blur
+    val glassTint: Float get() = glass.tint
 
     val looks = mutableStateMapOf<LookGroup, Look>().apply {
         for (g in LookGroup.entries) {
@@ -122,7 +174,21 @@ class UiPrefs(private val read: (String) -> String?, private val write: (String,
     fun putAmoled(on: Boolean) { amoled = on; write("theme_amoled", "$on") }
     fun putAccent(id: String) { accent = id; write("theme_accent", id) }
     fun putFloatingNav(on: Boolean) { floatingNav = on; write("floating_nav", "$on") }
-    fun putCoverGradient(on: Boolean) { coverGradient = on; write("cover_gradient", "$on") }
+    fun putCoverGradient(on: Boolean) = putBackground(if (on) BgMode.Cover else BgMode.Plain)
+    fun putBackground(m: BgMode) { background = m; write("bg_mode", m.name.lowercase()); write("cover_gradient", "${m != BgMode.Plain}") }
+    fun putBgGrad(c1: Int = bgGradC1, c2: Int = bgGradC2, c3: Int = bgGradC3, angle: Float = bgGradAngle, cover: Boolean = bgGradCover) {
+        bgGradC1 = c1; bgGradC2 = c2; bgGradC3 = c3; bgGradAngle = angle; bgGradCover = cover
+        write("bg_grad_c1", "$c1"); write("bg_grad_c2", "$c2"); write("bg_grad_c3", "$c3"); write("bg_grad_angle", "$angle"); write("bg_grad_cover", "$cover")
+    }
+    fun putBgImage(path: String?, blur: Float = bgBlur, dim: Float = bgDim) {
+        bgImage = path; bgBlur = blur; bgDim = dim
+        write("bg_image", path.orEmpty()); write("bg_blur", "$blur"); write("bg_dim", "$dim")
+    }
+    fun putBgAnim(anim: BgAnim = bgAnim, c1: Int = bgAnimC1, c2: Int = bgAnimC2, speed: Float = bgAnimSpeed, density: Float = bgAnimDensity) {
+        bgAnim = anim; bgAnimC1 = c1; bgAnimC2 = c2; bgAnimSpeed = speed; bgAnimDensity = density
+        write("bg_anim", anim.name.lowercase()); write("bg_anim_c1", "$c1"); write("bg_anim_c2", "$c2")
+        write("bg_anim_speed", "$speed"); write("bg_anim_density", "$density")
+    }
     fun putNowPlayingPanel(on: Boolean) { nowPlayingPanel = on; write("now_playing_panel", "$on") }
     fun setLook(g: LookGroup, l: Look) { looks[g] = l; write("look_${g.name.lowercase()}", l.name.lowercase()) }
 
@@ -140,16 +206,41 @@ class UiPrefs(private val read: (String) -> String?, private val write: (String,
         }.toString())
     }
 
-    fun setGlass(blur: Float = glassBlur, tint: Float = glassTint) {
-        glassBlur = blur; glassTint = tint
+    fun updateGlass(g: GlassStyle) {
+        glass = g
         // Keeps the other glass fields a restored backup may hold.
         val old = runCatching { Json.parseToJsonElement(read("glass_style").orEmpty()).jsonObject }.getOrNull() ?: JsonObject(emptyMap())
-        write("glass_style", JsonObject(old + mapOf("blur" to JsonPrimitive(blur.toDouble()), "tint" to JsonPrimitive(tint.toDouble()))).toString())
+        fun n(v: Float) = JsonPrimitive(v.toDouble())
+        write("glass_style", JsonObject(old + mapOf(
+            "blur" to n(g.blur), "lensHeight" to n(g.lensHeight), "lensAmount" to n(g.lensAmount),
+            "depth" to JsonPrimitive(g.depth), "chromatic" to JsonPrimitive(g.chromatic),
+            "saturation" to n(g.saturation), "tint" to n(g.tint), "edgeWidth" to n(g.edgeWidth), "edgeAlpha" to n(g.edgeAlpha),
+            "edgeStyle" to JsonPrimitive(g.edgeStyle), "shadowRadius" to n(g.shadowRadius), "shadowAlpha" to n(g.shadowAlpha),
+            "innerRadius" to n(g.innerRadius), "innerAlpha" to n(g.innerAlpha),
+        )).toString())
     }
 
     /** The accent as ARGB, or null for dynamic and cover colours. */
     val seed: Int? get() = accentOptions.firstOrNull { it.id == accent }?.color
 }
+
+/** Liquid glass material. Distances in dp. edgeStyle: 0 directional, 1 ambient, 2 plain. */
+data class GlassStyle(
+    val blur: Float = 8f,
+    val lensHeight: Float = 12f,
+    val lensAmount: Float = 24f,
+    val depth: Boolean = false,
+    val chromatic: Boolean = false,
+    val saturation: Float = 1.5f,
+    val tint: Float = 0.35f,
+    val edgeWidth: Float = 1f,
+    val edgeAlpha: Float = 1f,
+    val edgeStyle: Int = 0,
+    val shadowRadius: Float = 16f,
+    val shadowAlpha: Float = 0.12f,
+    val innerRadius: Float = 16f,
+    val innerAlpha: Float = 0f,
+)
 
 private fun JsonObject.str(key: String): String? = (get(key) as? JsonPrimitive)?.contentOrNull
 

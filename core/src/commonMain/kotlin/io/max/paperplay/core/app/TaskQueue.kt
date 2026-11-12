@@ -5,6 +5,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.*
 import kotlin.time.Clock
 
 enum class TaskKind { Scan, Index, Sync, Covers, Info, Upload, Other }
@@ -29,9 +30,15 @@ data class TaskItem(
  * What the app is doing in the background, and what it did lately. Any feature can [start] a task,
  * [update] it and [finish] it; the Tasks page reads [running] and [history].
  */
-class TaskQueue(private val scope: CoroutineScope, private val clock: () -> Long = { Clock.System.now().toEpochMilliseconds() }) {
+class TaskQueue(
+    private val scope: CoroutineScope,
+    private val clock: () -> Long = { Clock.System.now().toEpochMilliseconds() },
+    /** Saved history text (null when none) and where to save it; history survives a restart. */
+    private val load: () -> String? = { null },
+    private val save: (String) -> Unit = {},
+) {
     private val _running = MutableStateFlow<List<TaskItem>>(emptyList())
-    private val _history = MutableStateFlow<List<TaskItem>>(emptyList())
+    private val _history = MutableStateFlow<List<TaskItem>>(restore(load))
     private val stops = HashMap<Long, () -> Unit>()
     private var next = 1L
 
@@ -92,6 +99,18 @@ class TaskQueue(private val scope: CoroutineScope, private val clock: () -> Long
         _running.update { l -> l.filter { it.id != id } }
         val ended = t.copy(state = state, endedAt = clock(), detail = detail ?: t.detail, stoppable = false)
         _history.update { (listOf(ended) + it).take(200) }
+        persist()
+    }
+
+    private fun persist() {
+        runCatching {
+            save(buildJsonArray {
+                for (t in _history.value.take(100)) add(buildJsonObject {
+                    put("k", t.kind.name); put("t", t.title); put("d", t.detail); put("n", t.done); put("o", t.total)
+                    put("s", t.startedAt); put("e", t.endedAt); put("st", t.state.name)
+                })
+            }.toString())
+        }
     }
 
     /** Asks the job to stop and moves it to the history as stopped. */
@@ -101,8 +120,8 @@ class TaskQueue(private val scope: CoroutineScope, private val clock: () -> Long
         finish(id, TaskState.Stopped)
     }
 
-    fun removeFromHistory(id: Long) = _history.update { l -> l.filter { it.id != id } }
-    fun clearHistory() { _history.value = emptyList() }
+    fun removeFromHistory(id: Long) { _history.update { l -> l.filter { it.id != id } }; persist() }
+    fun clearHistory() { _history.value = emptyList(); persist() }
 
     /** Runs [block] as a task: done when it returns, failed when it throws. */
     suspend fun <T> track(kind: TaskKind, title: String, total: Int = 0, block: suspend (id: Long) -> T): T {
@@ -117,7 +136,9 @@ class TaskQueue(private val scope: CoroutineScope, private val clock: () -> Long
     }
 
     /** Turns a progress flow into a task: one starts when a value appears and ends when it goes back to null. */
-    fun <T : Any> watch(kind: TaskKind, title: String, flow: StateFlow<T?>, detail: (T) -> String, fraction: (T) -> Float? = { null }) {
+    fun <T : Any> watch(
+        kind: TaskKind, title: String, flow: StateFlow<T?>, detail: (T) -> String, fraction: (T) -> Float? = { null }, onStop: (() -> Unit)? = null,
+    ) {
         scope.launch {
             var id = 0L
             flow.collect { v ->
@@ -125,7 +146,7 @@ class TaskQueue(private val scope: CoroutineScope, private val clock: () -> Long
                     if (id != 0L) finish(id)
                     id = 0L
                 } else {
-                    if (id == 0L) id = start(kind, title)
+                    if (id == 0L) id = start(kind, title, onStop = onStop)
                     update(id, detail = detail(v), fraction = fraction(v))
                 }
             }
@@ -134,10 +155,34 @@ class TaskQueue(private val scope: CoroutineScope, private val clock: () -> Long
 
     /** Scan, index and playlist sync progress become tasks. */
     fun watchServices(services: AppServices) {
-        watch(TaskKind.Scan, "Reading chats", services.scanner.progress, { it.text }, { it.fraction?.toFloat() })
-        watch(TaskKind.Index, "Indexing chats", services.chatIndex.progress, { "${it.chatTitle}: ${it.found} songs" })
-        watch(TaskKind.Sync, "Refreshing playlists", services.playlistSync.progress, { it })
+        watch(TaskKind.Scan, "Reading chats", services.scanner.progress, { it.text }, { it.fraction?.toFloat() }, onStop = { services.scanner.requestStop() })
+        watch(TaskKind.Index, "Indexing chats", services.chatIndex.progress, { "${it.chatTitle}: ${it.found} songs" }, onStop = { services.chatIndex.stopRun() })
+        watch(TaskKind.Sync, "Refreshing playlists", services.playlistSync.progress, { it }, onStop = { services.playlistSync.stopRun() })
         watchEnricher(services.enricher)
+        watchUploads(services.uploader)
+    }
+
+    /** The upload queue becomes one task while files wait or send; stopping it clears the files not yet started. */
+    fun watchUploads(uploader: Uploader) {
+        scope.launch {
+            var id = 0L
+            uploader.jobs.collect { jobs ->
+                val open = jobs.count { it.status == UploadStatus.Queued || it.status == UploadStatus.Uploading }
+                if (open == 0) {
+                    if (id != 0L) {
+                        val failed = jobs.count { it.status == UploadStatus.Failed }
+                        finish(id, detail = if (failed > 0) "$failed failed" else null)
+                    }
+                    id = 0L
+                } else {
+                    if (id == 0L) id = start(TaskKind.Upload, "Uploading songs", onStop = { uploader.cancelWaiting() })
+                    val done = jobs.count { it.status == UploadStatus.Done }
+                    val now = jobs.firstOrNull { it.status == UploadStatus.Uploading }
+                    update(id, done = done, total = jobs.size, detail = now?.let { "${it.name} to ${it.chatTitle}" } ?: "Waiting",
+                        fraction = now?.progress?.let { (done + it) / jobs.size })
+                }
+            }
+        }
     }
 
     /** Song-info lookups become one stoppable task with a done/total count. */
@@ -158,3 +203,17 @@ class TaskQueue(private val scope: CoroutineScope, private val clock: () -> Long
 }
 
 private const val THROTTLE_MS = 500L
+
+private fun restore(load: () -> String?): List<TaskItem> = runCatching {
+    val arr = Json.parseToJsonElement(load() ?: return emptyList()).jsonArray
+    arr.mapIndexed { i, e ->
+        val o = e.jsonObject
+        fun str(k: String) = o[k]?.jsonPrimitive?.content.orEmpty()
+        fun num(k: String) = o[k]?.jsonPrimitive?.longOrNull ?: 0L
+        TaskItem(
+            -(i + 1).toLong(), TaskKind.entries.firstOrNull { it.name == str("k") } ?: TaskKind.Other, str("t"), str("d"),
+            num("n").toInt(), num("o").toInt(), null, num("s"), num("e"),
+            TaskState.entries.firstOrNull { it.name == str("st") } ?: TaskState.Done,
+        )
+    }
+}.getOrDefault(emptyList())

@@ -217,6 +217,11 @@ class UserSession(
 
     private suspend fun ready(): TdClient {
         val c = open()
+        // While the login waits for the person (phone, code, password) there is nothing to wait out; fail now instead of "timed out".
+        val s = c.auth.value
+        if (s == "authorizationStateWaitPhoneNumber" || s == "authorizationStateWaitCode" || s == "authorizationStateWaitPassword" ||
+            s == "authorizationStateWaitOtherDeviceConfirmation"
+        ) throw TdError(401, "Your account is not logged in yet.")
         c.ready(30.seconds)
         return c
     }
@@ -338,6 +343,25 @@ class UserSession(
         if (first !is kotlinx.serialization.json.JsonObject) {
             throw IllegalStateException("Telegram did not copy this post. The chat may block copying or forwarding.")
         }
+    }
+
+    /** Downloads the song of a post with the owner's account. The local path and TDLib's file id, or null when it holds no song. */
+    suspend fun downloadPost(chatId: Long, messageId: Long): Pair<String, Int>? {
+        val c = ready()
+        knowChat(c, chatId, loadList = false)
+        val message = call(c, request("getMessage") { put("chat_id", chatId); put("message_id", messageId) })
+        val fileId = io.max.paperplay.core.app.fileOfMessage(message)?.long("id")?.toInt() ?: return null
+        val file = call(c, request("downloadFile") {
+            put("file_id", fileId); put("priority", 1); put("offset", 0); put("limit", 0); put("synchronous", true)
+        }, 1800)
+        val path = file.obj("local")?.str("path")?.takeIf { it.isNotEmpty() } ?: return null
+        return path to fileId
+    }
+
+    /** Lets TDLib forget a downloaded file once it has been sent. */
+    suspend fun releaseFile(fileId: Int) {
+        val c = ready()
+        runCatching { call(c, request("deleteFile") { put("file_id", fileId) }) }
     }
 
     /** Deletes [ids] for everyone in one call. False when not logged in or Telegram refuses. */

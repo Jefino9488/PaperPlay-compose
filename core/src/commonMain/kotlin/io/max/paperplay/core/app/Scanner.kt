@@ -218,8 +218,17 @@ class Scanner(
 
     /** Reads every library chat from where it was last read. */
     suspend fun catchUp() {
-        for (chat in repo.chatList()) scanChat(chat)
+        val gen = stopGen
+        for (chat in repo.chatList()) {
+            if (stopGen != gen) break
+            scanChat(chat)
+        }
     }
+
+    @Volatile private var stopGen = 0
+
+    /** Ends the reads going on now; progress already saved is kept. Later reads are not affected. */
+    fun requestStop() { stopGen++ }
 
     private val _gone = MutableStateFlow<List<Song>>(emptyList())
 
@@ -285,6 +294,7 @@ class Scanner(
         var recovered = 0
         val seen = mutableSetOf<Long>()
         calm = false
+        val gen = stopGen
         val initialFloor = effectiveMinPause()
         if (pause < initialFloor) pause = initialFloor
         var chatTitle = chat.title
@@ -302,6 +312,10 @@ class Scanner(
             var lastChatCheck = clockMark.markNow()
             var lastShown = lastWrite
             while (true) {
+                if (stopGen != gen) {
+                    if (!full) repo.setScan(chat.id, newest, chat.walk_done)
+                    return null
+                }
                 // The chat row is looked up again only every 10 s; removal is rare.
                 if (lastChatCheck.elapsedNow() > 10.seconds) {
                     lastChatCheck = clockMark.markNow()

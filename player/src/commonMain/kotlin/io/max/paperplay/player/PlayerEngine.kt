@@ -57,6 +57,10 @@ interface PlayerEngine {
     fun setVolume(volume: Float)
     /** Gains in dB for the five bands of [EQ_BANDS_HZ], or null to turn the equalizer off. */
     fun setEqualizer(gainsDb: List<Float>?) {}
+    /** Playback speed, 1 is normal. */
+    fun setSpeed(speed: Float) {}
+    /** Evens out loud and quiet songs. */
+    fun setNormalize(on: Boolean) {}
     fun release()
 
     fun play(uri: String) = setQueue(listOf(QueueItem(uri)))

@@ -23,6 +23,10 @@ import kotlinx.coroutines.sync.withLock
 
 enum class Repeat { OFF, ALL, ONE }
 
+private const val SESSION_QUEUE = "session_queue"
+private const val SESSION_INDEX = "session_index"
+private const val SESSION_POS = "session_pos"
+
 /** What the player UI shows. [index] is into [queue], which is in play order (shuffled when [shuffle]). */
 data class NowPlaying(
     val song: Song? = null,
@@ -82,6 +86,23 @@ class PlaybackController(
         .stateIn(scope, SharingStarted.Eagerly, NowPlaying())
 
     init {
+        // The queue is saved when it changes; position and index are saved every few seconds while playing.
+        scope.launch {
+            var saved: List<Song>? = null
+            meta.collect { m ->
+                if (m.queue.isNotEmpty() && m.queue !== saved) {
+                    saved = m.queue
+                    runCatching { repo.setPref(SESSION_QUEUE, m.queue.joinToString(",") { it.unique_id }) }
+                }
+            }
+        }
+        scope.launch {
+            while (true) {
+                delay(8_000)
+                if (engine.state.value == PlayerState.Playing) saveSession()
+            }
+        }
+        scope.launch { engine.state.collect { if (it == PlayerState.Paused) saveSession() } }
         scope.launch {
             engine.currentIndex.collect { idx ->
                 val song = meta.value.queue.getOrNull(idx)
@@ -161,6 +182,7 @@ class PlaybackController(
 
     private fun finishListening() {
         val song = listening ?: return
+        if (song.remote_id == NETPLAY_REMOTE) { listenedMs = 0; return }
         val ms = listenedMs
         listenedMs = 0
         if (ms <= 0) return
@@ -189,6 +211,67 @@ class PlaybackController(
     fun seek(positionMs: Long) = engine.seek(positionMs)
     fun setVolume(volume: Float) = engine.setVolume(volume)
     fun setEqualizer(gainsDb: List<Float>?) = engine.setEqualizer(gainsDb)
+    fun setSpeed(speed: Float) = engine.setSpeed(speed)
+    fun setNormalize(on: Boolean) = engine.setNormalize(on)
+
+    /** Takes the song at [index] out of the queue. The last song cannot be removed. Playing on keeps the position. */
+    fun removeAt(index: Int) = command {
+        val m = meta.value
+        val idx = engine.currentIndex.value
+        if (index !in m.queue.indices || m.queue.size < 2) return@command
+        val wasPlaying = engine.state.value == PlayerState.Playing
+        val gone = m.queue[index]
+        val order = m.queue.toMutableList().also { it.removeAt(index) }
+        original = original.toMutableList().also { o -> o.indexOfFirst { it.unique_id == gone.unique_id }.takeIf { it >= 0 }?.let(o::removeAt) }
+        val removedCurrent = index == idx
+        val newIdx = when {
+            removedCurrent -> idx.coerceAtMost(order.lastIndex)
+            index < idx -> idx - 1
+            else -> idx
+        }
+        apply(order, newIdx, if (removedCurrent) 0 else engine.positionMs.value)
+        if (!wasPlaying) engine.pause()
+    }
+
+    /** Moves the song at [from] to [to] in the queue, without restarting what is playing from the start. */
+    fun moveInQueue(from: Int, to: Int) = command {
+        val m = meta.value
+        val idx = engine.currentIndex.value
+        if (from !in m.queue.indices || to !in m.queue.indices || from == to) return@command
+        val wasPlaying = engine.state.value == PlayerState.Playing
+        val order = m.queue.toMutableList().also { it.add(to, it.removeAt(from)) }
+        if (!m.shuffle) original = order
+        val newIdx = when {
+            idx == from -> to
+            from < idx && to >= idx -> idx - 1
+            from > idx && to <= idx -> idx + 1
+            else -> idx
+        }
+        apply(order, newIdx, engine.positionMs.value)
+        if (!wasPlaying) engine.pause()
+    }
+
+    /** Puts back the queue, song and position from the last time, paused. Does nothing when something already plays. */
+    fun restoreSession() = command {
+        if (meta.value.queue.isNotEmpty()) return@command
+        val ids = repo.pref(SESSION_QUEUE)?.split(',')?.filter { it.isNotEmpty() }.orEmpty()
+        val songs = ids.mapNotNull { repo.songByUniqueId(it) }
+        if (songs.isEmpty()) return@command
+        val idx = (repo.pref(SESSION_INDEX)?.toIntOrNull() ?: 0).coerceIn(songs.indices)
+        val pos = repo.pref(SESSION_POS)?.toLongOrNull() ?: 0L
+        original = songs
+        apply(songs, idx, pos)
+        engine.pause()
+    }
+
+    private fun saveSession() {
+        val q = meta.value.queue
+        if (q.isEmpty()) return
+        runCatching {
+            repo.setPref(SESSION_INDEX, engine.currentIndex.value.coerceAtLeast(0).toString())
+            repo.setPref(SESSION_POS, engine.positionMs.value.toString())
+        }
+    }
 
     fun next() = command {
         val m = meta.value

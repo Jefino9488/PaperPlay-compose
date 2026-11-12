@@ -18,11 +18,16 @@ import java.util.concurrent.ConcurrentHashMap
 internal object PlaybackCore {
     const val ACTION_SET_EQUALIZER = "io.max.paperplay.player.SET_EQUALIZER"
     const val EXTRA_EQ_GAINS = "gains"
+    const val ACTION_SET_NORMALIZE = "io.max.paperplay.player.SET_NORMALIZE"
+    const val EXTRA_NORMALIZE = "on"
+    val CMD_SET_NORMALIZE = SessionCommand(ACTION_SET_NORMALIZE, Bundle.EMPTY)
     val CMD_SET_EQUALIZER = SessionCommand(ACTION_SET_EQUALIZER, Bundle.EMPTY)
 
     @Volatile var appContext: Context? = null
     @Volatile var upstream: DataSource.Factory? = null
     @Volatile var eqGains: List<Float>? = null
+    @Volatile var normalize = false
+    @Volatile var speed = 1f
     val sources = ConcurrentHashMap<String, StreamSource>()
 
     @OptIn(UnstableApi::class)

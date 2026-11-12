@@ -243,7 +243,8 @@ class TdClient(private val runtime: TdRuntime, private val config: TdConfig) {
             put("system_language_code", config.languageCode)
             put("device_model", config.deviceModel)
             put("system_version", config.systemVersion)
-            put("application_version", config.appVersion)
+            // Shows in Telegram's Devices list after the app name that was registered with the API id.
+            put("application_version", "PaperPlay ${config.appVersion}")
         })
     }
 }

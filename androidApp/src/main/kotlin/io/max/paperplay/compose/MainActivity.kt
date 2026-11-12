@@ -116,11 +116,75 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun granted(permission: String) = checkSelfPermission(permission) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+    private fun openSettings(action: String, withPackage: Boolean = false) {
+        val intent = Intent(action).apply {
+            if (withPackage) data = android.net.Uri.parse("package:$packageName")
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        runCatching { startActivity(intent) }.onFailure {
+            runCatching { startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.parse("package:$packageName")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+        }
+    }
+
+    /** Runs the system prompt the first time; after a refusal Android shows no prompt, so [fallback] opens Settings instead. */
+    private fun askOnce(permission: String, launch: (String) -> Unit, fallback: () -> Unit) {
+        val prefs = getSharedPreferences("permission_checker", MODE_PRIVATE)
+        if (prefs.getBoolean(permission, false)) { fallback(); return }
+        prefs.edit().putBoolean(permission, true).apply()
+        launch(permission)
+    }
+
+    private fun bluetoothOn(): Boolean? = runCatching {
+        getSystemService(android.bluetooth.BluetoothManager::class.java)?.adapter?.isEnabled
+    }.getOrNull()
+
+    private fun onWifi(): Boolean = runCatching {
+        val cm = getSystemService(android.net.ConnectivityManager::class.java)
+        val caps = cm.getNetworkCapabilities(cm.activeNetwork)
+        caps != null && (caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) || caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_ETHERNET))
+    }.getOrDefault(false)
+
+    private fun permissionStates(): List<io.max.paperplay.ui.PermissionState> {
+        val list = ArrayList<io.max.paperplay.ui.PermissionState>()
+        val notifications = getSystemService(android.app.NotificationManager::class.java).areNotificationsEnabled() &&
+            (Build.VERSION.SDK_INT < 33 || granted(Manifest.permission.POST_NOTIFICATIONS))
+        list += io.max.paperplay.ui.PermissionState("notifications", "Notifications", "Shows the playing song with controls, and scan progress", notifications)
+        val btOn = bluetoothOn()
+        val btPermission = Build.VERSION.SDK_INT < 31 || granted(Manifest.permission.BLUETOOTH_CONNECT)
+        list += io.max.paperplay.ui.PermissionState(
+            "bluetooth", "Bluetooth devices", "Lets the app see headphones and speakers, so media buttons and output switching work",
+            granted = btPermission && btOn != false,
+            detail = when {
+                btOn == null -> "This device has no Bluetooth"
+                !btPermission -> "Not allowed to see Bluetooth devices"
+                !btOn -> "Bluetooth is turned off"
+                else -> "Bluetooth is on"
+            },
+            action = if (btPermission) "Open settings" else "Allow",
+        )
+        val power = getSystemService(android.os.PowerManager::class.java)
+        list += io.max.paperplay.ui.PermissionState(
+            "battery", "Battery", "Stops Android from pausing the app in the background, which keeps scans, uploads and playback running",
+            power.isIgnoringBatteryOptimizations(packageName), action = "Open settings",
+        )
+        list += io.max.paperplay.ui.PermissionState(
+            "wifi", "Wi-Fi network", "Local sync and Network play only reach devices on the same Wi-Fi or wired network",
+            onWifi(), action = "Open settings",
+        )
+        return list
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // No grey scrim behind 3-button navigation; the app draws under both bars.
+        if (android.os.Build.VERSION.SDK_INT >= 29) window.isNavigationBarContrastEnforced = false
         initPlayer(applicationContext)
         takeShared(intent)
+        // Started by the Spotify return link after Android ended the app: keep it until services can finish the login.
+        auth.deliver(intent?.data)
         // A crash leaves its error text in a file, shown in Settings > Telegram > Bot activity on the next start.
         val crashFile = File(filesDir, "crash.txt")
         val previous = Thread.getDefaultUncaughtExceptionHandler()
@@ -160,6 +224,7 @@ class MainActivity : ComponentActivity() {
             }
             // The media notification needs this on Android 13 and later; playing works without it.
             val notifications = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
+            val bluetooth = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
             // New installs are asked on the onboarding permissions page, after reading why.
             LaunchedEffect(Unit) {
                 if (Build.VERSION.SDK_INT >= 33 && (onboardedFile.exists() || library.exists())) notifications.launch(Manifest.permission.POST_NOTIFICATIONS)
@@ -197,10 +262,24 @@ class MainActivity : ComponentActivity() {
                 AppEnv(
                     restore = RestoreHooks(
                         pickBackup = { onPicked -> pending[0] = onPicked; picker.launch(arrayOf("*/*")) },
-                        restore = { source, pw -> BackupRestorer().restore(source, target, RestoreOptions(password = pw)) },
+                        restore = { source, pw -> shared = null; BackupRestorer().restore(source, target, RestoreOptions(password = pw)) },
                     ),
                     libraryExists = { library.exists() },
-                    createServices = { AppServices(AndroidPlatform(applicationContext)).also { services = it; watchActivity(it) } },
+                    // One AppServices per process. A recreated activity (theme, dark mode, rotation) used to build a second
+                    // one beside the first: two Telegram clients on one database and two sockets on the sync port.
+                    createServices = {
+                        val old = shared
+                        if (old != null) {
+                            services = old
+                            auth.onLateReturn { q -> old.scope.launch { runCatching { old.spotify.resume(q) } } }
+                            old
+                        } else AppServices(AndroidPlatform(applicationContext)).also {
+                            shared = it
+                            services = it
+                            watchActivity(it)
+                            auth.onLateReturn { q -> it.scope.launch { runCatching { it.spotify.resume(q) } } }
+                        }
+                    },
                     open = open,
                     setKeepRunning = { on -> if (on) KeepAliveService.start(applicationContext) else KeepAliveService.stop(applicationContext) },
                     pickPhoto = { onPicked -> photoPending[0] = onPicked; photoPicker.launch(arrayOf("image/*")) },
@@ -213,6 +292,28 @@ class MainActivity : ComponentActivity() {
                     onboarded = { onboardedFile.exists() },
                     setOnboarded = { runCatching { onboardedFile.writeText("1") } },
                     requestNotifications = if (Build.VERSION.SDK_INT >= 33) ({ notifications.launch(Manifest.permission.POST_NOTIFICATIONS) }) else null,
+                    permissions = io.max.paperplay.ui.PermissionHooks(
+                        check = { permissionStates() },
+                        request = { id ->
+                            when (id) {
+                                "notifications" -> {
+                                    val openNotificationSettings = {
+                                        openSettings(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                                    }
+                                    if (Build.VERSION.SDK_INT >= 33 && !granted(Manifest.permission.POST_NOTIFICATIONS)) {
+                                        askOnce(Manifest.permission.POST_NOTIFICATIONS, { notifications.launch(it) }, openNotificationSettings)
+                                    } else openNotificationSettings()
+                                }
+                                "bluetooth" ->
+                                    if (Build.VERSION.SDK_INT >= 31 && !granted(Manifest.permission.BLUETOOTH_CONNECT)) {
+                                        askOnce(Manifest.permission.BLUETOOTH_CONNECT, { bluetooth.launch(it) }, { openSettings(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, true) })
+                                    } else openSettings(android.provider.Settings.ACTION_BLUETOOTH_SETTINGS)
+                                "battery" -> openSettings(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                                "wifi" -> openSettings(android.provider.Settings.ACTION_WIFI_SETTINGS)
+                            }
+                        },
+                        openAppSettings = { openSettings(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, true) },
+                    ),
                 )
             }
             App(env)
@@ -221,6 +322,10 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         const val OPEN_EXTRA = "open"
+
+        /** The services of this process, shared by every activity instance. Cleared by a restore, which closes them. */
+        @Volatile
+        var shared: AppServices? = null
 
         /** True while an activity of the app is visible. */
         @Volatile

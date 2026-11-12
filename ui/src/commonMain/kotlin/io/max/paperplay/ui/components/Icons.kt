@@ -87,6 +87,8 @@ fun TransportGlyph(
     )
 }
 
+private val boldTransport = setOf("PlayArrow", "Pause", "SkipNext", "SkipPrevious", "Shuffle", "Repeat", "RepeatOne")
+
 /** Renders the selected curated icon family while retaining Material vectors as the fallback. */
 @Composable
 fun AppIcon(
@@ -95,8 +97,10 @@ fun AppIcon(
     modifier: Modifier = Modifier,
     tint: Color = LocalContentColor.current,
 ) {
-    val selected = if (LocalUiPrefs.current?.iconSet == IconSet.Tabler) {
-        tablerIconForMaterial(imageVector.name) ?: imageVector
+    val name = imageVector.name.substringAfterLast('.')
+    // Player controls stay in the bold, rounded Material style in both icon sets; thin outlines read poorly at play-button size.
+    val selected = if (LocalUiPrefs.current?.iconSet == IconSet.Tabler && name !in boldTransport) {
+        tablerIconForMaterial(name) ?: imageVector
     } else {
         imageVector
     }

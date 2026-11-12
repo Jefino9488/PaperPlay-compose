@@ -37,6 +37,8 @@ class AppEnv(
     val open: kotlinx.coroutines.flow.MutableStateFlow<String?> = kotlinx.coroutines.flow.MutableStateFlow(null),
     /** Starts or stops the background keep-alive notification; nothing on desktop. */
     val setKeepRunning: (Boolean) -> Unit = {},
+    /** Opens a folder picker and calls back with the folder's path only; nothing inside is read. Null where unsupported. */
+    val pickFolderPath: ((onPicked: (String) -> Unit) -> Unit)? = null,
     /** Opens an image picker and calls back with a copied file path, or null if canceled. Null where unsupported. */
     val pickPhoto: ((onPicked: (String?) -> Unit) -> Unit)? = null,
     /** The error text of the last crash, if one was saved; null otherwise. */
@@ -44,6 +46,8 @@ class AppEnv(
     val clearCrash: () -> Unit = {},
     /** Opens a multi-file audio picker; calls back with file paths and whether they are temporary copies. Null where unsupported. */
     val pickAudio: ((onPicked: (List<String>, Boolean) -> Unit) -> Unit)? = null,
+    /** Opens a folder picker and calls back with every audio file path inside it (subfolders too), never temporary. Null where unsupported. */
+    val pickAudioFolder: ((onPicked: (List<String>) -> Unit) -> Unit)? = null,
     /** Opens an image picker and calls back with the image bytes, or null if canceled. Null where unsupported. */
     val pickImage: ((onPicked: (ByteArray?) -> Unit) -> Unit)? = null,
     /** Opens Spotify's login page and returns the callback on [authRedirectUri]. Null where unsupported. */
@@ -57,6 +61,8 @@ class AppEnv(
     val showTour: kotlinx.coroutines.flow.MutableStateFlow<Boolean> = kotlinx.coroutines.flow.MutableStateFlow(false),
     /** Asks for the notification permission; null where not needed. */
     val requestNotifications: (() -> Unit)? = null,
+    /** Permission checker (Settings > Permissions); null where the platform needs none. */
+    val permissions: PermissionHooks? = null,
     /** Desktop: tints the window title bar. Called with (dark, background ARGB, text ARGB). */
     val windowTheme: ((Boolean, Int, Int) -> Unit)? = null,
     /** Startup timing marks (desktop writes them to startup.log). */
@@ -67,50 +73,28 @@ val LocalAppEnv = androidx.compose.runtime.staticCompositionLocalOf<AppEnv?> { n
 
 @Composable
 fun App(env: AppEnv) {
-    var restoring by remember { mutableStateOf(!env.libraryExists()) }
-    // A library already on disk means an existing install, so the tour is not forced on it.
-    var touring by remember { mutableStateOf(!env.onboarded() && !env.libraryExists()) }
-    // Choices made before the library exists; applied once it does.
-    val pending = remember { mutableMapOf<String, String>() }
+    // The first launch of a fresh install runs the tour inside Main, where the bot can be set up for real.
+    var firstRun by remember { mutableStateOf(!env.onboarded() && !env.libraryExists()) }
+    var restoring by remember { mutableStateOf(!env.libraryExists() && !firstRun) }
     androidx.compose.runtime.CompositionLocalProvider(LocalAppEnv provides env) { PaperPlayTheme {
-        if (touring) {
-            val tourPrefs = remember { UiPrefs(pending::get, pending::put) }
-            val dark = when (tourPrefs.themeMode) {
-                ThemeMode.Dark -> true
-                ThemeMode.Light -> false
-                ThemeMode.System -> androidx.compose.foundation.isSystemInDarkTheme()
-            }
-            PaperPlayTheme(dark = dark, seed = tourPrefs.seed, dynamic = tourPrefs.accent == "dynamic", amoled = tourPrefs.amoled) {
-                Onboarding(tourPrefs, revisit = false, setPref = { k, v -> pending[k] = v }) { choice ->
-                    env.setOnboarded()
-                    when (choice) {
-                        OnboardingChoice.Restore -> restoring = true
-                        OnboardingChoice.Bot -> restoring = false
-                        OnboardingChoice.None -> {}
-                    }
-                    touring = false
-                }
-            }
-        } else if (restoring) {
+        if (restoring) {
+            io.max.paperplay.ui.app.WindowTint(MaterialTheme.colorScheme.background)
             RestoreScreen(
                 env.restore, onContinue = { restoring = false }, onSkip = { restoring = false },
                 skipLabel = "Set up without a backup",
             )
         } else {
-            Main(env, pending, onRestore = { restoring = true })
+            Main(env, firstRun, onTourDone = { firstRun = false }, onRestore = { restoring = true })
         }
     } }
 }
 
 @Composable
-private fun Main(env: AppEnv, pending: MutableMap<String, String>, onRestore: () -> Unit) {
+private fun Main(env: AppEnv, firstRun: Boolean, onTourDone: () -> Unit, onRestore: () -> Unit) {
     // The database, services and backend are built off the UI thread; a blank themed screen shows meanwhile.
     val built by produceState<CoreBackend?>(null) {
         value = withContext(Dispatchers.Default) {
-            CoreBackend(env.createServices()).also { b ->
-                pending.forEach { (k, v) -> b.setPref(k, v) }
-                pending.clear()
-            }
+            CoreBackend(env.createServices())
         }
         env.mark("services ready")
     }
@@ -141,11 +125,26 @@ private fun Main(env: AppEnv, pending: MutableMap<String, String>, onRestore: ()
     // Only the cover path is read here, so position ticks do not recompose the theme.
     val pb = backend.playback.collectAsState()
     val coverUri by remember { derivedStateOf { pb.value.current?.coverUri } }
-    val seed = if (prefs.accent == "cover") io.max.paperplay.ui.app.CoverSeeds.seed(coverUri) else prefs.seed
+    // The desktop has no wallpaper colour, so "dynamic" there follows the cover art of the playing song.
+    val coverAccent = prefs.accent == "cover" || (prefs.accent == "dynamic" && !isPhone)
+    val seed = if (coverAccent) io.max.paperplay.ui.app.CoverSeeds.seed(coverUri) else prefs.seed
     PaperPlayTheme(dark = dark, seed = seed, dynamic = prefs.accent == "dynamic", amoled = prefs.amoled) {
         androidx.compose.runtime.CompositionLocalProvider(io.max.paperplay.ui.app.LocalUiPrefs provides prefs) {
-            if (hasCredentials) MainShell(backend, prefs, restore, env.open) else SetupScreen(backend, onSaved = {}, onRestore = restore)
-            if (tour) Onboarding(prefs, revisit = true, setPref = backend::setPref) { env.showTour.value = false }
+            if (firstRun) {
+                io.max.paperplay.ui.app.WindowTint(MaterialTheme.colorScheme.background)
+                Onboarding(prefs, revisit = false, backend = backend, setPref = backend::setPref) { choice ->
+                    env.setOnboarded()
+                    onTourDone()
+                    if (choice == OnboardingChoice.Restore) restore()
+                }
+            } else {
+                if (hasCredentials) MainShell(backend, prefs, restore, env.open)
+                else {
+                    io.max.paperplay.ui.app.WindowTint(MaterialTheme.colorScheme.background)
+                    SetupScreen(backend, onSaved = {}, onRestore = restore)
+                }
+                if (tour) Onboarding(prefs, revisit = true, backend = backend, setPref = backend::setPref) { env.showTour.value = false }
+            }
         }
     }
 }

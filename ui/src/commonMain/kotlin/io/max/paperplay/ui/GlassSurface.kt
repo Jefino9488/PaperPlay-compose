@@ -15,7 +15,10 @@ import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.lens
-import com.kyant.backdrop.effects.vibrancy
+import com.kyant.backdrop.effects.colorControls
+import com.kyant.backdrop.highlight.Highlight
+import com.kyant.backdrop.shadow.InnerShadow
+import com.kyant.backdrop.shadow.Shadow
 
 /** The page background layer that cards and bars blur; null where no layer is provided (alpha fallback). */
 val LocalGlassBackdrop = staticCompositionLocalOf<Backdrop?> { null }
@@ -31,15 +34,20 @@ fun GlassSurface(
 ) {
     val tint = androidx.compose.material3.MaterialTheme.colorScheme.surfaceContainer
     val reduced = io.max.paperplay.ui.theme.LocalReducedTransparency.current
+    val g = io.max.paperplay.ui.app.LocalUiPrefs.current?.glass ?: io.max.paperplay.ui.app.GlassStyle()
+    val edge = when (g.edgeStyle) { 1 -> Highlight.Ambient; 2 -> Highlight.Plain; else -> Highlight.Default }
     Box(
         modifier.drawBackdrop(
             backdrop = backdrop,
             shape = { RoundedCornerShape(cornerRadius) },
             effects = {
-                vibrancy()
+                if (g.saturation != 1f) colorControls(saturation = g.saturation)
                 blur(blur.toPx())
-                if (glassLensSupported()) lens(12.dp.toPx(), 24.dp.toPx())
+                if (glassLensSupported()) lens(g.lensHeight.dp.toPx(), g.lensAmount.dp.toPx(), g.depth, g.chromatic)
             },
+            highlight = if (g.edgeWidth > 0f) ({ edge.copy(width = g.edgeWidth.dp, blurRadius = (g.edgeWidth / 2f).dp, alpha = g.edgeAlpha) }) else null,
+            shadow = if (g.shadowRadius > 0f && g.shadowAlpha > 0f) ({ Shadow(radius = g.shadowRadius.dp, color = Color.Black.copy(alpha = g.shadowAlpha)) }) else null,
+            innerShadow = if (g.innerAlpha > 0f) ({ InnerShadow(radius = g.innerRadius.dp, color = Color.White.copy(alpha = g.innerAlpha)) }) else null,
             onDrawSurface = { drawRect(tint.copy(alpha = if (reduced) 0.88f else tintAlpha)) },
         ),
     ) { content() }

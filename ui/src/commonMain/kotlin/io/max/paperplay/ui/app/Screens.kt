@@ -22,6 +22,8 @@ import io.max.paperplay.ui.RestoreHooks
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import io.max.paperplay.ui.components.SongRow
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -32,6 +34,8 @@ import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.PushPin
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.SwapVert
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.IconButton
@@ -136,12 +140,13 @@ fun SetupScreen(
                     Text("Set up a bot", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        "Connect your Telegram bot. The API id and hash come from my.telegram.org, the token from @BotFather.",
+                        "Three quick steps, then connect.",
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Spacer(Modifier.height(20.dp))
-                    CredentialsForm(backend::saveCredentials, onSaved)
+                    val conn by backend.connection.collectAsState()
+                    io.max.paperplay.ui.BotSetupForm(backend::saveCredentials, conn.ready, conn.error)
                     Spacer(Modifier.height(16.dp))
                     OutlinedButton(onRestore, Modifier.fillMaxWidth()) { Text("Restore everything from a backup") }
                 }
@@ -235,6 +240,8 @@ fun DetailScreen(
     var dialog by remember(detail) { mutableStateOf<String?>(null) }
     var sort by remember(detail) { mutableStateOf(PlaylistSort.Order) }
     var sortMenu by remember(detail) { mutableStateOf(false) }
+    var moreMenu by remember(detail) { mutableStateOf(false) }
+    var reorderOpen by remember(detail) { mutableStateOf(false) }
     var missingSheet by remember(detail) { mutableStateOf(false) }
     var refreshing by remember(detail) { mutableStateOf(false) }
     var bump by remember(detail) { mutableStateOf(0) }
@@ -253,25 +260,36 @@ fun DetailScreen(
         BackTopBar(name, onBack) {
             if (detail is Detail.Playlist) {
                 IconButton({ actions.notice(if (backend.togglePinAll(rawSongs.map { it.id })) "Keeping this playlist on this device" else "Playlist no longer kept on this device") }) { AppIcon(Icons.Rounded.PushPin, "Pin for offline") }
+                AddSongsButton(backend, detail.id, rawSongs.map { it.id }.toSet()) { actions.notice(it) }
                 Box {
-                    IconButton({ sortMenu = true }) { AppIcon(Icons.AutoMirrored.Rounded.Sort, "Sort") }
-                    DropdownMenu(sortMenu, { sortMenu = false }) {
-                        PlaylistSort.entries.forEach { o ->
-                            DropdownMenuItem(
-                                text = { Text(if (o == sort) "${o.label} (selected)" else o.label) },
-                                onClick = { sort = o; sortMenu = false },
+                    IconButton({ moreMenu = true }) { AppIcon(Icons.Rounded.MoreVert, "More") }
+                    DropdownMenu(moreMenu, { moreMenu = false; sortMenu = false }) {
+                        if (sortMenu) {
+                            PlaylistSort.entries.forEach { o ->
+                                DropdownMenuItem(
+                                    text = { Text(if (o == sort) "${o.label} (selected)" else o.label) },
+                                    onClick = { sort = o; sortMenu = false; moreMenu = false },
+                                )
+                            }
+                        } else {
+                            DropdownMenuItem(text = { Text("Sort by") }, leadingIcon = { AppIcon(Icons.AutoMirrored.Rounded.Sort, null) }, onClick = { sortMenu = true })
+                            if (source != null) DropdownMenuItem(
+                                text = { Text("Refresh from Spotify link") },
+                                leadingIcon = { AppIcon(Icons.Rounded.Refresh, null) },
+                                onClick = {
+                                    moreMenu = false
+                                    if (!refreshing) {
+                                        refreshing = true
+                                        scope.launch { actions.notice(backend.refreshPlaylist(detail.id)); refreshing = false }
+                                    }
+                                },
                             )
+                            if (rawSongs.size > 1) DropdownMenuItem(text = { Text("Reorder songs") }, leadingIcon = { AppIcon(Icons.Rounded.SwapVert, null) }, onClick = { moreMenu = false; reorderOpen = true })
+                            DropdownMenuItem(text = { Text("Rename") }, leadingIcon = { AppIcon(Icons.Rounded.Edit, null) }, onClick = { moreMenu = false; dialog = "rename" })
+                            DropdownMenuItem(text = { Text("Delete playlist") }, leadingIcon = { AppIcon(Icons.Rounded.Delete, null) }, onClick = { moreMenu = false; dialog = "delete" })
                         }
                     }
                 }
-                if (source != null) IconButton({
-                    if (!refreshing) {
-                        refreshing = true
-                        scope.launch { actions.notice(backend.refreshPlaylist(detail.id)); refreshing = false }
-                    }
-                }) { AppIcon(Icons.Rounded.Refresh, "Refresh from Spotify link") }
-                IconButton({ dialog = "rename" }) { AppIcon(Icons.Rounded.Edit, "Rename") }
-                IconButton({ dialog = "delete" }) { AppIcon(Icons.Rounded.Delete, "Delete") }
             }
         }
         SongList(
@@ -299,6 +317,7 @@ fun DetailScreen(
     }
     androidx.compose.material3.SnackbarHost(mixSnack, Modifier.align(Alignment.BottomCenter).padding(bottom = bottomPadding))
     }
+    if (reorderOpen && detail is Detail.Playlist) ReorderButton(backend, detail.id, rawSongs, external = true) { reorderOpen = false }
     if (missingSheet && missing.isNotEmpty()) MissingSheet(backend, store, missing, name, { missingSheet = false }) { bump++ }
     if (detail is Detail.Playlist) {
         when (dialog) {
@@ -373,11 +392,15 @@ fun SearchScreen(
     }
     Column(modifier) {
         TopBar("Search")
-        PillField(query, { query = it }, "Songs, artists or albums", Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+        PillField(query, { query = it }, "Songs, artists or albums", Modifier.padding(horizontal = 16.dp, vertical = 2.dp))
         if (query.isBlank()) {
             if (recent.isNotEmpty()) {
+                Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Recent", Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    TextButton({ recent.clear() }) { Text("Clear") }
+                }
                 LazyRow(
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp),
+                    contentPadding = PaddingValues(horizontal = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     items(recent, key = { it }) { term ->
@@ -386,11 +409,66 @@ fun SearchScreen(
                 }
             }
             GenreGrid(songs, bottomPadding, onOpen, Modifier.fillMaxSize())
+        } else SearchResults(results, query, currentId, actions, onOpen, bottomPadding, Modifier.fillMaxSize())
+    }
+}
+
+/** Results in three groups: songs, then albums and artists found among them. */
+@Composable
+private fun SearchResults(
+    results: List<SongUi>, query: String, currentId: String?, actions: ListActions, onOpen: (Detail) -> Unit,
+    bottomPadding: Dp, modifier: Modifier = Modifier,
+) {
+    val rowActions = remember(actions) { actions.rowActions() }
+    val albums = remember(results) { results.filter { it.album.isNotBlank() }.distinctBy { it.album to it.artist }.take(6) }
+    val artists = remember(results) { results.filter { it.artist.isNotBlank() }.distinctBy { it.artist }.take(6) }
+    if (results.isEmpty()) {
+        Text("No songs match \"${query.trim()}\".", modifier.padding(24.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+        return
+    }
+    LazyColumn(modifier, contentPadding = PaddingValues(bottom = bottomPadding + 16.dp)) {
+        item(key = "h-songs") { SearchHeader("Songs", results.size) }
+        itemsIndexed(results, key = { _, s -> "s-${s.id}" }) { i, song ->
+            SongRow(
+                song = song, onClick = { actions.play(results, i) }, onLongClick = {},
+                current = song.id == currentId, actions = rowActions,
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 6.dp),
+            )
         }
-        else SongList(
-            results, currentId, actions, Modifier.fillMaxSize(), bottomPadding, sortable = false, searchable = false,
-            empty = "No songs match \"${query.trim()}\".",
-        )
+        if (albums.isNotEmpty()) {
+            item(key = "h-albums") { SearchHeader("Albums", albums.size) }
+            items(albums, key = { "a-${it.album}-${it.artist}" }) { s ->
+                SearchGroupRow(s.album, s.artist, s.coverUri, s.id, circle = false) { onOpen(Detail.Album(s.album, s.artist.ifBlank { null })) }
+            }
+        }
+        if (artists.isNotEmpty()) {
+            item(key = "h-artists") { SearchHeader("Artists", artists.size) }
+            items(artists, key = { "r-${it.artist}" }) { s ->
+                SearchGroupRow(s.artist, "", s.coverUri, "artist:${s.artist}", circle = true) { onOpen(Detail.Artist(s.artist)) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SearchHeader(title: String, count: Int) {
+    Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+        Text("$count", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun SearchGroupRow(title: String, subtitle: String, cover: String?, key: String, circle: Boolean, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        CoverImage(cover, key, size = 44.dp, radius = if (circle) 22.dp else 10.dp)
+        Column(Modifier.weight(1f).padding(start = 12.dp)) {
+            Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall)
+            if (subtitle.isNotBlank()) Text(subtitle, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }
 

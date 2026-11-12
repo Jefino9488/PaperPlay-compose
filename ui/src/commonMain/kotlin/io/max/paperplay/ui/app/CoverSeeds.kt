@@ -29,10 +29,20 @@ object CoverSeeds {
         val known = ready[uri]
         if (known != null) return known.takeIf { it != 0 }
         if (pending.add(uri)) scope.launch {
-            val s = decodeImageFile(uri, 96)?.let(::seedOf) ?: 0
-            ready[uri] = s
+            val p = decodeImageFile(uri, 96)?.let { paletteOf(it, 3) }.orEmpty()
+            palettes[uri] = p
+            ready[uri] = p.firstOrNull() ?: 0
         }
         return null
+    }
+
+    private val palettes = mutableStateMapOf<String, List<Int>>()
+
+    /** Up to three distinct main colours of the cover, most present first; empty while unknown. */
+    fun palette(uri: String?): List<Int> {
+        if (uri == null) return emptyList()
+        seed(uri)
+        return palettes[uri].orEmpty()
     }
 }
 
@@ -48,16 +58,20 @@ fun coverScheme(uri: String?, dark: Boolean = true): ColorScheme? {
  * bin with the most pixels, weighted by saturation, wins. Near-black and near-white bins only
  * count when nothing else is there.
  */
-internal fun seedOf(bitmap: ImageBitmap): Int? {
-    val map = runCatching { bitmap.toPixelMap() }.getOrNull() ?: return null
+internal fun seedOf(bitmap: ImageBitmap): Int? = paletteOf(bitmap, 1).firstOrNull()
+
+/** Up to [max] distinct main colours of the cover, most present first. Same method as [seedOf]. */
+internal fun paletteOf(bitmap: ImageBitmap, max: Int): List<Int> {
+    val map = runCatching { bitmap.toPixelMap() }.getOrNull() ?: return emptyList()
     val step = maxOf(1, maxOf(map.width, map.height) / 64)
-    val bins = 24 * 3 * 3
+    val bins = 12 * 3
+    var all = 0
+    var allR = 0f; var allG = 0f; var allB = 0f
     val count = IntArray(bins)
     val sumR = FloatArray(bins)
     val sumG = FloatArray(bins)
     val sumB = FloatArray(bins)
     val sumS = FloatArray(bins)
-    val muted = BooleanArray(bins)
     var y = 0
     while (y < map.height) {
         var x = 0
@@ -75,29 +89,37 @@ internal fun seedOf(bitmap: ImageBitmap): Int? {
                     max == g -> (b - r) / d + 2f
                     else -> (r - g) / d + 4f
                 } * 60f
-                val hi = ((h / 15f).toInt()).coerceIn(0, 23)
-                val si = if (s < 0.2f) 0 else if (s < 0.55f) 1 else 2
-                val li = if (l < 0.3f) 0 else if (l < 0.7f) 1 else 2
-                val i = (hi * 3 + si) * 3 + li
-                count[i]++; sumR[i] += r; sumG[i] += g; sumB[i] += b; sumS[i] += s
-                if (l < 0.1f || l > 0.92f || s < 0.1f) muted[i] = true
+                allR += r; allG += g; allB += b; all++
+                // Near-black, near-white and grey pixels cannot give a colour; they only matter when nothing else is there.
+                if (l >= 0.1f && l <= 0.92f && s >= 0.1f) {
+                    // Wide hue sectors and no lightness split, so a blue-grey sky that varies in tone still counts as one colour.
+                    val hi = ((h / 30f).toInt()).coerceIn(0, 11)
+                    val si = if (s < 0.3f) 0 else if (s < 0.6f) 1 else 2
+                    val i = hi * 3 + si
+                    count[i]++; sumR[i] += r; sumG[i] += g; sumB[i] += b; sumS[i] += s
+                }
             }
             x += step
         }
         y += step
     }
-    var best = -1
-    var bestScore = 0f
-    for (pass in 0..1) {
-        for (i in 0 until bins) {
-            if (count[i] == 0 || (pass == 0 && muted[i])) continue
-            val score = count[i] * (0.15f + sumS[i] / count[i])
-            if (score > bestScore) { bestScore = score; best = i }
-        }
-        if (best >= 0) break
+    // Presence first; saturation only breaks ties, so a few vivid pixels do not beat the cover's main colour.
+    val ranked = (0 until bins).filter { count[it] > 0 }.sortedByDescending { count[it] * (0.6f + sumS[it] / count[it]) }
+    val picked = ArrayList<Int>()
+    for (i in ranked) {
+        if (picked.size >= max) break
+        val hue = i / 3
+        // Colours in the same or the next hue sector would look like one colour in a gradient.
+        if (picked.none { p -> minOf(abs(p / 3 - hue), 12 - abs(p / 3 - hue)) < 2 }) picked += i
     }
-    if (best < 0) return null
-    val n = count[best]
-    fun ch(v: Float) = (v / n * 255f).toInt().coerceIn(0, 255)
-    return (0xFF shl 24) or (ch(sumR[best]) shl 16) or (ch(sumG[best]) shl 8) or ch(sumB[best])
+    if (picked.isEmpty()) {
+        if (all == 0) return emptyList()
+        fun av(v: Float) = (v / all * 255f).toInt().coerceIn(0, 255)
+        return listOf((0xFF shl 24) or (av(allR) shl 16) or (av(allG) shl 8) or av(allB))
+    }
+    return picked.map { i ->
+        val n = count[i]
+        fun ch(v: Float) = (v / n * 255f).toInt().coerceIn(0, 255)
+        (0xFF shl 24) or (ch(sumR[i]) shl 16) or (ch(sumG[i]) shl 8) or ch(sumB[i])
+    }
 }

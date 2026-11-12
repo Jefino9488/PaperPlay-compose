@@ -31,7 +31,7 @@ class LibraryDbTest {
     fun schemaVersionMatchesDrift() {
         val f = tmp()
         libraryDriver(f.path).close()
-        assertEquals(14, userVersion(f)) // Drift schemaVersion in db.dart
+        assertEquals(15, userVersion(f)) // Drift schemaVersion in db.dart
         DriverManager.getConnection("jdbc:sqlite:${f.path}").use { c ->
             val names = c.createStatement().executeQuery(
                 "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
@@ -134,6 +134,6 @@ class LibraryDbTest {
         assertNotNull(db.miscQueries.chatTitle(1).executeAsOneOrNull())
         db.songsQueries.setFavorite(true, 5, 1, 2)
         assertTrue(db.songsQueries.favorites().executeAsOne().favorite)
-        assertEquals(14, userVersion(f))
+        assertEquals(15, userVersion(f))
     }
 }

@@ -32,6 +32,9 @@ App and look
 [ ] Repair: also read embedded tags from cached files, run lyrics after lookups, and retry the bot-posted songs it cannot see
 [x] Settings > Telegram: Bot credentials and Extra bots merged into one Bots page (main bot Edit, Add bot opens a token box); Channels page redone with status card, Add channel / Scan now buttons and cards; Your account page shows indexed chats and a link to Chats and channels; Activity log (was Bot activity) has search, source and problems filters, copy, save to file, save crash log, clear, up to 3000 lines (not tried on a device)
 [ ] Activity log: keep lines across restarts, add warning level, log more sources (playback, sound, sync, covers) like the Flutter app
+[x] First-run tour reworked (written, not built): runs inside Main with a real backend; expressive springs, wiggling badges, drifting gradient, bouncy buttons; bot setup page with steps, token box, live connect status and Next locked until connected; Add your music chat step; account step with More info; Nothing to install page removed; All set only after a bot is connected or an account is logged in; anonymous-admin note for several bots; window title bar follows the app background on desktop; desktop Dynamic accent follows album art
+[ ] Check the tour on a fresh install: restore choice (closes services and opens restore screen), Skip, bot connect failing, swipe past the locked bot page
+[x] Android-only wording and options hidden on desktop (written, not built): Devices page line, accent swatches (one Album art swatch), equalizer phone note, share-sheet text on Uploads, glass page Android note
 [x] Android Studio previews with fake data: PreviewSupport.kt, full player, queue,
     now playing panel, lyrics and sleep dialogs, search, settings list, desktop
     player bar (1280, 900 dark, idle), plus many small pieces (not checked in the IDE by me)
@@ -71,6 +74,19 @@ Playlists and Spotify
 [x] Quality, bitrate and size on song rows
 [x] Song menu: Open in Telegram, Song info, Find metadata, Edit tags, Change cover
 [x] Library Playlists tab (Favorites, Recently played, New playlist, Import)
+[x] Cover gradient on by default (pref only off when set to false)
+[x] Onboarding "About you" step: name and photo (OnboardingSteps.kt ProfilePage)
+[x] Status toast hides itself after 20 seconds; swipe threshold lowered
+[x] Desktop Settings back arrow goes back one page, leaves Settings only from a top-level page
+[x] Tabler icon option now works: AppIcon strips the "Rounded." prefix before the lookup (also on phone)
+[x] Desktop mute button restores the previous volume
+[x] Backgrounds (written, not built): Plain, Cover, Blurred cover, Gradient, Wallpaper, Animated (stars, snow, aurora, bubbles, waves) with colour controls; Settings > Appearance > Background (AppBackground.kt, AnimatedBackdrop.kt, BackgroundSettings.kt)
+[x] Standby mode, Android only (written, not built): black AMOLED screen from the full player, clock/song/lyrics/weather/battery widgets, procedural Bars/Wave/Rings/Orb animation, customise sheet (StandbyScreen.kt, StandbyVisual.kt, StandbyCustomise.kt)
+[x] Desktop Spotify-style player (written, not built): now playing view, full-screen synced lyrics, mini always-on-top window, device picker (this PC only), keyboard shortcuts overlay
+[x] Desktop sidebar: glass option, selection style, corner radii and width in Settings > Navigation bar (written, not built)
+[ ] Standby: auto-start while charging; animation does not follow song position
+[ ] Desktop: tray toggle for mini player, queue drag-reorder, bar lyrics button still opens the old dialog
+[ ] Backup does not include the new bg_* and standby_* prefs
 [x] Plus button on a not-added track copies the indexed match to the main chat (when auto copy is off)
 [x] Spotify added dates kept; playlist "Date added" sort uses them; manual refresh uses the Spotify login
 [x] Cloud save in Saved Messages also holds favorites, plays, skips, pinned, edited tags, playlists; restored once after login, saved on logout
@@ -131,6 +147,8 @@ Other
     packaging (libvlc, TDLib, java.sql)
 
 
+[x] Settings: Repair library moved into Library, Style and Appearance merged, categories ordered by use (not built or checked yet)
+
 HALF DONE, FINISH THESE
 -----------------------
 [~] Small TDLib: built (14.4 MB raw, about 7.8 MB in the APK, same exports as the
@@ -180,25 +198,24 @@ Fix first
     cloud restore, uploads, lyrics run, duplicates delete
 
 Playback
-[ ] Playback speed
-[ ] Loudness normalising
+[x] Playback speed: 0.5x to 2x from the full player (not built or tried yet)
+[~] Loudness normalising: Listening setting. Android uses a limiter (Android 9+), desktop uses VLC normvol from the next song. Not built or tried; a limiter is not true ReplayGain
 [ ] Audio output choice
-[ ] Edit the queue (move, remove)
-[ ] Restore last session
+[x] Edit the queue: row menu with move up, move down, play next, remove (no drag yet; not built or tried)
+[x] Restore last session: queue, song and position come back paused after connecting; Listening setting turns it off (not built or tried)
 [ ] Remote and group playback
 
 Library
-[ ] Auto filing (new songs go to the right topic by themselves)
-[ ] Delete from Telegram from the song menu
+[~] Channels and chats are one page: top right icon opens your own chats when the account is logged in; each added channel has a Copy to main chat switch, default off (read by automatic copying only; the future auto filer must read it too). Not built or tried
+[~] Music folders (Settings > Library > Music folders): add folders one by one, only their own songs are read, subfolders only if added, per folder switch to send new songs to Telegram. Desktop has a folder picker; Android has a typed path only (no folder picker or watcher yet). Songs are not played from the folder directly. Not built or tried
+[ ] Auto filing (new songs go to the right topic by themselves). Not started: it moves real Telegram posts, so port planFiling and the filer from Flutter (auto_filer.dart) when a build and test run is possible
+[x] Delete from Telegram from the song menu: confirm dialog, main chat only (not built or tried)
 [ ] Neighbours view in Discover
-[ ] Export list screen (Flutter's is a viewer of saved lists: copy links, Spotify
-    and Apple links, save CSV; the export functions already exist in core)
-[ ] Library status page (banner of what is running plus tiles: total songs, matched,
-    no match, covers, song info left)
+[x] Export list screen: Settings > Library > Saved export lists, copy Spotify, Apple Music links or CSV, delete (not built or tried)
+[x] Library status: tiles at the top of Settings > Library (songs, info found, no match, covers, running now, song info left; not built or tried)
 [~] Pin playlists and songs for offline: Pin button and song menu work (account-read songs skipped). Still to build: the Cache manager page, no pause on mobile data
-[ ] One-time repair for songs other bots posted (account downloads, our bot
-    re-uploads), and describing the account as optional in onboarding and Settings
-[ ] Topic picker page
+[~] Recover songs the bot cannot read (Settings > Library > Recover songs): account copies the posts into the main chat, or account downloads and main bot uploads, then deletes the old post. Written, not built or tried. Describing the account as optional in onboarding still to do
+[x] Topic picker: already existed as TopicPickerDialog in SortPage
 
 Devices
 [ ] LAN hub, pairing code, Devices page (design: plain socket, ECDH key exchange
@@ -245,7 +262,7 @@ ORDER I'D DO IT IN
 2. Swap in the small TDLib and test bot login, scan and playback on the phone
 3. Go through the device checks and the crash and missing songs
 4. Finish the half done list (mood, mixes, task stop buttons, upload queue)
-5. Auto filing, export list, library status
+5. Auto filing
 6. Cache manager page
 7. Queue editing, speed, loudness
 8. LAN hub, pairing and devices

@@ -48,11 +48,19 @@ class AppServices(
     val library = LibraryRepository(LibraryRepo(db, clock), clock)
     val scanner = Scanner(library, scope)
 
+    /** Local network sync and connect. Null (off) until [enableLanSync] is called; it does not listen until `start()`. */
+    var lanSync: io.max.paperplay.core.sync.LanSync? = null
+        private set
+
+    fun enableLanSync(isDesktop: Boolean): io.max.paperplay.core.sync.LanSync = lanSync ?: io.max.paperplay.core.sync.createLanSync(
+        io.max.paperplay.core.sync.LanEnv(library, platform.secrets, scope, isDesktop, platform.deviceModel, { platform.secrets.get(Keys.BOT_TOKEN) }),
+    ).also { lanSync = it }
+
     /** Sends audio files to a chat or topic as the bot. */
     val uploader: Uploader by lazy {
         Uploader(scope, { client }, library::pref, {
             library.repo.db.songsQueries.allSongs().executeAsList().mapTo(HashSet()) { it.file_name to it.size }
-        }, botPool)
+        }, botPool, library::setPref)
     }
 
     /** The main bot plus extra bots that share uploads. Each extra bot has its own TDLib session. */
@@ -93,6 +101,41 @@ class AppServices(
             account, io.max.paperplay.core.account.IndexStore(driver), library,
             { io.max.paperplay.core.filing.parseMainChat(library.pref(io.max.paperplay.core.filing.MAIN_CHAT_KEY)) }, clock,
         ).also { it.onRunFinished = { runCatching { indexCloud.save() } } }
+    }
+
+    /** Music folders on this device, with optional sending of new songs to Telegram. */
+    val localFolders: LocalFolders by lazy {
+        LocalFolders(
+            library::pref, library::setPref, uploader,
+            { io.max.paperplay.core.filing.parseMainChat(library.pref(io.max.paperplay.core.filing.MAIN_CHAT_KEY)) },
+            {
+                val id = io.max.paperplay.core.filing.parseMainChat(library.pref(io.max.paperplay.core.filing.MAIN_CHAT_KEY))
+                id?.let { library.chat(it)?.title } ?: "Main chat"
+            },
+        )
+    }
+
+    /** Brings back songs the bot cannot read (posted by other bots) by posting them again where it can. */
+    val recovery: io.max.paperplay.core.account.SongRecovery by lazy {
+        val session = account as? io.max.paperplay.core.account.UserSession
+        io.max.paperplay.core.account.SongRecovery(
+            index = chatIndex, account = account, uploader = uploader,
+            mainChat = { io.max.paperplay.core.filing.parseMainChat(library.pref(io.max.paperplay.core.filing.MAIN_CHAT_KEY)) },
+            mainTitle = {
+                val id = io.max.paperplay.core.filing.parseMainChat(library.pref(io.max.paperplay.core.filing.MAIN_CHAT_KEY))
+                id?.let { library.chat(it)?.title } ?: "Main chat"
+            },
+            download = { post -> session?.downloadPost(post.chatId, post.messageId) },
+            release = { id -> session?.releaseFile(id) },
+            deletePost = { chat, id -> session?.deleteMessages(chat, listOf(id)) ?: false },
+            scope = scope,
+            perMinute = { (library.pref("rate_accountCopy")?.toIntOrNull() ?: 20) },
+            onFinished = {
+                val main = io.max.paperplay.core.filing.parseMainChat(library.pref(io.max.paperplay.core.filing.MAIN_CHAT_KEY))
+                library.chat(main ?: 0L)?.let { scanner.rescanChat(it) }
+                enricher.kick()
+            },
+        )
     }
 
     /** Refreshes imported Spotify playlists and the index in the background, and fetches songs from the index. */
@@ -161,12 +204,26 @@ class AppServices(
 
     /** Moves songs between forum topics by reposting them. */
     val topicMover: io.max.paperplay.core.filing.TopicMover by lazy {
-        io.max.paperplay.core.filing.TopicMover(scope, { client }, library.repo)
+        val botApi = io.max.paperplay.core.dupes.BotApi({ platform.secrets.get(Keys.BOT_TOKEN) }, io.max.paperplay.core.dupes.defaultHttpPoster())
+        io.max.paperplay.core.filing.TopicMover(
+            scope, { client }, library.repo,
+            playingNow = { if (playbackStarted) playback.nowPlaying.value.song?.let { it.chat_id to it.message_id } else null },
+            moveProblem = { chat -> botApi.moveProblem(chat) },
+        )
     }
 
     /** Created on first use, so a screen that never plays does not load the audio stack. */
     private val playbackLazy = lazy { PlaybackController(platform.createPlayer(), resolver, library, scope) }
     val playback: PlaybackController get() = playbackLazy.value
+
+    /** Network play: listening sessions with other people on the same network. Nothing listens until a session starts. */
+    val netplay: io.max.paperplay.core.sync.netplay.Netplay by lazy {
+        io.max.paperplay.core.sync.netplay.createNetplay(
+            io.max.paperplay.core.sync.netplay.NetplayEnv(
+                PlaybackNetplayPlayer({ playback }, library, resolver), scope, { lanSync?.deviceName?.value ?: platform.deviceModel },
+            ),
+        )
+    }
 
     /** True once the player has been created. */
     val playbackStarted: Boolean get() = playbackLazy.isInitialized()
@@ -289,6 +346,7 @@ class AppServices(
                     enricher.kick()
                     moodScanner.start()
                     downloadPins()
+                    runCatching { localFolders.syncNow() }
                 }
             } catch (e: CancellationException) {
                 throw e

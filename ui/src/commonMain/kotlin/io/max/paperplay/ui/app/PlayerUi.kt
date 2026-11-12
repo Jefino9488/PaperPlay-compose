@@ -35,6 +35,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.outlined.Bedtime
 import androidx.compose.material.icons.outlined.Lyrics
 import androidx.compose.material.icons.rounded.Close
@@ -42,6 +43,7 @@ import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.MoreHoriz
+import androidx.compose.material.icons.rounded.NightsStay
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.QueueMusic
@@ -180,6 +182,12 @@ private fun PlayerBody(
                             style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium, color = scheme.onSurface.copy(alpha = 0.7f),
                         )
                     }
+                    val standbyPrefs = if (io.max.paperplay.ui.isPhone) LocalUiPrefs.current?.standby else null
+                    if (standbyPrefs != null) {
+                        var standby by remember { mutableStateOf(false) }
+                        IconButton({ standby = true }) { AppIcon(Icons.Rounded.NightsStay, "Standby mode") }
+                        if (standby) StandbyScreen(state, backend, standbyPrefs) { standby = false }
+                    }
                     IconButton({ actions.setFavorite(song, !song.favorite) }) {
                         AppIcon(
                             if (song.favorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
@@ -215,6 +223,12 @@ private fun PlayerBody(
                     val sleepAt by backend.sleepAt.collectAsState()
                     IconButton({ showSleep = true }) { AppIcon(Icons.Outlined.Bedtime, "Sleep timer", tint = if (sleepAt != null) scheme.primary else scheme.onSurface) }
                     if (showSleep) SleepTimerDialog(backend) { showSleep = false }
+                    var showSpeed by remember { mutableStateOf(false) }
+                    val speed by backend.speed.collectAsState()
+                    TextButton({ showSpeed = true }) {
+                        Text(speedLabel(speed), color = if (speed != 1f) scheme.primary else scheme.onSurface, style = MaterialTheme.typography.labelLarge)
+                    }
+                    if (showSpeed) SpeedDialog(backend) { showSpeed = false }
                     if (onQueue != null) IconButton(onQueue) { AppIcon(Icons.Rounded.QueueMusic, "Queue") }
                 }
             }
@@ -293,7 +307,7 @@ private fun SongInfoDialog(song: SongUi, onDismiss: () -> Unit) {
     )
 }
 
-/** The queue; tap to play. Reorder and swipe-to-remove come with the queue work in the player engine. */
+/** The queue; tap to play, the row menu moves or removes a song. */
 @Composable
 private fun QueueList(state: PlaybackUiState, backend: PlayerControls, modifier: Modifier = Modifier) {
     val keys = remember(state.queue) {
@@ -317,6 +331,16 @@ private fun QueueList(state: PlaybackUiState, backend: PlayerControls, modifier:
                     Text(s.artist, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Text(formatDuration(s.durationSec.toLong()), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                var menu by remember { mutableStateOf(false) }
+                Box {
+                    IconButton({ menu = true }) { AppIcon(Icons.Rounded.MoreVert, "Queue options") }
+                    androidx.compose.material3.DropdownMenu(menu, { menu = false }) {
+                        if (i > 0) androidx.compose.material3.DropdownMenuItem({ Text("Move up") }, { menu = false; backend.moveInQueue(i, i - 1) })
+                        if (i < state.queue.lastIndex) androidx.compose.material3.DropdownMenuItem({ Text("Move down") }, { menu = false; backend.moveInQueue(i, i + 1) })
+                        if (i > state.queueIndex + 1) androidx.compose.material3.DropdownMenuItem({ Text("Play next") }, { menu = false; backend.moveInQueue(i, state.queueIndex + 1) })
+                        if (state.queue.size > 1) androidx.compose.material3.DropdownMenuItem({ Text("Remove from queue") }, { menu = false; backend.removeFromQueue(i) })
+                    }
+                }
             }
         }
     }
@@ -355,9 +379,13 @@ fun NowPlayingPanel(state: PlaybackUiState, backend: PlayerControls, actions: Li
                 IconButton({ actions.setFavorite(song, !song.favorite) }) {
                     AppIcon(if (song.favorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder, if (song.favorite) "Remove from favorites" else "Add to favorites")
                 }
+                SongMenu(song, actions.rowActions(), Icons.Rounded.MoreHoriz)
             }
-            val facts = listOfNotNull(song.qualityLabel, song.year?.toString(), song.genre).joinToString(" · ")
-            if (facts.isNotEmpty()) Text(facts, Modifier.padding(top = 6.dp), style = MaterialTheme.typography.bodySmall, color = muted)
+            // Format, bitrate, year and genre as chips; "FLAC 24/96" becomes FLAC and 24/96.
+            val facts = (song.qualityLabel?.split(' ').orEmpty() + listOfNotNull(song.year?.toString(), song.genre)).filter { it.isNotBlank() }
+            if (facts.isNotEmpty()) androidx.compose.foundation.layout.FlowRow(
+                Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) { facts.forEach { io.max.paperplay.ui.components.FormatChip(it) } }
             if (next.isNotEmpty()) Text("Next up", Modifier.padding(top = 20.dp, bottom = 6.dp), style = MaterialTheme.typography.titleSmall)
         }
         itemsIndexed(next) { i, s ->
@@ -446,6 +474,31 @@ internal fun LyricsDialog(id: String, title: String, backend: PlayerControls, on
             }
         }
     }
+}
+
+private val speeds = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f)
+
+private fun speedLabel(s: Float) = (if (s % 1f == 0f) s.toInt().toString() else s.toString().trimEnd('0')) + "x"
+
+/** Playback speed. */
+@Composable
+internal fun SpeedDialog(backend: PlayerControls, onClose: () -> Unit) {
+    val speed by backend.speed.collectAsState()
+    AlertDialog(
+        onDismissRequest = onClose,
+        title = { Text("Playback speed") },
+        text = {
+            Column {
+                speeds.forEach { s ->
+                    TextButton({ backend.setSpeed(s); onClose() }) {
+                        Text(speedLabel(s) + if (s == speed) " (selected)" else "")
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton({ backend.setSpeed(1f); onClose() }) { Text("Normal") } },
+        dismissButton = { TextButton(onClose) { Text("Close") } },
+    )
 }
 
 /** Pauses playback after a chosen time. */

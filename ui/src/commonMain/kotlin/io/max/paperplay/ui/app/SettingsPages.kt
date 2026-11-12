@@ -91,8 +91,8 @@ internal fun ConnectionPage(conn: ConnectionUi, backend: CoreBackend) {
     SettingsRow("Telegram", icon = Icons.Rounded.Send, subtitle = state)
     if (conn.error != null) SettingsRow("Last problem", icon = Icons.Rounded.ErrorOutline, subtitle = conn.error)
     SettingsRow("Channels", icon = Icons.Rounded.Forum, subtitle = "${conn.chats.size} added")
-    SettingsRow("Other devices", icon = Icons.Rounded.Devices, subtitle = "Not built yet: syncing between devices", enabled = false)
     if (!conn.ready) Column(Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) { OutlinedButton(backend::connect) { Text("Reconnect") } }
+    LanConnectionPage(backend)
 }
 
 @org.jetbrains.compose.ui.tooling.preview.Preview

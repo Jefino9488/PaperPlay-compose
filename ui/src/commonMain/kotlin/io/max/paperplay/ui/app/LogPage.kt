@@ -54,7 +54,7 @@ internal fun LogPage(backend: CoreBackend) {
     )
 }
 
-private fun saveText(dataDir: String, name: String, text: String, done: (String) -> Unit) {
+internal fun saveText(dataDir: String, name: String, text: String, done: (String) -> Unit) {
     val pick = BackupFiles.pickDestination
     if (text.isEmpty()) { done("Nothing to save"); return }
     if (pick == null) { done("Saving a file is not supported here"); return }

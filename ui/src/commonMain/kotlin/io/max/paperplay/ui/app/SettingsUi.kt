@@ -37,7 +37,7 @@ import androidx.compose.ui.unit.dp
 fun BackTopBar(title: String, onBack: () -> Unit, modifier: Modifier = Modifier, actions: @Composable () -> Unit = {}) {
     Row(modifier.barSurface().padding(start = 4.dp, end = 8.dp, top = 12.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         IconButton(onBack) { AppIcon(Icons.AutoMirrored.Rounded.ArrowBack, "Back") }
-        Text(title, Modifier.weight(1f).padding(start = 4.dp), style = MaterialTheme.typography.headlineMedium, maxLines = 1)
+        Text(title, Modifier.weight(1f).padding(start = 4.dp), style = MaterialTheme.typography.headlineSmall, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
         actions()
     }
 }

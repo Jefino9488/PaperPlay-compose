@@ -53,7 +53,10 @@ class TopicMover(
     private val repo: LibraryRepo,
     /** (chat, message) of the song playing now, which is left in General. */
     private val playingNow: () -> Pair<Long, Long>? = { null },
+    /** A sentence saying why the bot cannot post and delete in the chat, or null when it can. */
+    private val moveProblem: suspend (Long) -> String? = { null },
 ) {
+    private val checkedChats = HashSet<Long>()
     private val _jobs = MutableStateFlow<List<MoveJob>>(emptyList())
     val jobs: StateFlow<List<MoveJob>> = _jobs
     private val _paused = MutableStateFlow(false)
@@ -73,6 +76,7 @@ class TopicMover(
         cancelled = false
         _problem.value = null
         _paused.value = false
+        checkedChats.clear()
         if (running) return
         running = true
         scope.launch { try { run() } finally { running = false } }
@@ -125,6 +129,10 @@ class TopicMover(
         if (playingNow() == now.chat_id to now.message_id) throw Skip("Playing now, left in General")
         if (repo.db.miscQueries.postCopiesOf(now.unique_id).executeAsList().any { it.topic_id != null && it.topic_id != GENERAL_TOPIC_ID }) {
             throw Skip("Also posted in another topic")
+        }
+        if (now.chat_id !in checkedChats) {
+            moveProblem(now.chat_id)?.let { throw Skip(it) }
+            checkedChats += now.chat_id
         }
         val sentId = CompletableDeferred<Long>()
         val outcome = scope.async(start = CoroutineStart.UNDISPATCHED) {

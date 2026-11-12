@@ -30,6 +30,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.LibraryMusic
 import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.ui.draw.shadow
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.LibraryMusic
 import androidx.compose.material.icons.rounded.ManageSearch
@@ -64,7 +66,7 @@ private class NavEntry(val icon: ImageVector, val selected: ImageVector, val lab
 
 private val entries = listOf(
     NavEntry(Icons.Outlined.Home, Icons.Rounded.Home, "Home"),
-    NavEntry(Icons.Rounded.Search, Icons.Rounded.ManageSearch, "Search"),
+    NavEntry(Icons.Outlined.Search, Icons.Rounded.Search, "Search"),
     NavEntry(Icons.Outlined.LibraryMusic, Icons.Rounded.LibraryMusic, "Library"),
     NavEntry(Icons.Outlined.Person, Icons.Rounded.Person, "Profile"),
 )
@@ -79,7 +81,7 @@ fun NavBar(selected: Int, backdrop: Backdrop, prefs: UiPrefs, inset: Dp, onSelec
     val corner = (height / 2) * (prefs.barRadius / 100f)
     val docked = !prefs.floatingNav
     val items: @Composable () -> Unit = {
-        Row(Modifier.fillMaxSize().padding(6.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 6.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
             entries.forEachIndexed { i, e ->
                 val w by animateFloatAsState(if (layout == NavLayout.Pill && i == selected) 1.9f else 1f)
                 NavItem(e, i == selected, prefs, if (layout == NavLayout.Dock || layout == NavLayout.Pill) Modifier.weight(w) else Modifier, taskRunning = taskRunning && i == 3) { onSelect(i) }
@@ -95,7 +97,11 @@ fun NavBar(selected: Int, backdrop: Backdrop, prefs: UiPrefs, inset: Dp, onSelec
             Box(modifier.fillMaxWidth().height(height + inset).background(MaterialTheme.colorScheme.surface)) { Box(Modifier.fillMaxSize().padding(bottom = inset)) { items() } }
         }
         glass -> GlassSurface(backdrop, bar, cornerRadius = corner, blur = prefs.glassBlur.dp, tintAlpha = prefs.glassTint) { items() }
-        else -> Box(bar.clip(RoundedCornerShape(corner)).background(MaterialTheme.colorScheme.surfaceContainerHigh)) { items() }
+        else -> {
+            val shape = RoundedCornerShape(corner)
+            Box(bar.shadow(8.dp, shape).clip(shape).background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                .border(BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)), shape)) { items() }
+        }
     }
 }
 
@@ -105,7 +111,7 @@ private fun NavItem(e: NavEntry, on: Boolean, prefs: UiPrefs, modifier: Modifier
     val look = prefs.selectionLook
     val scheme = MaterialTheme.colorScheme
     val ink = if (on) (if (look == SelectionLook.Fill) scheme.onPrimaryContainer else scheme.primary) else scheme.onSurface
-    val scale by animateFloatAsState(if (on) 1.18f else 1f)
+    val scale by animateFloatAsState(1f)
     val shape = RoundedCornerShape(28.dp * (prefs.selectionRadius / 100f))
     val bg = when {
         on && look == SelectionLook.Fill -> scheme.primaryContainer.copy(alpha = 0.9f)
@@ -124,7 +130,7 @@ private fun NavItem(e: NavEntry, on: Boolean, prefs: UiPrefs, modifier: Modifier
     }
     val inner = Modifier.clip(shape).background(bg).then(ring).clickable(onClick = onClick).animateContentSize()
     when (layout) {
-        NavLayout.Pill -> Row(modifier.then(inner).padding(vertical = 12.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+        NavLayout.Pill -> Row(modifier.padding(horizontal = 2.dp).then(inner).padding(vertical = 14.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
             icon()
             if (on) { Spacer(Modifier.width(8.dp)); Text(e.label, style = MaterialTheme.typography.labelLarge, color = ink, maxLines = 1) }
         }

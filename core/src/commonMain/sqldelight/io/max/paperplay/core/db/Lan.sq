@@ -1,0 +1,24 @@
+-- Queries for the local network sync: playlist entries with the song's unique id, and writes that keep removal stamps.
+
+allPlaylistsWithUuid:
+SELECT * FROM playlists WHERE uuid != '';
+
+playlistByUuid:
+SELECT * FROM playlists WHERE uuid = :uuid;
+
+setPlaylistMeta:
+UPDATE playlists SET name = :name, modified_at = :modifiedAt, deleted_at = :deletedAt WHERE id = :id;
+
+allEntries:
+SELECT playlist_songs.playlist_id AS playlist_id, songs.unique_id AS unique_id, playlist_songs.added_at AS added_at,
+  playlist_songs.removed_at AS removed_at, playlist_songs.position AS position
+FROM playlist_songs
+JOIN songs ON songs.chat_id = playlist_songs.chat_id AND songs.message_id = playlist_songs.message_id;
+
+updateEntry:
+UPDATE playlist_songs SET added_at = :addedAt, removed_at = :removedAt, position = :position
+WHERE playlist_id = :playlistId AND chat_id = :chatId AND message_id = :messageId;
+
+insertEntryIfMissing:
+INSERT OR IGNORE INTO playlist_songs (playlist_id, chat_id, message_id, added_at, removed_at, position)
+VALUES (:playlistId, :chatId, :messageId, :addedAt, :removedAt, :position);

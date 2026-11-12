@@ -34,6 +34,16 @@ object IndexPrefs {
     const val AUTO_COPY = "index_auto_copy"
     fun auto(library: LibraryRepository) = library.pref(AUTO) == "true"
     fun autoCopy(library: LibraryRepository) = library.pref(AUTO_COPY) == "true"
+
+    /** Per channel: "true" lets automatic copying take songs from this added channel into the main chat. Default off. */
+    fun channelKey(chatId: Long) = "channel_copy:$chatId"
+
+    /**
+     * Whether automatic copying may take songs from [chatId]. Chats that are not added channels of the library
+     * (the account's other chats) and the main chat itself are not limited; an added channel needs its switch on.
+     */
+    fun channelCopyAllowed(library: LibraryRepository, chatId: Long, mainChat: Long?): Boolean =
+        chatId == mainChat || library.chat(chatId) == null || library.pref(channelKey(chatId)) == "true"
 }
 
 /** A [Song] row built from a post, so the shared matching rules can be applied to it. */
@@ -85,10 +95,17 @@ class ChatIndex(
         onRunFinished?.invoke()
     }
 
+    @Volatile private var stopGen = 0
+    private class StopRun : RuntimeException()
+
+    override fun stopRun() { stopGen++ }
+
     override suspend fun refresh() {
         if (!account.loggedIn.value) return
         runLock.withLock {
+            val gen = stopGen
             for (c in store.chats()) {
+                if (stopGen != gen) break
                 // A chat whose first read never finished is read again from the start; the rest only for newer posts.
                 if (c.complete) read(c.id, c.title, after = c.newestMessageId, complete = true)
                 else read(c.id, c.title, after = 0, complete = true)
@@ -101,8 +118,10 @@ class ChatIndex(
         var found = 0
         var newest = 0L
         _progress.value = IndexProgress(chatId, title, 0, true)
+        val gen = stopGen
         try {
             account.songsIn(chatId, after).collect { batch ->
+                if (stopGen != gen) throw StopRun()
                 if (batch.isEmpty()) return@collect
                 store.upsertPosts(batch)
                 found += batch.size
@@ -112,6 +131,8 @@ class ChatIndex(
                 _progress.value = IndexProgress(chatId, title, found, true)
             }
             store.setState(chatId, newest, clock(), complete)
+        } catch (_: StopRun) {
+            // Stopped by the owner; what was read is kept and the chat stays marked as not complete.
         } finally {
             _progress.value = null
         }
@@ -180,16 +201,17 @@ class ChatIndex(
         library.upsertBotSong(post.asSong().copy(remote_id = io.max.paperplay.core.app.ACCOUNT_REMOTE))
     }
 
+    override suspend fun missingFromMainChat(): List<ChatPost> {
+        val chat = mainChat() ?: return emptyList()
+        val main = main() ?: return emptyList()
+        val copied = store.copiedIds()
+        return store.posts(chat).filter { it.uniqueId !in copied && !main.has(it) }
+    }
+
     override suspend fun addMissingFromMainChat(): Int {
-        val chat = mainChat() ?: return 0
-        val main = main() ?: return 0
-        var added = 0
-        for (p in store.posts(chat)) {
-            if (p.uniqueId in store.copiedIds() || main.has(p)) continue
-            addToLibrary(p)
-            added++
-        }
-        return added
+        val missing = missingFromMainChat()
+        missing.forEach { addToLibrary(it) }
+        return missing.size
     }
 
     override fun forget(chatId: Long) {

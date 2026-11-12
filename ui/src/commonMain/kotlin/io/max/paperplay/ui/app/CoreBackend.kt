@@ -18,6 +18,7 @@ import io.max.paperplay.core.recs.WeatherService
 import io.max.paperplay.core.integrations.HttpFetcher
 import io.max.paperplay.core.integrations.ListenBrainz
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import io.max.paperplay.core.recs.ShelfKind
 import io.max.paperplay.core.filing.MAIN_CHAT_KEY
 import io.max.paperplay.core.filing.parseMainChat
@@ -77,6 +78,11 @@ data class ScanUi(val text: String, val fraction: Double?)
 interface PlayerControls {
     val position: StateFlow<PositionUi>
     val sleepAt: StateFlow<Long?>
+    /** Playback speed, 1 is normal. */
+    val speed: StateFlow<Float>
+    fun setSpeed(speed: Float)
+    fun removeFromQueue(index: Int)
+    fun moveInQueue(from: Int, to: Int)
     fun togglePlay()
     fun next()
     fun previous()
@@ -496,7 +502,7 @@ class CoreBackend(val services: AppServices) : PlayerControls {
     private var lastScanLog = 0L
 
     /** Running background jobs and their history; features call tasks.start/update/finish. */
-    val tasks = io.max.paperplay.core.app.TaskQueue(scope).also { q -> scope.launch(Dispatchers.Default) { q.watchServices(services) } }
+    val tasks = io.max.paperplay.core.app.TaskQueue(scope, load = { repo.pref("task_history") }, save = { repo.setPref("task_history", it) }).also { q -> scope.launch(Dispatchers.Default) { q.watchServices(services) } }
 
     fun addLog(source: String, message: String, error: Boolean = false) {
         val clean = message.replace(Regex("\\b\\d{5,}:[A-Za-z0-9_-]{20,}\\b"), "<bot token>")
@@ -620,6 +626,27 @@ class CoreBackend(val services: AppServices) : PlayerControls {
     /** Output volume, 0 to 1; kept here since the engines do not report it. */
     val volume = kotlinx.coroutines.flow.MutableStateFlow(repo.pref("player_volume")?.toFloatOrNull()?.coerceIn(0f, 1f) ?: 1f)
 
+    override val speed = MutableStateFlow(repo.pref("player_speed")?.toFloatOrNull()?.coerceIn(0.5f, 2f) ?: 1f)
+
+    override fun setSpeed(speed: Float) {
+        val v = speed.coerceIn(0.5f, 2f)
+        this.speed.value = v
+        repo.setPref("player_speed", v.toString())
+        if (playerStarted.value) player.setSpeed(v)
+    }
+
+    /** Evens out loud and quiet songs; see the Listening settings. */
+    val normalizeOn = MutableStateFlow(repo.pref("normalize") == "true")
+
+    fun setNormalize(on: Boolean) {
+        normalizeOn.value = on
+        repo.setPref("normalize", "$on")
+        if (playerStarted.value) player.setNormalize(on)
+    }
+
+    override fun removeFromQueue(index: Int) { withPlayer { it.removeAt(index) } }
+    override fun moveInQueue(from: Int, to: Int) { withPlayer { it.moveInQueue(from, to) } }
+
     /** False until something plays; the audio stack is not created before that. */
     private val playerStarted = MutableStateFlow(false)
 
@@ -637,6 +664,8 @@ class CoreBackend(val services: AppServices) : PlayerControls {
         services.playback.also { p ->
             if (eqOn.value) p.setEqualizer(eqGains.value)
             if (volume.value != 1f) p.setVolume(volume.value)
+            if (speed.value != 1f) p.setSpeed(speed.value)
+            if (normalizeOn.value) p.setNormalize(true)
             // A listen counts after half the song or four minutes, whichever comes first.
             p.onListened = { song, ms ->
                 val token = services.platform.secrets.get(io.max.paperplay.core.backup.SecretKeys.LISTENBRAINZ_TOKEN)
@@ -651,6 +680,42 @@ class CoreBackend(val services: AppServices) : PlayerControls {
     }
 
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    /** Puts the last queue back, paused, once the connection is up (or after 20 seconds) and nothing has been played. */
+    val sessionRestore: Boolean get() = repo.pref("restore_session") != "false"
+
+    fun setSessionRestore(on: Boolean) = repo.setPref("restore_session", "$on")
+
+    init {
+        scope.launch(Dispatchers.Default) {
+            if (!sessionRestore) return@launch
+            kotlinx.coroutines.withTimeoutOrNull(20_000) { services.ready.first { it } }
+            if (!playerStarted.value && sessionRestore) withPlayer { it.restoreSession() }
+        }
+    }
+
+    /** Lyrics are fetched for every song in the background so opening one shows them at once. On unless turned off. */
+    val lyricsAuto: Boolean get() = repo.pref("lyrics_auto") != "false"
+
+    fun setLyricsAuto(on: Boolean) = repo.setPref("lyrics_auto", "$on")
+
+    init {
+        scope.launch(Dispatchers.Default) {
+            kotlinx.coroutines.withTimeoutOrNull(60_000) { services.ready.first { it } }
+            // Let the catch-up and info scans settle first; then look again every half hour for songs that arrived since.
+            kotlinx.coroutines.delay(30_000)
+            while (true) {
+                if (lyricsAuto && taste.value.lookups) {
+                    // Song info, covers and genres for songs that still lack them, then lyrics. Each one skips what is already done.
+                    runCatching { services.enricher.kick() }
+                    runCatching { services.covers.kick() }
+                    runCatching { services.moodScanner.start() }
+                    if (!lyricsRunning.value) startLyricsRun()
+                }
+                kotlinx.coroutines.delay(30 * 60_000L)
+            }
+        }
+    }
+
     private val nowPlayingFlow: Flow<NowPlaying> = playerStarted
         .transformLatest { started -> if (started) emitAll(playerLazy.value.nowPlaying) }
         .flowOn(Dispatchers.Default)
@@ -789,6 +854,23 @@ class CoreBackend(val services: AppServices) : PlayerControls {
 
     fun setPinned(id: String, pinned: Boolean) = services.setPinned(listOf(id), pinned)
 
+    /** Deletes the song's post from Telegram (main chat only) and from the library; [say] gets the outcome. */
+    fun deleteSong(id: String, say: (String) -> Unit) {
+        val s = byId[id] ?: return
+        scope.launch(Dispatchers.IO) {
+            val queue = services.deleteQueue
+            val msg = try {
+                if (queue.deleteSongs(listOf(s)) > 0) "Deleted \"${s.title}\" from Telegram"
+                else queue.jobs.value.firstOrNull()?.error?.let { "Could not delete: $it" } ?: "Could not delete the song"
+            } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                "Could not delete: ${e.message ?: e::class.simpleName}"
+            }
+            say(msg)
+        }
+    }
+
     /** Pins every song of a playlist, or unpins them all when they are already pinned. Returns the new state. */
     fun togglePinAll(ids: Collection<String>): Boolean {
         val all = ids.mapNotNull { byId[it] }
@@ -807,6 +889,12 @@ class CoreBackend(val services: AppServices) : PlayerControls {
     fun addToPlaylist(playlistId: String, songIds: Collection<String>) {
         val id = playlistId.toLongOrNull() ?: return
         scope.launch(Dispatchers.IO) { songIds.mapNotNull { byId[it] }.forEach { repo.addToPlaylist(id, it) } }
+    }
+
+    fun setPlaylistOrder(playlistId: String, songIds: List<String>) {
+        val id = playlistId.toLongOrNull() ?: return
+        val songs = songIds.mapNotNull { byId[it] }
+        scope.launch(Dispatchers.IO) { repo.repo.setPlaylistOrder(id, songs) }
     }
 
     fun removeFromPlaylist(playlistId: String, songId: String) {
@@ -846,6 +934,21 @@ class CoreBackend(val services: AppServices) : PlayerControls {
     }
 
     fun connect() = services.connect()
+
+    /** Local network sync; null until it has been turned on once or "lan_on" was set at launch. */
+    val lanSync: io.max.paperplay.core.sync.LanSync? get() = services.lanSync
+
+    /** Turns local network sync on (creates it first if needed) or off. It saves "lan_on" itself. */
+    fun setLanOn(on: Boolean) {
+        scope.launch(Dispatchers.Default) {
+            if (on) services.enableLanSync(!io.max.paperplay.ui.isPhone).start() else services.lanSync?.stop()
+        }
+    }
+
+    init {
+        // The core starts itself when "lan_on" is "1"; it only has to be built.
+        if (repo.pref("lan_on") == "1") services.enableLanSync(!io.max.paperplay.ui.isPhone)
+    }
 
     fun pref(key: String): String? = repo.pref(key)
     fun setPref(key: String, value: String) = repo.setPref(key, value)

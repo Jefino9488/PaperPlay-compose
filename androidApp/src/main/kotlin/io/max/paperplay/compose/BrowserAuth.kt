@@ -34,6 +34,19 @@ class BrowserAuth(private val open: (Intent) -> Unit) : AuthRedirect {
     fun deliver(data: Uri?) {
         if (data == null || data.scheme != "paperplay" || data.host != "spotify") return
         val q = data.queryParameterNames.associateWith { data.getQueryParameter(it).orEmpty() }
-        waiting?.complete(q)
+        val w = waiting
+        if (w != null) { w.complete(q); return }
+        // Nobody is waiting: the app was ended during the browser step. Hand it on once services exist.
+        val h = lateHandler
+        if (h != null) h(q) else late = q
+    }
+
+    @Volatile private var late: Map<String, String>? = null
+    @Volatile private var lateHandler: ((Map<String, String>) -> Unit)? = null
+
+    /** Sets who finishes a login that returns after the app was ended; a reply that came earlier is passed now. */
+    fun onLateReturn(handler: (Map<String, String>) -> Unit) {
+        lateHandler = handler
+        late?.let { late = null; handler(it) }
     }
 }

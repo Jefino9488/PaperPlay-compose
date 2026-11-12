@@ -135,11 +135,20 @@ internal fun MissingInfoPage(backend: CoreBackend) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     OutlinedButton(enabled = shown.isNotEmpty(), onClick = { selection = Selection(shown.map { it.first.unique_id }.toSet()) }) { Text("Select all") }
                     if (selection.ids.isNotEmpty()) OutlinedButton(onClick = { selection = Selection() }) { Text("Clear ${selection.ids.size}") }
+                    val noMatch = rows.filter { Missing.NoMatch in it.second }.map { it.first }
+                    if (noMatch.isNotEmpty()) OutlinedButton(onClick = {
+                        val n = backend.services.enricher.retrySongs(noMatch)
+                        note = if (n == 0) "Nothing to look up." else "Retrying $n songs with no match."
+                    }) { Text("Retry no match (${noMatch.size})") }
                     OutlinedButton(enabled = shown.isNotEmpty(), onClick = {
                         val list = ExportList("missing", "Songs missing info", 0, shown.map { (s, _) -> ExportRow(s.title, s.artist, s.duration_sec.toInt()) })
                         clipboard.setText(AnnotatedString(exportCsv(list)))
                         note = "Copied ${shown.size} songs as CSV."
                     }) { Text("Copy as CSV") }
+                    OutlinedButton(enabled = shown.isNotEmpty(), onClick = {
+                        val list = ExportList("missing", "Songs missing info", 0, shown.map { (s, _) -> ExportRow(s.title, s.artist, s.duration_sec.toInt()) })
+                        saveText(backend.services.platform.dataDir, "paperplay-missing-info", exportCsv(list)) { note = it }
+                    }) { Text("Save to file") }
                 }
                 if (rows.isNotEmpty()) HorizontalDivider(Modifier.padding(top = 8.dp))
             }

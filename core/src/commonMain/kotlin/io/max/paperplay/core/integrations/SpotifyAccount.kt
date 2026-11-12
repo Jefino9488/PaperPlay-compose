@@ -53,7 +53,29 @@ class SpotifyAccount(private val secrets: SecretStore, private val http: HttpFet
                 "code_challenge" to challenge,
             ),
         )
-        val q = redirect.authorize(url, redirectUri)
+        // Kept on disk while the browser is open: Android may end the app there, and the return link then resumes it.
+        secrets.put(SecretKeys.SPOTIFY_PENDING, listOf(state, verifier, redirectUri).joinToString("\n"))
+        try {
+            finish(redirect.authorize(url, redirectUri), id, state, verifier, redirectUri)
+        } finally {
+            secrets.remove(SecretKeys.SPOTIFY_PENDING)
+        }
+    }
+
+    /**
+     * Finishes a login whose app was ended during the browser step, from the callback [query]. False when no
+     * login was waiting or the reply is not for it (nothing changes then). Throws [SpotifyLoginError] if Spotify refuses.
+     */
+    suspend fun resume(query: Map<String, String>): Boolean {
+        val parts = secrets.get(SecretKeys.SPOTIFY_PENDING)?.split("\n") ?: return false
+        val id = clientId
+        if (parts.size != 3 || id == null || query["state"] != parts[0]) return false
+        secrets.remove(SecretKeys.SPOTIFY_PENDING)
+        finish(query, id, parts[0], parts[1], parts[2])
+        return true
+    }
+
+    private suspend fun finish(q: Map<String, String>, id: String, state: String, verifier: String, redirectUri: String) {
         if (q["state"] != state) throw SpotifyLoginError("Spotify's reply did not match. Try again.")
         val code = q["code"] ?: throw SpotifyLoginError("Spotify refused: ${q["error"] ?: "unknown reason"}.")
         token(
@@ -83,14 +105,14 @@ class SpotifyAccount(private val secrets: SecretStore, private val http: HttpFet
         if (!connected) return null
         val about = get("https://api.spotify.com/v1/playlists/$id?fields=name") ?: return null
         if (about.status == 403 || about.status == 404) return null
-        if (about.status != 200) throw ImportError("Spotify answered with error ${about.status}.")
+        if (about.status != 200) throw ImportError(spotifyBusy(about.status))
         val name = (Json.parseToJsonElement(about.text) as? JsonObject)?.str("name") ?: "Imported playlist"
         val tracks = ArrayList<ImportedTrack>()
         var next: String? = "https://api.spotify.com/v1/playlists/$id/items?limit=100"
         while (next != null) {
             val res = get(next) ?: return null
             if (res.status == 403 || res.status == 404) return null
-            if (res.status != 200) throw ImportError("Spotify answered with error ${res.status}.")
+            if (res.status != 200) throw ImportError(spotifyBusy(res.status))
             val page = Json.parseToJsonElement(res.text) as? JsonObject ?: throw ImportError("Spotify's answer could not be read.")
             tracks += parseSpotifyItems(page["items"] as? JsonArray ?: JsonArray(emptyList()))
             next = page.str("next")
@@ -98,9 +120,22 @@ class SpotifyAccount(private val secrets: SecretStore, private val http: HttpFet
         return FetchedPlaylist(name, tracks)
     }
 
+    /** Spotify now and then answers 429 or 5xx for a moment (a 500 item playlist is several requests), so those are retried a few times. */
+    private fun spotifyBusy(status: Int) =
+        if (status == 429 || status in 500..599) "Spotify is busy right now (error $status). Nothing was changed; try again in a minute."
+        else "Spotify answered with error $status."
+
     private suspend fun get(url: String): HttpResponse? {
         val t = accessToken() ?: return null
-        return http.send(HttpRequest(url, headers = mapOf("Authorization" to "Bearer $t")))
+        var res = http.send(HttpRequest(url, headers = mapOf("Authorization" to "Bearer $t")))
+        var attempt = 0
+        while ((res.status == 429 || res.status in 500..599) && attempt < 4) {
+            val wait = (res.headers.entries.firstOrNull { it.key.equals("Retry-After", true) }?.value?.toLongOrNull() ?: (1L shl attempt)).coerceIn(1L, 10L)
+            kotlinx.coroutines.delay(wait * 1000)
+            attempt++
+            res = http.send(HttpRequest(url, headers = mapOf("Authorization" to "Bearer $t")))
+        }
+        return res
     }
 
     private suspend fun accessToken(): String? {

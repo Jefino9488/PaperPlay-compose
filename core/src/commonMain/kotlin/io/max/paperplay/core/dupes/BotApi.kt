@@ -47,6 +47,20 @@ class BotApi(private val token: suspend () -> String?, private val http: HttpPos
             (status == "administrator" && member["can_delete_messages"]?.jsonPrimitive?.booleanOrNull == true)
     }
 
+    /** Why the bot cannot repost and delete in [chatId] (a plain sentence), or null when it can. Asks Telegram, not TDLib's cache. */
+    suspend fun moveProblem(chatId: Long): String? {
+        if (botId == null) botId = call("getMe", emptyMap())?.get("result")?.jsonObject?.get("id")?.jsonPrimitive?.longOrNull
+        val id = botId ?: return "Telegram could not be reached to check the bot's rights"
+        val member = call("getChatMember", mapOf("chat_id" to "$chatId", "user_id" to "$id"))
+            ?.get("result")?.jsonObject ?: return "Telegram could not be reached to check the bot's rights"
+        val status = member["status"]?.jsonPrimitive?.contentOrNull
+        if (status == "creator") return null
+        if (status != "administrator") return "The bot is not an admin of this chat. Make it an admin that can post and delete messages"
+        if (member["can_delete_messages"]?.jsonPrimitive?.booleanOrNull != true) return "The bot cannot delete messages in this chat. Give it that admin right"
+        if (member["can_post_messages"]?.jsonPrimitive?.booleanOrNull == false) return "The bot cannot post messages in this chat. Give it that admin right"
+        return null
+    }
+
     /** TDLib's message id is the server's shifted up by 20 bits. */
     override suspend fun deleteMessages(chatId: Long, tdlibMessageIds: List<Long>): Boolean {
         val ids = JsonArray(tdlibMessageIds.map { JsonPrimitive(it shr 20) }).toString()

@@ -81,21 +81,27 @@ val PaperShapes = Shapes(
 @Composable
 private fun nunitoTypography(): Typography {
     @Composable fun family(w: Int) = FontFamily(Font(Res.font.nunito, FontWeight(w), variationSettings = FontVariation.Settings(FontVariation.weight(w))))
-    val f5 = family(500)
+    val f6 = family(600)
     val f7 = family(700)
     val f8 = family(800)
-    return remember(f5, f7, f8) { buildTypography(mapOf(500 to f5, 700 to f7, 800 to f8)) }
+    return remember(f6, f7, f8) { buildTypography(mapOf(600 to f6, 700 to f7, 800 to f8)) }
 }
 
+/** Text is 8% larger than the Material default. */
+private const val TEXT_SCALE = 1.08f
+
 private fun buildTypography(f: Map<Int, FontFamily>): Typography {
-    fun TextStyle.w(weight: Int) = copy(fontFamily = f[weight], fontWeight = FontWeight(weight))
+    fun TextStyle.w(weight: Int) = copy(
+        fontFamily = f[weight], fontWeight = FontWeight(weight),
+        fontSize = fontSize * TEXT_SCALE, lineHeight = lineHeight * TEXT_SCALE,
+    )
     val b = Typography()
-    // Same weights as the Flutter theme (800 display and headline, 700 titles and labels, 500 body).
+    // Nunito: 800 display and headline, 700 titles and labels, 600 body (a little bolder than the Flutter theme).
     return Typography(
         displayLarge = b.displayLarge.w(800), displayMedium = b.displayMedium.w(800), displaySmall = b.displaySmall.w(800),
         headlineLarge = b.headlineLarge.w(800), headlineMedium = b.headlineMedium.w(800), headlineSmall = b.headlineSmall.w(700),
         titleLarge = b.titleLarge.w(700), titleMedium = b.titleMedium.w(700), titleSmall = b.titleSmall.w(700),
-        bodyLarge = b.bodyLarge.w(500), bodyMedium = b.bodyMedium.w(500), bodySmall = b.bodySmall.w(500),
+        bodyLarge = b.bodyLarge.w(600), bodyMedium = b.bodyMedium.w(600), bodySmall = b.bodySmall.w(600),
         labelLarge = b.labelLarge.w(700), labelMedium = b.labelMedium.w(700), labelSmall = b.labelSmall.w(700),
     )
 }

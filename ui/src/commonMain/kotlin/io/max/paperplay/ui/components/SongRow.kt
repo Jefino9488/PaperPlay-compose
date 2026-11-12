@@ -3,7 +3,15 @@ package io.max.paperplay.ui.components
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.unit.sp
+import androidx.compose.material.icons.rounded.PushPin
+import androidx.compose.material.icons.rounded.DownloadDone
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -56,8 +64,10 @@ fun SongRow(
     val effectiveCoverUri = coverUriOverride ?: song.coverUri
     val coverKey = song.album.ifBlank { song.title.ifBlank { song.id } }
 
+    BoxWithConstraints(modifier.fillMaxWidth()) {
+    val wide = maxWidth >= 420.dp
     Surface(
-        modifier = modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth(),
         shape = io.max.paperplay.ui.app.appShape(16.dp),
         color = containerColor,
         tonalElevation = if (current) 3.dp else 1.dp,
@@ -65,8 +75,9 @@ fun SongRow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .heightIn(min = 64.dp)
                 .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-                .padding(horizontal = 12.dp, vertical = 8.dp),
+                .padding(start = 12.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (selected) {
@@ -94,14 +105,18 @@ fun SongRow(
                     style = MaterialTheme.typography.titleMedium,
                     color = if (current) scheme.primary else scheme.onSurface,
                 )
+                val detail = remember(song.sizeBytes, song.durationSec, wide) {
+                    val kbps = if (song.durationSec > 0) song.sizeBytes * 8 / song.durationSec / 1000 else 0L
+                    listOfNotNull(
+                        if (wide && kbps > 0) "$kbps kbps" else null,
+                        if (wide && song.sizeBytes > 0) "${song.sizeBytes / 1_000_000} MB" else null,
+                    ).joinToString(" · ")
+                }
+                val format = if (isHiRes(song)) "Hi-Res" else song.qualityLabel?.substringBefore(' ')?.takeIf { it.isNotBlank() }
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    if (song.pinned) Badge("Pinned")
-                    else if (song.offline) Badge("Offline")
-                    song.qualityLabel?.substringBefore(' ')?.takeIf { it.isNotBlank() }?.let { Badge(it) }
-                    if (isHiRes(song)) Badge("Hi-Res")
                     Text(
                         text = song.artist,
                         maxLines = 1,
@@ -110,23 +125,23 @@ fun SongRow(
                         color = scheme.onSurfaceVariant,
                         modifier = Modifier.weight(1f, fill = false),
                     )
+                    if (format != null) FormatChip(format)
+                    if (song.pinned || song.offline) {
+                        AppIcon(
+                            imageVector = if (song.pinned) Icons.Rounded.PushPin else Icons.Rounded.DownloadDone,
+                            contentDescription = if (song.pinned) "Pinned" else "Offline",
+                            tint = scheme.primary,
+                            modifier = Modifier.size(14.dp),
+                        )
+                    }
+                    if (detail.isNotEmpty()) Text(
+                        text = detail,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = scheme.onSurfaceVariant.copy(alpha = 0.7f),
+                        maxLines = 1,
+                        softWrap = false,
+                    )
                 }
-            }
-            val detail = remember(song.sizeBytes, song.durationSec) {
-                val kbps = if (song.durationSec > 0) song.sizeBytes * 8 / song.durationSec / 1000 else 0L
-                listOfNotNull(
-                    if (kbps > 0) "$kbps kbps" else null,
-                    if (song.sizeBytes > 0) "${song.sizeBytes / 1_000_000} MB" else null,
-                ).joinToString(" · ")
-            }
-            if (detail.isNotEmpty()) {
-                Text(
-                    text = detail,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = scheme.onSurfaceVariant,
-                    maxLines = 1,
-                    modifier = Modifier.padding(end = 4.dp),
-                )
             }
             if (song.favorite) {
                 AppIcon(
@@ -139,9 +154,14 @@ fun SongRow(
             if (actions != null) SongMenu(song, actions) else Box(Modifier.size(8.dp))
         }
     }
+    }
 }
 
 /** Lossless with more than 16 bits or a rate above 48 kHz, read from labels like "FLAC 24/96". */
+/** The one chip a song earns for its format: "Hi-Res", or the first word of its quality label such as FLAC or MP3. */
+internal fun formatChipOf(song: SongUi): String? =
+    if (isHiRes(song)) "Hi-Res" else song.qualityLabel?.substringBefore(' ')?.takeIf { it.isNotBlank() }
+
 private fun isHiRes(song: SongUi): Boolean {
     if (!song.lossless) return false
     val m = Regex("""(\d+)/([\d.]+)""").find(song.qualityLabel.orEmpty()) ?: return false
@@ -149,16 +169,23 @@ private fun isHiRes(song: SongUi): Boolean {
 }
 
 @Composable
-private fun Badge(text: String) {
-    Surface(
-        shape = io.max.paperplay.ui.app.appShape(6.dp),
-        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
+internal fun FormatChip(text: String) {
+    Box(
+        modifier = Modifier
+            .height(16.dp)
+            .clip(io.max.paperplay.ui.app.appShape(5.dp))
+            .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f))
+            .padding(horizontal = 5.dp),
+        contentAlignment = Alignment.Center,
     ) {
         Text(
             text = text,
             style = MaterialTheme.typography.labelSmall,
+            fontSize = 10.sp,
+            lineHeight = 12.sp,
+            maxLines = 1,
+            softWrap = false,
             color = MaterialTheme.colorScheme.onPrimaryContainer,
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
         )
     }
 }
@@ -167,6 +194,7 @@ private fun Badge(text: String) {
 fun SongMenu(song: SongUi, actions: SongActions, icon: ImageVector = Icons.Rounded.MoreVert) {
     var open by remember { mutableStateOf(false) }
     var info by remember { mutableStateOf(false) }
+    var confirmDelete by remember { mutableStateOf(false) }
     val uri = androidx.compose.ui.platform.LocalUriHandler.current
     if (info) androidx.compose.material3.AlertDialog(
         onDismissRequest = { info = false },
@@ -189,6 +217,13 @@ fun SongMenu(song: SongUi, actions: SongActions, icon: ImageVector = Icons.Round
             }
         },
         confirmButton = { androidx.compose.material3.TextButton({ info = false }) { Text("Close") } },
+    )
+    if (confirmDelete) androidx.compose.material3.AlertDialog(
+        onDismissRequest = { confirmDelete = false },
+        title = { Text("Delete from Telegram?") },
+        text = { Text("\"${song.title}\" is removed from your main chat and from this library. Repeats of the same file in that chat go too. This cannot be undone.") },
+        confirmButton = { androidx.compose.material3.TextButton({ confirmDelete = false; actions.deleteFromTelegram(song) }) { Text("Delete") } },
+        dismissButton = { androidx.compose.material3.TextButton({ confirmDelete = false }) { Text("Cancel") } },
     )
     Box {
         IconButton({ open = true }) { AppIcon(icon, "Song options") }
@@ -216,6 +251,7 @@ fun SongMenu(song: SongUi, actions: SongActions, icon: ImageVector = Icons.Round
             item("Edit tags") { actions.editTags(song) }
             item("Change cover") { actions.changeCover(song) }
             actions.removeLabel?.let { label -> item(label) { actions.remove(song) } }
+            item("Delete from Telegram") { confirmDelete = true }
         }
     }
 }
@@ -267,4 +303,13 @@ private fun SongMenuPreview() {
 
 @org.jetbrains.compose.ui.tooling.preview.Preview(name = "Badge", showBackground = true)
 @Composable
-private fun BadgePreview() = io.max.paperplay.ui.PreviewFrame { Badge("FLAC") }
+private fun BadgePreview() = io.max.paperplay.ui.PreviewFrame { FormatChip("FLAC") }
+
+@org.jetbrains.compose.ui.tooling.preview.Preview(name = "Row narrow hi-res", widthDp = 340, showBackground = true)
+@Composable
+private fun SongRowNarrowPreview() = io.max.paperplay.ui.PreviewFrame {
+    SongRow(
+        song = previewSong.copy(title = "Arz Kiya Hai (Slowed and Reverb Extended)", artist = "Afusic & AliSoomroMusic", qualityLabel = "FLAC 24/96", lossless = true, sizeBytes = 104_000_000, durationSec = 300),
+        onClick = {}, onLongClick = {},
+    )
+}

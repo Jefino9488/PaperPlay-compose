@@ -45,7 +45,10 @@ fun CoverImage(
     LaunchedEffect(coverId, uri) {
         if (uri == null) onMissing?.invoke(coverId)
     }
-    val painter = if (uri != null && loader != null) loader.painter(uri, if (size <= 96.dp) 160 else 384) else null
+    // Decode at about the pixels shown, rounded up to a few sizes so covers share cache entries; large art stays sharp on sharp screens.
+    val px = with(androidx.compose.ui.platform.LocalDensity.current) { size.toPx() }
+    val decode = when { px <= 160f -> 160; px <= 384f -> 384; px <= 640f -> 768; else -> 1280 }
+    val painter = if (uri != null && loader != null) loader.painter(uri, decode) else null
     val shape = io.max.paperplay.ui.app.appShape(radius)
     Box(modifier.size(size).clip(shape)) {
         if (painter != null) {

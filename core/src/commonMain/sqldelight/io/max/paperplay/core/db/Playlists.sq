@@ -14,6 +14,7 @@ CREATE TABLE playlist_songs (
   "added_at" INTEGER NOT NULL,
   "source_added_at" INTEGER,
   "removed_at" INTEGER,
+  "position" INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY ("playlist_id", "chat_id", "message_id")
 );
 
@@ -59,13 +60,13 @@ playlistSongs:
 SELECT songs.* FROM songs
 JOIN playlist_songs ON playlist_songs.chat_id = songs.chat_id AND playlist_songs.message_id = songs.message_id
 WHERE playlist_songs.playlist_id = :playlistId AND playlist_songs.removed_at IS NULL
-ORDER BY playlist_songs.added_at ASC;
+ORDER BY playlist_songs.position ASC, playlist_songs.added_at ASC;
 
 playlistCoverRows:
 SELECT playlist_songs.playlist_id AS playlist_id, songs.cover_path AS cover_path, songs.cover_url AS cover_url FROM songs
 JOIN playlist_songs ON playlist_songs.chat_id = songs.chat_id AND playlist_songs.message_id = songs.message_id
 WHERE playlist_songs.removed_at IS NULL
-ORDER BY playlist_songs.playlist_id ASC, playlist_songs.added_at ASC;
+ORDER BY playlist_songs.playlist_id ASC, playlist_songs.position ASC, playlist_songs.added_at ASC;
 
 sourceDates:
 SELECT chat_id, message_id, source_added_at FROM playlist_songs
@@ -75,12 +76,18 @@ entriesOf:
 SELECT * FROM playlist_songs WHERE chat_id = :chatId AND message_id = :messageId AND removed_at IS NULL;
 
 reviveEntry:
-UPDATE playlist_songs SET added_at = :addedAt, removed_at = NULL
+UPDATE playlist_songs SET added_at = :addedAt, removed_at = NULL,
+  position = (SELECT COALESCE(MAX(p.position), 0) + 1 FROM playlist_songs AS p WHERE p.playlist_id = :playlistId)
 WHERE playlist_id = :playlistId AND chat_id = :chatId AND message_id = :messageId;
 
 insertEntry:
-INSERT OR IGNORE INTO playlist_songs (playlist_id, chat_id, message_id, added_at, removed_at)
-VALUES (:playlistId, :chatId, :messageId, :addedAt, NULL);
+INSERT OR IGNORE INTO playlist_songs (playlist_id, chat_id, message_id, added_at, removed_at, position)
+VALUES (:playlistId, :chatId, :messageId, :addedAt, NULL,
+  (SELECT COALESCE(MAX(p.position), 0) + 1 FROM playlist_songs AS p WHERE p.playlist_id = :playlistId));
+
+setEntryPosition:
+UPDATE playlist_songs SET position = :position
+WHERE playlist_id = :playlistId AND chat_id = :chatId AND message_id = :messageId;
 
 removeEntry:
 UPDATE playlist_songs SET removed_at = :now

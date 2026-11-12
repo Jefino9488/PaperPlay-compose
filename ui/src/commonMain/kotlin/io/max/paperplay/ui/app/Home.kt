@@ -187,6 +187,10 @@ fun StatusToast(conn: ConnectionUi, scanState: State<ScanUi?>, songCount: Int, t
     var last by remember { mutableStateOf("") }
     if (text != null) last = text
     if (text == null) dismissed = null
+    // A message that stays (not scan progress, which keeps changing) goes away after 20 seconds.
+    androidx.compose.runtime.LaunchedEffect(if (scan != null && conn.error == null) null else text) {
+        if (text != null && scan == null) { kotlinx.coroutines.delay(20_000); dismissed = text }
+    }
     androidx.compose.animation.AnimatedVisibility(
         visible = text != null && text != dismissed,
         modifier = modifier,
@@ -203,7 +207,7 @@ fun StatusToast(conn: ConnectionUi, scanState: State<ScanUi?>, songCount: Int, t
                 .shadow(6.dp, RoundedCornerShape(20.dp)).clip(RoundedCornerShape(20.dp)).background(bg)
                 .pointerInput(text) {
                     detectHorizontalDragGestures(
-                        onDragEnd = { if (kotlin.math.abs(offset) > 120f) dismissed = text; offset = 0f },
+                        onDragEnd = { if (kotlin.math.abs(offset) > 80f) dismissed = text; offset = 0f },
                         onDragCancel = { offset = 0f },
                     ) { _, dx -> offset += dx }
                 }

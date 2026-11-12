@@ -177,7 +177,7 @@ class BackupRestorerTest {
         run(env, zip(mapOf("library.json" to old)))
         assertEquals(listOf(listOf("1", "1", "0")), env.query("select tags_at, favorite_at, plays from songs"))
         assertEquals(listOf(listOf("legacy-1-Old")), env.query("select uuid from playlists"))
-        assertEquals("14", env.query("pragma user_version")[0][0])
+        assertEquals("15", env.query("pragma user_version")[0][0])
     }
 
     @Test

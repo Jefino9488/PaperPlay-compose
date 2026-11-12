@@ -50,22 +50,25 @@ import io.max.paperplay.ui.components.CoverImage
 import com.kyant.backdrop.backdrops.layerBackdrop
 import io.max.paperplay.ui.isPhone
 
-internal class Category(val id: String, val title: String, val subtitle: String, val keywords: String, val icon: ImageVector, val phoneOnly: Boolean = false)
+internal class Category(
+    val id: String, val title: String, val subtitle: String, val keywords: String, val icon: ImageVector,
+    val phoneOnly: Boolean = false, private val desktopSubtitle: String? = null,
+) {
+    /** The line shown under the title; some pages have fewer options on the desktop. */
+    val text: String get() = if (isPhone) subtitle else desktopSubtitle ?: subtitle
+}
 
 internal val categories = listOf(
-    Category("style", "Style", "Material 3 Expressive or glass, mixed as you like", "style look glass material expressive blur", Icons.Rounded.AutoAwesome),
-    Category("appearance", "Appearance", "Theme, colors, display", "theme dark amoled accent color", Icons.Rounded.Palette),
-    Category("nav", "Navigation bar", "Floating bar and its style", "nav bar floating radius", Icons.Rounded.ViewAgenda, phoneOnly = true),
+    Category("style", "Appearance", "Theme, colors, icons, glass look, sidebar and bar", "style look glass material expressive blur theme dark amoled accent color icons nav bar sidebar floating radius selection", Icons.Rounded.AutoAwesome),
     Category("glass", "Glass", "Blur and tint for every glass part", "glass blur refraction tint", Icons.Rounded.BlurOn),
-    Category("telegram", "Telegram", "Channels, your account, bot activity, log out", "bot channels account log tdlib logout speed reading copy", Icons.Rounded.Send),
-    Category("repair", "Repair library", "Read every chat again and fill in what is missing", "repair fix rescan missing songs metadata covers organize tidy", Icons.Rounded.Build),
-    Category("library", "Library", "Speeds, sorting, duplicates, rescan, song info", "speed rate rescan duplicates sort general covers info", Icons.Rounded.LibraryMusic),
+    Category("listening", "Listening", "ListenBrainz, volume levelling, equalizer", "listenbrainz scrobble listens loudness replaygain equalizer eq", Icons.Rounded.GraphicEq),
+    Category("library", "Library", "Repair, sorting, duplicates, rescan, song info", "speed rate rescan duplicates sort general covers info repair fix missing songs metadata organize tidy", Icons.Rounded.LibraryMusic),
     Category("mixes", "Mixes", "Taste learning and weather mixes", "mix taste learning weather city", Icons.Rounded.AutoAwesome),
     Category("uploads", "Uploads", "Upload pace and skipping known songs", "upload slow skip speed parallel", Icons.Rounded.Upload),
     Category("spotify", "Spotify import", "Import playlists from Spotify", "spotify playlist import", Icons.Rounded.PlaylistAdd),
-    Category("listening", "Listening", "ListenBrainz, volume levelling, equalizer", "listenbrainz scrobble listens loudness replaygain equalizer eq", Icons.Rounded.GraphicEq),
-    Category("devices", "Devices and background", "Connect devices, keep running", "device connection sync background battery", Icons.Rounded.Devices),
+    Category("devices", "Devices and background", "Connect devices, keep running", "device connection sync background battery", Icons.Rounded.Devices, desktopSubtitle = "Connect other devices"),
     Category("storage", "Storage and backup", "Cache size, backup and restore", "cache storage backup restore clear", Icons.Rounded.Storage),
+    Category("telegram", "Telegram", "Channels, your account, bot activity, log out", "bot channels account log tdlib logout speed reading copy", Icons.Rounded.Send),
 )
 
 private val cacheLimits = listOf(1L shl 29, 1L shl 30, 2L shl 30, 5L shl 30, 10L shl 30, 20L shl 30, 50L shl 30)
@@ -93,7 +96,10 @@ fun SettingsHost(
     val page = stack.lastOrNull()
     val title = categories.firstOrNull { it.id == page }?.title ?: settingsPageTitle(page) ?: "Settings"
     Column(modifier) {
-        BackTopBar(title, onBack = { if (stack.isEmpty() || (deep && stack.size <= 1)) onExit() else stack.removeAt(stack.lastIndex) })
+        BackTopBar(title, onBack = { if (stack.isEmpty() || (deep && stack.size <= 1)) onExit() else stack.removeAt(stack.lastIndex) }) {
+            val loggedIn by backend.account.loggedIn.collectAsState()
+            if (page == "channels" && loggedIn) IconButton({ stack.add("index") }) { AppIcon(Icons.Rounded.Forum, "Your chats and channels") }
+        }
         // The chat pages hold long lists, so they scroll lazily instead of inside the shared scroll column.
         val isLazy = page == "index" || page == "missing" || page == "log" || page?.startsWith("index:") == true
         if (page == "index") IndexPage(backend, stack, bottomPadding)
@@ -109,9 +115,9 @@ fun SettingsHost(
 }
 
 internal val subTitles = mapOf(
-    "channels" to "Channels", "bots" to "Bots", "account" to "Your account", "log" to "Activity log",
-    "sort" to "Sort General", "dupes" to "Find duplicates", "missing" to "Song info left", "uploadhub" to "Upload songs", "mixlearn" to "Mixes and learning", "weather" to "Weather",
-    "conn" to "Connection", "index" to "Chats and channels", "eq" to "Equalizer", "listenbrainz" to "ListenBrainz", "stats" to "Listening statistics", "credentials" to "Bots", "profile" to "Profile",
+    "channels" to "Channels and chats", "bots" to "Bots", "account" to "Your account", "log" to "Activity log",
+    "repair" to "Repair library", "recover" to "Recover songs", "folders" to "Music folders", "exports" to "Saved export lists", "cache" to "Cache manager", "sort" to "Sort General", "dupes" to "Find duplicates", "missing" to "Song info left", "uploadhub" to "Upload songs", "mixlearn" to "Mixes and learning", "weather" to "Weather",
+    "permissions" to "Permissions", "conn" to "Connection", "netplay" to "Network play", "index" to "Chats and channels", "eq" to "Equalizer", "listenbrainz" to "ListenBrainz", "stats" to "Listening statistics", "credentials" to "Bots", "profile" to "Profile",
 )
 
 @Composable
@@ -133,7 +139,7 @@ private fun SettingsList(prefs: UiPrefs, stack: MutableList<String>) {
                 AppIcon(Icons.Rounded.ChevronRight, null)
             }
         }
-        shown.forEach { c -> SettingsCard(c.icon, c.title, c.subtitle, { stack.add(c.id) }) }
+        shown.forEach { c -> SettingsCard(c.icon, c.title, c.text, { stack.add(c.id) }) }
         val tour = io.max.paperplay.ui.LocalAppEnv.current?.showTour
         if (tour != null && (q.isEmpty() || "welcome tour intro about" .contains(q))) {
             SettingsCard(Icons.Rounded.MusicNote, "Welcome tour", "Show the introduction again", { tour.value = true })
@@ -162,22 +168,6 @@ internal fun SettingsPage(
     fun pref(k: String) = backend.pref(k)
     when (id) {
         "style" -> {
-            Text("Pick Material 3 or glass for each part, or all at once.", Modifier.padding(20.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
-            SectionLabel("All parts")
-            val groups = LookGroup.entries.filter { it != LookGroup.Nav || io.max.paperplay.ui.glassLensSupported() }
-            ChoiceRow(Look.entries, if (groups.all { prefs.look(it) == Look.Glass }) Look.Glass else Look.Material, { it.name }, { l ->
-                groups.forEach { prefs.setLook(it, l) }
-            })
-            if (!io.max.paperplay.ui.glassLensSupported()) {
-                Text("On desktop, glass is blur, tint and gradient. The bottom bar is a phone part.", Modifier.padding(horizontal = 20.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            groups.forEach { g ->
-                SectionLabel(g.label)
-                Text(g.hint, Modifier.padding(horizontal = 20.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                ChoiceRow(Look.entries, prefs.look(g), { it.name }, { prefs.setLook(g, it) })
-            }
-        }
-        "appearance" -> {
             SectionLabel("Theme")
             ChoiceRow(ThemeMode.entries, prefs.themeMode, { it.label }, prefs::putThemeMode)
             SectionLabel("Icons")
@@ -186,35 +176,76 @@ internal fun SettingsPage(
             SwitchRow("True black", prefs.amoled, prefs::putAmoled, Icons.Rounded.DarkMode, "Pure black surfaces on dark, easier on OLED screens")
             SectionLabel("Accent")
             androidx.compose.foundation.layout.FlowRow(Modifier.padding(horizontal = 16.dp)) {
-                Swatch(MaterialTheme.colorScheme.primary, prefs.accent == "dynamic", "Dynamic") { prefs.putAccent("dynamic") }
-                Swatch(MaterialTheme.colorScheme.tertiary, prefs.accent == "cover", "Cover") { prefs.putAccent("cover") }
+                if (isPhone) {
+                    Swatch(MaterialTheme.colorScheme.primary, prefs.accent == "dynamic", "Dynamic") { prefs.putAccent("dynamic") }
+                    Swatch(MaterialTheme.colorScheme.tertiary, prefs.accent == "cover", "Cover") { prefs.putAccent("cover") }
+                } else {
+                    // No wallpaper colour on the desktop: the accent follows the playing song's cover.
+                    Swatch(MaterialTheme.colorScheme.tertiary, prefs.accent == "cover" || prefs.accent == "dynamic", "Album art") { prefs.putAccent("cover") }
+                }
                 accentOptions.forEach { a -> Swatch(Color(a.color), prefs.accent == a.id, a.label) { prefs.putAccent(a.id) } }
             }
             SectionLabel("Display")
-            SwitchRow("Cover gradient", prefs.coverGradient, prefs::putCoverGradient, Icons.Rounded.Gradient, "The current cover's colours behind the app")
+            BackgroundSettings(prefs)
             if (!isPhone) SwitchRow("Now playing panel", prefs.nowPlayingPanel, prefs::putNowPlayingPanel, Icons.Rounded.MusicNote, "Shown beside the lists on wide screens")
             SliderRow("Corner radius: ${prefs.cornerRadius.toInt()}%", prefs.cornerRadius, 0f..100f, { prefs.putCornerRadius(it) })
+            SectionLabel("Look")
+            Text("Pick Material 3 or glass for each part, or all at once.", Modifier.padding(horizontal = 20.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            SectionLabel("All parts")
+            // On desktop the nav part is the sidebar, drawn with blur and tint like the cards.
+            val groups = LookGroup.entries.toList()
+            ChoiceRow(Look.entries, if (groups.all { prefs.look(it) == Look.Glass }) Look.Glass else Look.Material, { it.name }, { l ->
+                groups.forEach { prefs.setLook(it, l) }
+            })
+            if (!io.max.paperplay.ui.glassLensSupported()) {
+                Text("On desktop, glass is blur, tint and gradient. The sidebar uses the Navigation setting; blur and tint are on the Glass page.", Modifier.padding(horizontal = 20.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            @Composable
+            fun part(g: LookGroup) {
+                SectionLabel(g.label)
+                Text(g.hint, Modifier.padding(horizontal = 20.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                ChoiceRow(Look.entries, prefs.look(g), { it.name }, { prefs.setLook(g, it) })
+            }
+            // Wide screens lay the parts out two to a row instead of one long column.
+            if (isPhone) groups.forEach { part(it) } else androidx.compose.foundation.layout.FlowRow(
+                Modifier.fillMaxWidth(), maxItemsInEachRow = 2,
+            ) { groups.forEach { g -> Column(Modifier.weight(1f)) { part(g) } } }
+            SectionLabel(if (isPhone) "Navigation bar" else "Sidebar")
+            NavSettings(prefs)
         }
-        "nav" -> {
-            SwitchRow("Floating bar", prefs.floatingNav, prefs::putFloatingNav, Icons.Rounded.ViewAgenda, "Off docks the bar to the screen edges")
-            SectionLabel("Layout")
-            ChoiceRow(NavLayout.entries, prefs.navLayout, { it.label }, { prefs.setNav(layout = it) })
-            Text(prefs.navLayout.hint, Modifier.padding(horizontal = 20.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            SectionLabel("Selection")
-            ChoiceRow(SelectionLook.entries, prefs.selectionLook, { it.label }, { prefs.setNav(look = it) })
-            if (prefs.floatingNav) SliderRow("Corner radius: ${prefs.cornerRadius.toInt()}%", prefs.cornerRadius, 0f..100f, { prefs.putCornerRadius(it) })
-            else Text("A docked bar spans the screen edge to edge, so it has no corner radius.", Modifier.padding(horizontal = 20.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
+        "nav" -> NavSettings(prefs)
         "glass" -> {
             GlassPreview(prefs)
-            Text("Applies to every part set to Glass on the Style page.", Modifier.padding(horizontal = 20.dp, vertical = 12.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
-            SliderRow("Blur: ${prefs.glassBlur.toInt()}", prefs.glassBlur, 0f..40f, { prefs.setGlass(blur = it) })
-            SliderRow("Tint: ${(prefs.glassTint * 100).toInt()}%", prefs.glassTint, 0f..1f, { prefs.setGlass(tint = it) })
+            Text("Applies to every part set to Glass on the Appearance page.", Modifier.padding(horizontal = 20.dp, vertical = 12.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            val g = prefs.glass
+            SectionLabel("Material")
+            SliderRow("Blur: ${g.blur.toInt()} dp", g.blur, 0f..40f, { prefs.updateGlass(g.copy(blur = it)) })
+            if (io.max.paperplay.ui.glassLensSupported()) {
+                SliderRow("Refraction height: ${g.lensHeight.toInt()} dp", g.lensHeight, 0f..48f, { prefs.updateGlass(g.copy(lensHeight = it)) })
+                SliderRow("Refraction amount: ${g.lensAmount.toInt()} dp", g.lensAmount, 0f..48f, { prefs.updateGlass(g.copy(lensAmount = it)) })
+            }
+            SliderRow("Colour saturation: ${"%.2f".format(g.saturation)}", g.saturation, 0f..2.5f, { prefs.updateGlass(g.copy(saturation = it)) })
+            SliderRow("Tint: ${(g.tint * 100).toInt()}%", g.tint, 0f..1f, { prefs.updateGlass(g.copy(tint = it)) })
+            if (io.max.paperplay.ui.glassLensSupported()) {
+                SwitchRow("Depth effect", g.depth, { prefs.updateGlass(g.copy(depth = it)) })
+                SwitchRow("Colour fringing", g.chromatic, { prefs.updateGlass(g.copy(chromatic = it)) })
+            }
+            SectionLabel("Edge")
+            SliderRow("Edge line width: ${"%.1f".format(g.edgeWidth)} dp", g.edgeWidth, 0f..4f, { prefs.updateGlass(g.copy(edgeWidth = it)) })
+            SliderRow("Edge brightness: ${"%.2f".format(g.edgeAlpha)}", g.edgeAlpha, 0f..1f, { prefs.updateGlass(g.copy(edgeAlpha = it)) })
+            Text("Edge reflection", Modifier.padding(horizontal = 20.dp, vertical = 4.dp), style = MaterialTheme.typography.bodyLarge)
+            ChoiceRow(listOf(0, 1, 2), g.edgeStyle, { listOf("Directional", "Ambient", "Plain")[it] }, { prefs.updateGlass(g.copy(edgeStyle = it)) })
+            SectionLabel("Shadow")
+            SliderRow("Outer shadow size: ${g.shadowRadius.toInt()} dp", g.shadowRadius, 0f..40f, { prefs.updateGlass(g.copy(shadowRadius = it)) })
+            SliderRow("Outer shadow strength: ${"%.2f".format(g.shadowAlpha)}", g.shadowAlpha, 0f..0.5f, { prefs.updateGlass(g.copy(shadowAlpha = it)) })
+            SliderRow("Inner glow size: ${g.innerRadius.toInt()} dp", g.innerRadius, 0f..40f, { prefs.updateGlass(g.copy(innerRadius = it)) })
+            SliderRow("Inner glow strength: ${"%.2f".format(g.innerAlpha)}", g.innerAlpha, 0f..0.5f, { prefs.updateGlass(g.copy(innerAlpha = it)) })
+            OutlinedButton({ prefs.updateGlass(GlassStyle()) }, Modifier.padding(horizontal = 20.dp, vertical = 12.dp)) { Text("Reset to defaults") }
             if (LookGroup.entries.none { prefs.look(it) == Look.Glass }) {
-                Text("No part uses Glass yet. Choose it on the Style page.", Modifier.padding(horizontal = 20.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                Text("No part uses Glass yet. Choose it on the Appearance page.", Modifier.padding(horizontal = 20.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
             }
             if (!io.max.paperplay.ui.glassLensSupported()) {
-                Text("Desktop glass is blur, tint and gradient. Lens and refraction are Android only.", Modifier.padding(20.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Glass here is blur, tint and gradient.", Modifier.padding(20.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else if (!io.max.paperplay.ui.glassEffectsSupported()) {
                 Text("Blur needs Android 12 or newer; this device gets a plain tint.", Modifier.padding(20.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
@@ -224,8 +255,7 @@ internal fun SettingsPage(
         "telegram" -> {
             RateSlider("reading", backend, notice)
             RateSlider("accountCopy", backend, notice)
-            NavRow("Channels", "See what's added, add more, and choose the main chat", Icons.Rounded.Forum) { stack.add("channels") }
-            NavRow("Chats and channels", "Index songs in your chats and copy them to the main chat", Icons.Rounded.Forum) { stack.add("index") }
+            NavRow("Channels and chats", "Added channels, the main chat, and your own chats and channels", Icons.Rounded.Forum) { stack.add("channels") }
             NavRow("Bots", "Main bot credentials and extra bots for uploading", Icons.Rounded.SmartToy) { stack.add("bots") }
             val accountStep by backend.account.step.collectAsState()
             NavRow(
@@ -237,13 +267,18 @@ internal fun SettingsPage(
             SettingsRow("Log out", icon = Icons.Rounded.Logout, subtitle = "Forgets the bot's credentials. Your library stays on this device", onClick = { confirm = "logout" })
         }
         "library" -> {
+            NavRow("Repair library", "Read every chat again and fill in what is missing", Icons.Rounded.Build) { stack.add("repair") }
+            NavRow("Music folders", "Songs on this device, optionally sent to Telegram", Icons.Rounded.Folder) { stack.add("folders") }
+            NavRow("Recover songs the bot cannot read", "Songs another bot posted. Your account posts them again", Icons.Rounded.Restore) { stack.add("recover") }
             RateSlider("filing", backend, notice)
             NavRow("Sort General", "Suggests topics for songs in General. Nothing moves till you confirm", Icons.Rounded.DriveFileMove) { stack.add("sort") }
             NavRow("Find duplicates", "Repeated songs in your main chat, and deleting them", Icons.Rounded.ContentCopy) { stack.add("dupes") }
-            NavRow("Song info left", "Songs still lacking info or a cover", Icons.Rounded.Rule) { stack.add("missing") }
+            NavRow("Saved export lists", "Songs not in your library, with Spotify and Apple Music links", Icons.Rounded.IosShare) { stack.add("exports") }
             SettingsRow("Full rescan", icon = Icons.Rounded.Sync, subtitle = "Also removes songs deleted while the app was closed", onClick = { confirm = "rescan" })
             RateSlider("lookups", backend, notice)
             val lyricsRunning by backend.lyricsRunning.collectAsState()
+            var lyricsAuto by remember { mutableStateOf(backend.lyricsAuto) }
+            SwitchRow("Fill in missing info in the background", lyricsAuto, { lyricsAuto = it; backend.setLyricsAuto(it) }, Icons.Rounded.Lyrics, "Looks up song info, covers, genres and lyrics for songs that lack them, ahead of time. Needs song lookups on")
             SettingsRow(
                 if (lyricsRunning) "Stop fetching lyrics" else "Fetch missing lyrics",
                 icon = Icons.Rounded.Lyrics,
@@ -251,7 +286,7 @@ internal fun SettingsPage(
                 onClick = { if (lyricsRunning) backend.stopLyricsRun() else backend.startLyricsRun() },
             )
             RateSlider("covers", backend, notice)
-            SettingsRow("Songs in your library", icon = Icons.Rounded.MusicNote, subtitle = "$songCount")
+            LibraryStatusRows(backend) { stack.add("missing") }
         }
         "mixes" -> {
             NavRow("Mixes and learning", "What your taste is learned from, and clearing it", Icons.Rounded.AutoAwesome) { stack.add("mixlearn") }
@@ -274,6 +309,12 @@ internal fun SettingsPage(
             NavRow("Listening statistics", "Time listened, top songs and artists", Icons.Rounded.BarChart) { stack.add("stats") }
             NavRow("ListenBrainz", "Send what you listen to", Icons.Rounded.Sync) { stack.add("listenbrainz") }
             NavRow("Equalizer", icon = Icons.Rounded.Equalizer) { stack.add("eq") }
+            val levelOn by backend.normalizeOn.collectAsState()
+            SwitchRow("Even out loudness", levelOn, backend::setNormalize, Icons.Rounded.GraphicEq,
+                if (isPhone) "Pulls loud peaks down and lifts quiet songs. Needs Android 9 or newer" else "Evens out loud and quiet songs. Applies from the next song")
+            var restore by remember { mutableStateOf(backend.sessionRestore) }
+            SwitchRow("Restore last session", restore, { restore = it; backend.setSessionRestore(it) }, Icons.Rounded.Sync,
+                "Opens with the last queue and position, paused")
         }
         "stats" -> StatsPage(backend)
         "listenbrainz" -> ListenBrainzPage(backend)
@@ -284,7 +325,9 @@ internal fun SettingsPage(
                 SwitchRow("Keep running in the background", keep, { keep = it; backend.setPref("keep_running", "$it"); env?.setKeepRunning?.invoke(it) },
                     Icons.Rounded.Sync, "Syncing carries on after you leave. A notification shows what the app is doing")
             }
-            NavRow("Connection", "No devices connected. Addresses and encryption.", Icons.Rounded.SettingsEthernet) { stack.add("conn") }
+            if (env?.permissions != null) NavRow("Permissions", "Notifications, Bluetooth and battery: what is allowed", Icons.Rounded.Security) { stack.add("permissions") }
+            NavRow("Connection", "Devices on this network, pairing, addresses and encryption", Icons.Rounded.SettingsEthernet) { stack.add("conn") }
+            NavRow("Network play", "Listen together with people on the same network", Icons.Rounded.Devices) { stack.add("netplay") }
         }
         "storage" -> {
             var limit by remember { mutableStateOf(pref("cache_limit")?.toLongOrNull() ?: (2L shl 30)) }
@@ -294,6 +337,7 @@ internal fun SettingsPage(
             SettingsRow("Cache limit: ${bytesText(cacheLimits[idx])}", icon = Icons.Rounded.Storage, subtitle = "Pinned songs are not counted")
             SliderRow("Cache size", idx.toFloat(), 0f..(cacheLimits.size - 1f), { limit = cacheLimits[it.toInt()] }, steps = cacheLimits.size - 2,
                 onDone = { backend.setPref("cache_limit", "$limit") })
+            NavRow("Cache manager", "Songs stored on this device, unpin and clear", Icons.Rounded.Storage) { stack.add("cache") }
             SettingsRow("Clear cache", icon = Icons.Rounded.CleaningServices, subtitle = "Deletes streamed songs stored on this device. They download again when played", onClick = { confirm = "clearcache" })
             val backupBusy by backend.backupProgress.collectAsState()
             SettingsRow("Save backup", icon = Icons.Rounded.SaveAlt, subtitle = "Song info, covers, playlists, favorites and layout, as a .zip file",
@@ -321,11 +365,17 @@ internal fun SettingsPage(
         }
         "mixlearn" -> MixLearnPage(backend) { confirm = "clearlearned" }
         "weather" -> WeatherPage(backend)
+        "permissions" -> PermissionsPage()
         "conn" -> ConnectionPage(conn, backend)
+        "netplay" -> NetplayPage(backend)
         "log" -> LogPage(backend)
         "bots", "credentials" -> BotsPage(backend)
         "repair" -> RepairPage(backend, stack)
+        "recover" -> RecoverPage(backend)
+        "folders" -> LocalFoldersPage(backend)
+        "cache" -> CachePage(backend, notice)
         "dupes" -> DuplicatesPage(backend)
+        "exports" -> ExportListsPage(backend)
         "sort" -> SortPage(backend)
         "missing" -> MissingInfoPage(backend)
         "uploadhub" -> UploadsPage(backend)
@@ -433,4 +483,27 @@ private fun SettingsListPhonePreview() = io.max.paperplay.ui.PreviewFrame {
 @Composable
 private fun SettingsListDesktopPreview() = io.max.paperplay.ui.PreviewFrame(dark = true) {
     SettingsList(io.max.paperplay.ui.previewPrefs(), mutableListOf())
+}
+
+/** Sidebar settings on desktop, the bottom tab bar's on the phone. Shown at the end of Appearance. */
+@Composable
+private fun NavSettings(prefs: UiPrefs) {
+    if (!isPhone) {
+        ChoiceRow(Look.entries, prefs.look(LookGroup.Nav), { it.name }, { prefs.setLook(LookGroup.Nav, it) })
+        Text("Glass blurs the page background behind the sidebar. Blur and tint are on the Glass page.", Modifier.padding(horizontal = 20.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        SectionLabel("Selection")
+        ChoiceRow(SelectionLook.entries, prefs.selectionLook, { it.label }, { prefs.setNav(look = it) })
+        SliderRow("Sidebar corners: ${prefs.barRadius.toInt()}%", prefs.barRadius, 0f..100f, { prefs.setNav(bar = it) })
+        SliderRow("Selection corners: ${prefs.selectionRadius.toInt()}%", prefs.selectionRadius, 0f..100f, { prefs.setNav(selection = it) })
+        SliderRow("Sidebar width: ${prefs.sidebarWidth.toInt()} dp", prefs.sidebarWidth, 180f..320f, { prefs.putSidebarWidth(it) })
+    } else {
+        SwitchRow("Floating bar", prefs.floatingNav, prefs::putFloatingNav, Icons.Rounded.ViewAgenda, "Off docks the bar to the screen edges")
+        SectionLabel("Layout")
+        ChoiceRow(NavLayout.entries, prefs.navLayout, { it.label }, { prefs.setNav(layout = it) })
+        Text(prefs.navLayout.hint, Modifier.padding(horizontal = 20.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        SectionLabel("Selection")
+        ChoiceRow(SelectionLook.entries, prefs.selectionLook, { it.label }, { prefs.setNav(look = it) })
+        if (prefs.floatingNav) SliderRow("Corner radius: ${prefs.cornerRadius.toInt()}%", prefs.cornerRadius, 0f..100f, { prefs.putCornerRadius(it) })
+        else Text("A docked bar spans the screen edge to edge, so it has no corner radius.", Modifier.padding(horizontal = 20.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
 }

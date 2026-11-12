@@ -48,7 +48,7 @@ class JvmPlayerEngine(vararg vlcArgs: String) : PlayerEngine {
     init {
         player.events().addMediaPlayerEventListener(object : MediaPlayerEventAdapter() {
             // libvlc has no audio output until playback starts, so a volume set earlier is applied now.
-            override fun playing(mp: MediaPlayer) { _state.value = PlayerState.Playing; mp.audio().setVolume((volume * 100).toInt()) }
+            override fun playing(mp: MediaPlayer) { _state.value = PlayerState.Playing; mp.audio().setVolume((volume * 100).toInt()); if (rate != 1f) mp.controls().setRate(rate) }
             override fun paused(mp: MediaPlayer) { _state.value = PlayerState.Paused }
             override fun error(mp: MediaPlayer) { _state.value = PlayerState.Error }
             override fun lengthChanged(mp: MediaPlayer, newLength: Long) { _durationMs.value = newLength }
@@ -69,7 +69,9 @@ class JvmPlayerEngine(vararg vlcArgs: String) : PlayerEngine {
         _positionMs.value = 0
         _durationMs.value = 0
         val mrl = item.source?.let { http.value.register(item.uri, it) } ?: item.uri
-        player.media().play(mrl)
+        // The stream is a loopback server fed from disk, so libvlc's default one second of network buffering only delays the first sound.
+        val fast = arrayOf(":network-caching=250", ":file-caching=250")
+        if (normalize) player.media().play(mrl, *fast, ":audio-filter=normvol", ":norm-max-level=1.5") else player.media().play(mrl, *fast)
     }
 
     override fun setQueue(items: List<QueueItem>, startIndex: Int) = cmd {
@@ -96,6 +98,16 @@ class JvmPlayerEngine(vararg vlcArgs: String) : PlayerEngine {
 
     override fun seek(positionMs: Long) = cmd { player.controls().setTime(positionMs) }
     @Volatile private var volume = 1f
+    @Volatile private var rate = 1f
+    @Volatile private var normalize = false
+
+    override fun setSpeed(speed: Float) {
+        rate = speed.coerceIn(0.5f, 2f)
+        cmd { player.controls().setRate(rate) }
+    }
+
+    /** Takes effect from the next track. */
+    override fun setNormalize(on: Boolean) { normalize = on }
 
     override fun setVolume(volume: Float) {
         this.volume = volume.coerceIn(0f, 1f)

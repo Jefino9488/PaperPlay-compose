@@ -173,11 +173,11 @@ class ImportStore(val repo: LibraryRepo, private val driver: SqlDriver, val cloc
 
     fun entries(playlistId: Long): List<PlaylistSong> = driver.executeQuery(
         null,
-        "SELECT playlist_id, chat_id, message_id, added_at, source_added_at, removed_at FROM playlist_songs WHERE playlist_id = ?",
+        "SELECT playlist_id, chat_id, message_id, added_at, source_added_at, removed_at, position FROM playlist_songs WHERE playlist_id = ?",
         { c ->
             val rows = mutableListOf<PlaylistSong>()
             while (c.next().value) {
-                rows += Playlist_songs(c.getLong(0)!!, c.getLong(1)!!, c.getLong(2)!!, c.getLong(3)!!, c.getLong(4), c.getLong(5))
+                rows += Playlist_songs(c.getLong(0)!!, c.getLong(1)!!, c.getLong(2)!!, c.getLong(3)!!, c.getLong(4), c.getLong(5), c.getLong(6)!!)
             }
             QueryResult.Value(rows)
         },
@@ -200,14 +200,17 @@ class ImportStore(val repo: LibraryRepo, private val driver: SqlDriver, val cloc
 
     /** A new entry; an existing one (even a removed one) is left alone. */
     fun addEntry(playlistId: Long, chat: Long, message: Long, addedAt: Long, sourceAddedAt: Long?) = exec(
-        "INSERT OR IGNORE INTO playlist_songs (playlist_id, chat_id, message_id, added_at, source_added_at, removed_at) VALUES (?, ?, ?, ?, ?, NULL)",
+        "INSERT OR IGNORE INTO playlist_songs (playlist_id, chat_id, message_id, added_at, source_added_at, removed_at, position) VALUES (?, ?, ?, ?, ?, NULL, ${nextPosition(playlistId)})",
         "playlist_songs",
     ) { bindLong(0, playlistId); bindLong(1, chat); bindLong(2, message); bindLong(3, addedAt); bindLong(4, sourceAddedAt) }
 
     /** The entry is in the playlist (again) from [addedAt]; its source date changes only if [sourceAddedAt] is given. */
-    fun upsertEntry(playlistId: Long, chat: Long, message: Long, addedAt: Long, sourceAddedAt: Long?, keepSource: Boolean) = exec(
-        "INSERT INTO playlist_songs (playlist_id, chat_id, message_id, added_at, source_added_at, removed_at) VALUES (?, ?, ?, ?, ?, NULL) " +
-            "ON CONFLICT (playlist_id, chat_id, message_id) DO UPDATE SET added_at = excluded.added_at, removed_at = NULL" +
+    fun upsertEntry(
+        playlistId: Long, chat: Long, message: Long, addedAt: Long, sourceAddedAt: Long?, keepSource: Boolean, position: Long? = null,
+    ) = exec(
+        "INSERT INTO playlist_songs (playlist_id, chat_id, message_id, added_at, source_added_at, removed_at, position) " +
+            "VALUES (?, ?, ?, ?, ?, NULL, ${position?.toString() ?: nextPosition(playlistId)}) " +
+            "ON CONFLICT (playlist_id, chat_id, message_id) DO UPDATE SET added_at = excluded.added_at, removed_at = NULL, position = excluded.position" +
             (if (keepSource) "" else ", source_added_at = excluded.source_added_at"),
         "playlist_songs",
     ) { bindLong(0, playlistId); bindLong(1, chat); bindLong(2, message); bindLong(3, addedAt); bindLong(4, sourceAddedAt) }
@@ -263,6 +266,10 @@ class ImportResult(
 
 /** How many tracks Spotify's public embed page lists, however long the playlist is. */
 private const val EMBED_LIMIT = 100
+
+/** SQL for the slot after the last entry of a playlist. */
+private fun nextPosition(playlistId: Long) =
+    "(SELECT COALESCE(MAX(p.position), 0) + 1 FROM playlist_songs AS p WHERE p.playlist_id = $playlistId)"
 
 /**
  * Creates or refreshes the playlist for [link]. Tracks already in the library join it; the rest
@@ -373,7 +380,7 @@ fun reconcileImports(store: ImportStore) {
                 val better = bestMatch(sameTitle(song.title, song.artist), song.title, song.artist, song.duration_sec.toInt())
                 if (better == null || !better.lossless()) continue
                 store.markEntryRemoved(p.id, e.chat_id, e.message_id, now)
-                store.upsertEntry(p.id, better.chat_id, better.message_id, e.added_at, null, keepSource = true)
+                store.upsertEntry(p.id, better.chat_id, better.message_id, e.added_at, null, keepSource = true, position = e.position)
                 changed = true
             }
         }

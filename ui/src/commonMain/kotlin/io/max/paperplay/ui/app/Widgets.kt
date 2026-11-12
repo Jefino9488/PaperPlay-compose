@@ -20,8 +20,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.material3.IconButton
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.layout.height
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -31,21 +36,31 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.max.paperplay.ui.components.CoverImage
 
-/** Filled search field with a round end, like the Flutter inputs. */
+/** Slim filled search field with a round end and a clear button. */
 @Composable
 fun PillField(value: String, onChange: (String) -> Unit, hint: String, modifier: Modifier = Modifier) {
-    TextField(
-        value, onChange, modifier.fillMaxWidth(), singleLine = true,
-        placeholder = { Text(hint, color = MaterialTheme.colorScheme.onSurfaceVariant) },
-        leadingIcon = { AppIcon(Icons.Rounded.Search, null) },
-        shape = appShape(28.dp),
-        colors = TextFieldDefaults.colors(
-            focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-            focusedIndicatorColor = Color.Transparent,
-            unfocusedIndicatorColor = Color.Transparent,
-        ),
-    )
+    val scheme = MaterialTheme.colorScheme
+    Row(
+        modifier.fillMaxWidth().height(44.dp).clip(appShape(22.dp)).background(scheme.surfaceContainerHigh).padding(start = 12.dp, end = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        AppIcon(Icons.Rounded.Search, null, Modifier.size(20.dp), tint = scheme.onSurfaceVariant)
+        BasicTextField(
+            value = value,
+            onValueChange = onChange,
+            singleLine = true,
+            textStyle = MaterialTheme.typography.bodyLarge.copy(color = scheme.onSurface),
+            cursorBrush = SolidColor(scheme.primary),
+            modifier = Modifier.weight(1f).padding(horizontal = 10.dp),
+            decorationBox = { inner ->
+                Box(contentAlignment = Alignment.CenterStart) {
+                    if (value.isEmpty()) Text(hint, style = MaterialTheme.typography.bodyLarge, color = scheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    inner()
+                }
+            },
+        )
+        if (value.isNotEmpty()) IconButton({ onChange("") }, Modifier.size(36.dp)) { AppIcon(Icons.Rounded.Close, "Clear", Modifier.size(18.dp)) }
+    }
 }
 
 /** Outlined chips; the selected one is filled with the tonal colour. */

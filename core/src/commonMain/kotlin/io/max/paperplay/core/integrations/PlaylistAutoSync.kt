@@ -74,6 +74,11 @@ class PlaylistAutoSync(
         )
     }
 
+    @Volatile private var stopGen = 0
+
+    /** Ends the refresh going on now; the schedule keeps running. */
+    fun stopRun() { stopGen++ }
+
     /** Ends both loops; [start] begins them again. */
     @Synchronized
     fun stop() {
@@ -86,7 +91,9 @@ class PlaylistAutoSync(
         if (library.pref("spotify_auto_refresh") == "false") return 0
         val lists = store.livePlaylists().filter { "${it.source_url}".startsWith("https://open.spotify.com") }
         try {
-            lists.forEachIndexed { i, p ->
+            val gen = stopGen
+            for ((i, p) in lists.withIndex()) {
+                if (stopGen != gen) break
                 _progress.value = "Refreshing Spotify playlists ${i + 1} of ${lists.size}"
                 runCatching { importPlaylist(store, "${p.source_url}", http, official) }.onFailure { log("${p.name}: ${it.message}") }
             }
@@ -112,6 +119,7 @@ class PlaylistAutoSync(
                     if (copied >= MAX_COPIES) return copied
                     val best = index.matchesFor(t.title, t.artist, t.duration_sec.toInt()).firstOrNull() ?: continue
                     if (matchKind(best.asSong(), t.title, t.artist, t.duration_sec.toInt()) != MatchKind.Sure) continue
+                    if (!IndexPrefs.channelCopyAllowed(library, best.chatId, io.max.paperplay.core.filing.parseMainChat(library.pref(io.max.paperplay.core.filing.MAIN_CHAT_KEY)))) continue
                     if (!taken.add(best.chatId to best.messageId)) continue
                     _progress.value = "Fetching songs from your chats: ${copied + 1}"
                     try {

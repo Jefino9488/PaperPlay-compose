@@ -164,6 +164,8 @@ class AndroidPlayerEngine : PlayerEngine {
             mc.addListener(playerListener)
             if (volumeLevel < 1f) mc.volume = volumeLevel
             PlaybackCore.eqGains?.let { sendEqualizer(mc, it) }
+            if (PlaybackCore.normalize) sendNormalize(mc, true)
+            if (PlaybackCore.speed != 1f) mc.setPlaybackSpeed(PlaybackCore.speed)
             while (pending.isNotEmpty()) {
                 pending.removeFirst().invoke(mc)
             }
@@ -392,6 +394,24 @@ class AndroidPlayerEngine : PlayerEngine {
             val mc = controller ?: return@onMain
             if (mc.isConnected) sendEqualizer(mc, gainsDb)
         }
+    }
+
+    override fun setSpeed(speed: Float) {
+        val s = speed.coerceIn(0.5f, 2f)
+        PlaybackCore.speed = s
+        onMain { controller?.takeIf { it.isConnected }?.setPlaybackSpeed(s) }
+    }
+
+    override fun setNormalize(on: Boolean) {
+        PlaybackCore.normalize = on
+        onMain {
+            val mc = controller ?: return@onMain
+            if (mc.isConnected) sendNormalize(mc, on)
+        }
+    }
+
+    private fun sendNormalize(mc: MediaController, on: Boolean) {
+        mc.sendCustomCommand(PlaybackCore.CMD_SET_NORMALIZE, Bundle().apply { putBoolean(PlaybackCore.EXTRA_NORMALIZE, on) })
     }
 
     private fun sendEqualizer(mc: MediaController, gainsDb: List<Float>?) {

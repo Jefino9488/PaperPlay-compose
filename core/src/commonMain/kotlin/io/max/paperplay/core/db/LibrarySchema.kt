@@ -5,7 +5,7 @@ import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.db.SqlSchema
 
 /** Drift's `schemaVersion`, stored in SQLite's `user_version`. Bump together with db.dart. */
-const val DRIFT_SCHEMA_VERSION = 14L
+const val DRIFT_SCHEMA_VERSION = 15L
 
 /** Fresh files get the SQLDelight DDL; files from the Flutter app are upgraded with Drift's steps. */
 object LibrarySchema : SqlSchema<QueryResult.Value<Unit>> {
@@ -106,6 +106,14 @@ object LibrarySchema : SqlSchema<QueryResult.Value<Unit>> {
         if (from < 14) {
             add("playlist_songs", "source_added_at", "INTEGER")
             if (from >= 7) add("missing_tracks", "source_added_at", "INTEGER")
+        }
+        if (from < 15) {
+            add("playlist_songs", "position", int0)
+            // Keep the order playlists already had: rank by added_at within each playlist.
+            sql(
+                "UPDATE playlist_songs SET position = (SELECT COUNT(*) FROM playlist_songs AS o WHERE o.playlist_id = playlist_songs.playlist_id " +
+                    "AND (o.added_at < playlist_songs.added_at OR (o.added_at = playlist_songs.added_at AND o.rowid <= playlist_songs.rowid)))",
+            )
         }
         return QueryResult.Unit
     }

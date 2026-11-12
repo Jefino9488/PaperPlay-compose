@@ -25,7 +25,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.material3.Switch
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -42,6 +44,8 @@ internal fun ChannelsPage(conn: ConnectionUi, backend: CoreBackend, stack: Mutab
     var mainChatId by remember { mutableStateOf(backend.mainChatId()) }
     var showAdd by remember { mutableStateOf(false) }
     val scan by backend.scan.collectAsState()
+    val loggedIn by backend.account.loggedIn.collectAsState()
+    val copyOn = remember { mutableStateMapOf<Long, Boolean>() }
     val all = conn.chats.map { ChannelUi(it.id, it.title) }
     ChannelsContent(
         status = when {
@@ -56,6 +60,9 @@ internal fun ChannelsPage(conn: ConnectionUi, backend: CoreBackend, stack: Mutab
         onReconnect = backend::connect, onAdd = { showAdd = true }, onScan = backend::rescan,
         onSetMain = { backend.setMainChat(it); mainChatId = it },
         onOpenIndex = { stack.add("index") },
+        showChats = loggedIn,
+        copyOn = { id -> copyOn[id] ?: (backend.pref(io.max.paperplay.core.account.IndexPrefs.channelKey(id)) == "true") },
+        onCopy = { id, on -> copyOn[id] = on; backend.setPref(io.max.paperplay.core.account.IndexPrefs.channelKey(id), "$on") },
     )
     if (showAdd) AddChannelDialog(backend, conn.ready) { showAdd = false }
 }
@@ -66,6 +73,7 @@ internal fun ChannelsContent(
     main: ChannelUi?, others: List<ChannelUi>,
     scanText: String?, scanFraction: Float?,
     onReconnect: () -> Unit, onAdd: () -> Unit, onScan: () -> Unit, onSetMain: (Long) -> Unit, onOpenIndex: () -> Unit,
+    showChats: Boolean = false, copyOn: (Long) -> Boolean = { false }, onCopy: (Long, Boolean) -> Unit = { _, _ -> },
 ) {
     val hasChats = main != null || others.isNotEmpty()
     Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -100,7 +108,7 @@ internal fun ChannelsContent(
         }
         if (!connected) Text("Connect first to add or scan a channel.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
-    NavRow("Your other chats and channels", "Index songs from chats the bot is not in", Icons.Rounded.Forum, onOpenIndex)
+    if (showChats) NavRow("Your chats and channels", "Chats from your own account: index songs, recover and copy them", Icons.Rounded.Forum, onOpenIndex)
     Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("Main chat", Modifier.padding(horizontal = 4.dp, vertical = 4.dp), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
         if (main != null) {
@@ -119,7 +127,15 @@ internal fun ChannelsContent(
             )
         }
         others.forEach { chat ->
-            ChannelCard(chat, "Library channel", highlighted = false) {
+            ChannelCard(chat, "Library channel", highlighted = false, below = {
+                Row(Modifier.padding(start = 16.dp, end = 12.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Copy songs to the main chat", style = MaterialTheme.typography.bodyMedium)
+                        Text("Off: this channel stays a playlist of its own", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Switch(copyOn(chat.id), { onCopy(chat.id, it) })
+                }
+            }) {
                 OutlinedButton({ onSetMain(chat.id) }) { Text("Set as main") }
             }
         }
@@ -127,11 +143,12 @@ internal fun ChannelsContent(
 }
 
 @Composable
-private fun ChannelCard(chat: ChannelUi, note: String, highlighted: Boolean, trailing: @Composable () -> Unit) {
+private fun ChannelCard(chat: ChannelUi, note: String, highlighted: Boolean, below: @Composable () -> Unit = {}, trailing: @Composable () -> Unit) {
     Surface(
         Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp),
         color = if (highlighted) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerLow,
     ) {
+      Column {
         Row(Modifier.padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
             AppIcon(Icons.Rounded.Forum, null, Modifier.padding(end = 16.dp))
             Column(Modifier.weight(1f)) {
@@ -141,6 +158,8 @@ private fun ChannelCard(chat: ChannelUi, note: String, highlighted: Boolean, tra
             }
             trailing()
         }
+        below()
+      }
     }
 }
 

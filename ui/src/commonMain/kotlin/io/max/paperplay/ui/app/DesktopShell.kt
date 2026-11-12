@@ -19,16 +19,19 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.AccountCircle
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Forum
 import androidx.compose.material.icons.rounded.Album
 import androidx.compose.material.icons.outlined.Bedtime
 import androidx.compose.material.icons.outlined.Lyrics
@@ -38,6 +41,7 @@ import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Menu
+import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Fullscreen
 import androidx.compose.material.icons.rounded.Pause
@@ -133,11 +137,23 @@ fun Sidebar(
     onPage: (String) -> Unit, onPlaylist: (GroupUi) -> Unit, onNewPlaylist: () -> Unit, modifier: Modifier = Modifier,
 ) {
     val scheme = MaterialTheme.colorScheme
+    val prefs = LocalUiPrefs.current
+    val look = prefs?.selectionLook ?: SelectionLook.Fill
+    val itemShape = RoundedCornerShape(((prefs?.selectionRadius ?: 40f) / 100f * 22f).dp)
+    val barShape = RoundedCornerShape(((prefs?.barRadius ?: 60f) / 100f * 28f).dp)
     @Composable
     fun item(id: String, label: String, icon: @Composable () -> Unit, selected: Boolean, onClick: () -> Unit) {
+        val fill = when {
+            !selected -> Color.Transparent
+            look == SelectionLook.Fill -> scheme.primaryContainer.copy(alpha = 0.9f)
+            look == SelectionLook.Soft -> scheme.onSurface.copy(alpha = 0.12f)
+            look == SelectionLook.Ring || look == SelectionLook.Dot || look == SelectionLook.Text -> Color.Transparent
+            else -> scheme.surfaceContainerHighest
+        }
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp).clip(RoundedCornerShape(10.dp))
-                .background(if (selected) scheme.surfaceContainerHighest else Color.Transparent)
+            Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp).clip(itemShape)
+                .background(fill)
+                .then(if (selected && look == SelectionLook.Ring) Modifier.border(1.5.dp, scheme.primary, itemShape) else Modifier)
                 .clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 9.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = if (expanded) Arrangement.Start else Arrangement.Center,
@@ -159,7 +175,7 @@ fun Sidebar(
             Spacer(Modifier.height(16.dp))
         }
     }
-    LazyColumn(modifier.deskCard().padding(vertical = 8.dp)) {
+    LazyColumn(modifier.partSurface(LookGroup.Nav, scheme.surfaceContainerLow, barShape).padding(vertical = 8.dp)) {
         item {
             Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), horizontalArrangement = if (expanded) Arrangement.End else Arrangement.Center) {
                 IconButton(onToggle) { AppIcon(Icons.Rounded.Menu, "Toggle Sidebar") }
@@ -183,24 +199,44 @@ fun Sidebar(
 fun PlayerBar(
     state: PlaybackUiState, volume: Float, panelOn: Boolean, backend: PlayerControls?, actions: ListActions,
     onOpen: () -> Unit, onTogglePanel: () -> Unit, modifier: Modifier = Modifier,
+    onNowPlaying: (() -> Unit)? = null, extras: @Composable () -> Unit = {},
 ) {
     val song = state.current
     val scheme = MaterialTheme.colorScheme
     val muted = MaterialTheme.typography.labelSmall.copy(color = scheme.onSurfaceVariant)
-    Row(modifier.fillMaxWidth().height(84.dp).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+    var showLyrics by remember { mutableStateOf(false) }
+    var showSleep by remember { mutableStateOf(false) }
+    BoxWithConstraints(modifier.fillMaxWidth().height(84.dp).padding(horizontal = 16.dp)) {
+    // Wide windows put the song tools by the title; narrow ones keep them on the right so the title is never squeezed out.
+    val wide = maxWidth >= 1100.dp
+    val centre = (maxWidth * 0.34f).coerceIn(300.dp, 520.dp)
+    val off = scheme.onSurfaceVariant
+    val sz = Modifier.size(22.dp)
+    val tools: @Composable () -> Unit = {
+        IconButton({ showLyrics = true }, enabled = song != null) { AppIcon(Icons.Outlined.Lyrics, "Lyrics", sz, tint = off.copy(alpha = if (song != null) 1f else 0.4f)) }
+        IconButton({ showSleep = true }) { AppIcon(Icons.Outlined.Bedtime, "Sleep timer", sz, tint = off) }
+        if (showLyrics && backend != null) song?.let { LyricsDialog(it.id, it.title, backend) { showLyrics = false } }
+        if (showSleep && backend != null) SleepTimerDialog(backend) { showSleep = false }
+    }
+    Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
         Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
             if (song != null) {
-                CoverImage(song.coverUri, song.id, Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick = onOpen), size = 56.dp, radius = 8.dp)
+                CoverImage(song.coverUri, song.id, Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick = onNowPlaying ?: onOpen), size = 56.dp, radius = 8.dp)
                 Column(Modifier.weight(1f, fill = false).padding(start = 12.dp)) {
                     Text(song.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall)
-                    Text(song.artist, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        io.max.paperplay.ui.components.formatChipOf(song)?.let { io.max.paperplay.ui.components.FormatChip(it) }
+                        Text(song.artist, Modifier.weight(1f, fill = false), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
+                    }
                 }
                 IconButton({ actions.setFavorite(song, !song.favorite) }) {
                     AppIcon(if (song.favorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder, if (song.favorite) "Remove from favorites" else "Add to favorites", tint = if (song.favorite) scheme.primary else scheme.onSurface)
                 }
+                io.max.paperplay.ui.components.SongMenu(song, actions.rowActions(), Icons.Rounded.MoreHoriz)
             }
+            if (wide) tools()
         }
-        Column(Modifier.weight(1.5f), horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(Modifier.width(centre), horizontalAlignment = Alignment.CenterHorizontally) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 IconButton({ backend?.toggleShuffle() }) { AppIcon(Icons.Rounded.Shuffle, "Shuffle", tint = if (state.shuffle) scheme.primary else scheme.onSurface) }
                 IconButton({ backend?.previous() }) { AppIcon(Icons.Rounded.SkipPrevious, "Previous") }
@@ -218,20 +254,15 @@ fun PlayerBar(
                 Text(formatDuration(state.durationMs / 1000), style = muted)
             }
         }
-        Row(Modifier.weight(1f), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
-            var showLyrics by remember { mutableStateOf(false) }
-            var showSleep by remember { mutableStateOf(false) }
+        Row(horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
             val on = scheme.primary
-            val off = scheme.onSurfaceVariant
-            val sz = Modifier.size(22.dp)
             IconButton(onTogglePanel) { AppIcon(Icons.Rounded.ViewSidebar, if (panelOn) "Hide the now playing panel" else "Show the now playing panel", sz, tint = if (panelOn) on else off) }
-            IconButton(onOpen) { AppIcon(Icons.Rounded.QueueMusic, "Queue", sz, tint = off) }
-            IconButton({ showLyrics = true }, enabled = song != null) { AppIcon(Icons.Outlined.Lyrics, "Lyrics", sz, tint = off.copy(alpha = if (song != null) 1f else 0.4f)) }
-            IconButton({ showSleep = true }) { AppIcon(Icons.Outlined.Bedtime, "Sleep timer", sz, tint = off) }
-            if (showLyrics && backend != null) song?.let { LyricsDialog(it.id, it.title, backend) { showLyrics = false } }
-            if (showSleep && backend != null) SleepTimerDialog(backend) { showSleep = false }
+            IconButton(onNowPlaying ?: onOpen) { AppIcon(Icons.Rounded.QueueMusic, "Queue", sz, tint = off) }
+            if (!wide) tools()
+            extras()
             Spacer(Modifier.width(8.dp))
-            IconButton({ backend?.setVolume(if (volume > 0f) 0f else 1f) }) { AppIcon(if (volume > 0f) Icons.Rounded.VolumeUp else Icons.Rounded.VolumeOff, "Mute", sz, tint = off) }
+            var lastVolume by remember { mutableStateOf(1f) }
+            IconButton({ if (volume > 0f) { lastVolume = volume; backend?.setVolume(0f) } else backend?.setVolume(lastVolume) }) { AppIcon(if (volume > 0f) Icons.Rounded.VolumeUp else Icons.Rounded.VolumeOff, "Mute", sz, tint = off) }
             Slider(
                 volume, { backend?.setVolume(it) }, Modifier.width(100.dp),
                 thumb = { Box(Modifier.size(10.dp).clip(CircleShape).background(scheme.onSurface)) },
@@ -241,6 +272,7 @@ fun PlayerBar(
             Spacer(Modifier.width(4.dp))
             IconButton(onOpen) { AppIcon(Icons.Rounded.Fullscreen, "Full screen player", Modifier.size(26.dp), tint = off) }
         }
+    }
     }
 }
 
@@ -304,7 +336,7 @@ fun DesktopSettings(
     Row(modifier) {
         Column(Modifier.width(300.dp).fillMaxHeight()) {
             Row(Modifier.padding(start = 4.dp, end = 8.dp, top = 12.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onExit) { AppIcon(Icons.AutoMirrored.Rounded.ArrowBack, "Back") }
+                IconButton({ if (stack.size > 1) stack.removeAt(stack.lastIndex) else onExit() }) { AppIcon(Icons.AutoMirrored.Rounded.ArrowBack, "Back") }
                 Text("Settings", Modifier.padding(start = 4.dp), style = MaterialTheme.typography.headlineMedium)
             }
             LazyColumn(Modifier.fillMaxSize()) {
@@ -330,7 +362,7 @@ fun DesktopSettings(
                         AppIcon(c.icon, null, Modifier.size(22.dp))
                         Column(Modifier.padding(start = 12.dp)) {
                             Text(c.title, style = MaterialTheme.typography.bodyLarge, fontWeight = if (on) FontWeight.Bold else null)
-                            Text(c.subtitle, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
+                            Text(c.text, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
                         }
                     }
                 }
@@ -339,12 +371,16 @@ fun DesktopSettings(
         Box(Modifier.width(1.dp).fillMaxHeight().padding(vertical = 16.dp).background(scheme.outlineVariant.copy(alpha = 0.5f)))
         Column(Modifier.weight(1f).fillMaxHeight()) {
             val title = categories.firstOrNull { it.id == page }?.title ?: settingsPageTitle(page) ?: "Settings"
-            if (stack.size > 1) BackTopBar(title, onBack = { stack.removeAt(stack.lastIndex) })
+            if (stack.size > 1) BackTopBar(title, onBack = { stack.removeAt(stack.lastIndex) }) {
+                val loggedIn by backend.account.loggedIn.collectAsState()
+                if (page == "channels" && loggedIn) androidx.compose.material3.IconButton({ stack.add("index") }) { AppIcon(Icons.Rounded.Forum, "Your chats and channels") }
+            }
             else Text(title, Modifier.padding(start = 20.dp, end = 16.dp, top = 24.dp, bottom = 8.dp), style = MaterialTheme.typography.headlineMedium)
 
             val isLazy = page == "missing" || page == "index" || page == "log" || page?.startsWith("index:") == true
             Column(
-                Modifier.fillMaxSize()
+                // Sliders and rows stop at a readable width instead of stretching across a wide window.
+                Modifier.fillMaxSize().widthIn(max = 880.dp)
                     .then(if (isLazy) Modifier else Modifier.verticalScroll(rememberScrollState()))
                     .padding(bottom = 24.dp)
             ) {

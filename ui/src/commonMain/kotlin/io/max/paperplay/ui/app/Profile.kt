@@ -53,12 +53,9 @@ import org.jetbrains.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
-/** Full-width bar; a rounded glass strip inset from the edges when the Top bars part is glass. */
+/** Full-width page header with no box behind it. */
 @Composable
-fun Modifier.barSurface(): Modifier =
-    if (glassLook(LookGroup.Bars)) fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)
-        .partSurface(LookGroup.Bars, MaterialTheme.colorScheme.surfaceContainer, appShape(24.dp))
-    else fillMaxWidth()
+fun Modifier.barSurface(): Modifier = fillMaxWidth()
 
 /** Large title with actions on the right, like the Flutter top bars. */
 @Composable
@@ -108,7 +105,7 @@ fun ProfileScreen(
             }
         }
         item {
-            ProfileSection("library", "Library", Icons.Rounded.LibraryMusic, prefs, defaultOpen = true) {
+            ProfileSection("library", "Library", Icons.Rounded.LibraryMusic, prefs) {
                 NavRow(if (conn.chats.size == 1) "1 channel" else "${conn.chats.size} channels", icon = Icons.Rounded.Forum, subtitle = mainChatTitle?.let { "Main chat: $it" } ?: "No chat added yet") {
                     onSettings("channels")
                 }
@@ -123,9 +120,10 @@ fun ProfileScreen(
         }
         item {
             ProfileSection("devices", "Devices", Icons.Rounded.Devices, prefs) {
-                NavRow("Connection", icon = Icons.Rounded.SettingsEthernet, subtitle = "Telegram status. Syncing other devices is not built yet") {
+                NavRow("Connection", icon = Icons.Rounded.SettingsEthernet, subtitle = "Telegram status, devices on this network, pairing") {
                     onSettings("conn")
                 }
+                NavRow("Network play", icon = Icons.Rounded.Devices, subtitle = "Listen together with people on the same network") { onSettings("netplay") }
                 NavRow("Background and devices", icon = Icons.Rounded.Devices, subtitle = "Keep running, connection details") { onSettings("devices") }
             }
         }
@@ -154,13 +152,13 @@ private fun Stat(icon: ImageVector, n: Int, label: String, modifier: Modifier, o
     }
 }
 
-/** A card whose body folds away. The open state is remembered and saved under profile_open_[key]. */
+/** A card whose body folds away. It always starts collapsed; the state is not saved. */
 @Composable
 private fun ProfileSection(
     key: String, title: String, icon: ImageVector, prefs: UiPrefs, defaultOpen: Boolean = false,
     content: @Composable () -> Unit,
 ) {
-    var open by androidx.compose.runtime.remember(key) { androidx.compose.runtime.mutableStateOf(prefs.flag("profile_open_$key", defaultOpen)) }
+    var open by androidx.compose.runtime.remember(key) { androidx.compose.runtime.mutableStateOf(defaultOpen) }
     Column(
         Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth()
             .partSurface(LookGroup.Cards, MaterialTheme.colorScheme.surfaceContainerLow, RoundedCornerShape(28.dp))
@@ -169,7 +167,7 @@ private fun ProfileSection(
         val state = if (open) "Expanded" else "Collapsed"
         Row(
             Modifier.fillMaxWidth()
-                .clickable(onClickLabel = if (open) "Collapse $title" else "Expand $title") { open = !open; prefs.putFlag("profile_open_$key", open) }
+                .clickable(onClickLabel = if (open) "Collapse $title" else "Expand $title") { open = !open }
                 .semantics(mergeDescendants = true) { stateDescription = state }
                 .padding(20.dp),
             verticalAlignment = Alignment.CenterVertically,

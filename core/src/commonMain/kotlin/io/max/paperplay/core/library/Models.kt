@@ -46,7 +46,8 @@ val devicePrefs = listOf(
     "theme_amoled", "theme_accent", "now_playing_panel", "audio_device", "weather_city", "weather_lat",
     "weather_lon", "spotify_client_id", "upload_slower", "upload_parallel", "uploaded_files", "upload_skip_known",
     "topics_read", "floating_nav", "nav_radius", "nav_style", "glass_style", "profile_name", "profile_photo",
-    "profile_name_at", "profile_photo_at", "file_here", "file_existing", "upload_ask", "keep_running", "export_lists",
+    "profile_name_at", "profile_photo_at", "file_here", "file_existing", "upload_ask", "keep_running", "export_lists", "lan_paired", "lan_name", "lan_port", "lan_on",
+    "lan_require_pairing", "lan_token_mode",
 )
 
 const val DEFAULT_CACHE_LIMIT = 2L * 1024 * 1024 * 1024

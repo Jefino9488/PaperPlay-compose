@@ -74,6 +74,8 @@ interface SongActions {
     fun findMetadata(song: SongUi) { notice("Finding metadata is not available here.") }
     /** Opens the tag editor. */
     fun editTags(song: SongUi) { notice("Editing tags is not available here.") }
+    /** Permanently deletes the song's post from Telegram, after the person confirmed. */
+    fun deleteFromTelegram(song: SongUi) { notice("Deleting is not available here.") }
     /** Opens the cover chooser. */
     fun changeCover(song: SongUi) { notice("Changing a cover is not available here.") }
 }

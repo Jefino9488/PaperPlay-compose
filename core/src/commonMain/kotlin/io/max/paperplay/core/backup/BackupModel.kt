@@ -22,7 +22,8 @@ val devicePrefs = listOf(
     "theme_amoled", "theme_accent", "now_playing_panel", "audio_device", "weather_city", "weather_lat",
     "weather_lon", "spotify_client_id", "upload_slower", "upload_parallel", "uploaded_files", "upload_skip_known",
     "topics_read", "floating_nav", "nav_radius", "nav_style", "glass_style", "profile_name", "profile_photo",
-    "profile_name_at", "profile_photo_at", "file_here", "file_existing", "upload_ask", "keep_running", "export_lists",
+    "profile_name_at", "profile_photo_at", "file_here", "file_existing", "upload_ask", "keep_running", "export_lists", "lan_paired", "lan_name", "lan_port", "lan_on",
+    "lan_require_pairing", "lan_token_mode",
 )
 
 /** One file in the backup zip, read once, in zip order. */
@@ -95,6 +96,8 @@ object SecretKeys {
     const val EXTRA_BOTS = "extraBots"
     const val SPOTIFY_CLIENT_ID = "spotifyClientId"
     const val SPOTIFY_REFRESH_TOKEN = "spotifyRefreshToken"
+    /** A Spotify login waiting for the browser to come back: state, PKCE verifier and redirect, one per line. Never backed up. */
+    const val SPOTIFY_PENDING = "spotifyPendingLogin"
     const val LISTENBRAINZ_TOKEN = "listenBrainzToken"
     /** Flutter's zip of the account's TDLib folder plus a `__key` entry holding its database key. */
     const val USER_SESSION = "usersession"

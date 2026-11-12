@@ -99,6 +99,9 @@ interface ChatIndexApi {
     /** Reads a chat once from the start and saves what it finds; posts show up in [songs] as they are saved. */
     suspend fun indexChat(chat: ChatInfo)
 
+    /** Ends the read going on now. */
+    fun stopRun() {}
+
     /** Reads only posts newer than the last one indexed for each indexed chat. */
     suspend fun refresh()
 
@@ -118,6 +121,9 @@ interface ChatIndexApi {
 
     /** Adds every indexed song of the main chat that the library lacks. Returns how many were added. */
     suspend fun addMissingFromMainChat(): Int = 0
+
+    /** Indexed posts of the main chat that the library lacks: what the bot cannot read. */
+    suspend fun missingFromMainChat(): List<ChatPost> = emptyList()
 
     /** The index as text, for saving to Telegram; and the way back. */
     suspend fun export(): String

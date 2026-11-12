@@ -243,6 +243,9 @@ class TdStreamSource(
  */
 const val ACCOUNT_REMOTE = "account"
 
+/** Remote id of songs streamed from a network play host: not in the library, so not counted as listens. */
+const val NETPLAY_REMOTE = "netplay"
+
 class TrackResolver(
     private val td: () -> TdClient?,
     val windowSeconds: Long,
@@ -259,17 +262,26 @@ class TrackResolver(
         return sources.value.getValue(song.unique_id)
     }
 
+    /** Byte sources of songs that do not come from TDLib (network play streams), by unique id. */
+    private val external = MutableStateFlow<Map<String, StreamSource>>(emptyMap())
+
+    fun setExternalSource(uniqueId: String, source: StreamSource?) =
+        external.update { if (source == null) it - uniqueId else it + (uniqueId to source) }
+
     /** Creates a lazy [QueueItem]; no TDLib calls or stream sources are created until opened. */
     fun resolve(song: Song) = QueueItem(
         uri = "tg-${song.unique_id}",
         title = song.title,
         artist = song.artist,
         artworkUri = song.cover_path,
-        sourceFactory = { sourceOf(song) },
+        sourceFactory = { external.value[song.unique_id] ?: sourceOf(song) },
     )
 
     /** Looks up the file so playback can start without a round trip. */
-    suspend fun warm(song: Song) = sourceOf(song).resolve()
+    suspend fun warm(song: Song) {
+        if (song.unique_id in external.value) return
+        sourceOf(song).resolve()
+    }
 
     /** The start of [song]'s file, once playback has fetched it; see [TdStreamSource.head]. */
     suspend fun headOf(song: Song): ByteArray? = sources.value[song.unique_id]?.head()
@@ -286,7 +298,10 @@ class TrackResolver(
     }
 
     /** Prefetches the opening sliding window of [song] when it is not already downloaded. */
-    suspend fun prefetch(song: Song) = sourceOf(song).prefetch()
+    suspend fun prefetch(song: Song) {
+        if (song.unique_id in external.value) return
+        sourceOf(song).prefetch()
+    }
 
     /** Cancels all active non-pinned downloads (e.g., on pause or stop). */
     suspend fun pauseAll() {

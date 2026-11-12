@@ -1,6 +1,7 @@
 ﻿package io.max.paperplay.ui.app
 
 import androidx.compose.foundation.background
+import io.max.paperplay.ui.theme.schemeFromSeed
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -143,6 +144,7 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
             notice = { scope.launch { snack.showSnackbar(it) } },
             playNext = { s -> backend.playNext(s); scope.launch { snack.showSnackbar("Plays next") } },
             setPinned = { s, p -> backend.setPinned(s.id, p) },
+            deleteSong = { s -> backend.deleteSong(s.id) { m -> scope.launch { snack.showSnackbar(m) } } },
             telegramLink = backend::telegramLink,
             findMetadata = { s -> tagDialogs.match = s },
             editTags = { s -> tagDialogs.tags = s },
@@ -171,21 +173,21 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
     val base = MaterialTheme.colorScheme.background
     val dark = base.luminance() < 0.5f
     val tint = (if (prefs.coverGradient) coverScheme(pb.current?.coverUri, dark) else null)?.primaryContainer ?: MaterialTheme.colorScheme.primaryContainer
-    val g0 = androidx.compose.animation.animateColorAsState(tint.copy(alpha = 0.85f).compositeOver(base), androidx.compose.animation.core.tween(700))
-    val g1 = androidx.compose.animation.animateColorAsState(tint.copy(alpha = 0.32f).compositeOver(base), androidx.compose.animation.core.tween(700))
-    // The animated colours are read while drawing, so the 700 ms wash does not recompose the shell.
-    val pageBg = if (prefs.coverGradient) Modifier.drawBehind { drawRect(Brush.verticalGradient(0f to g0.value, 0.45f to g1.value, 1f to base)) } else Modifier.background(base)
+    val g0 = androidx.compose.animation.animateColorAsState(backgroundTopColor(prefs, tint, base), androidx.compose.animation.core.tween(700))
+    // The page itself is drawn by AppBackground; g0 only tints the window and top areas.
 
     CompositionLocalProvider(LocalCoverLoader provides loader, LocalOnMissingCover provides backend::ensureCover, LocalListActions provides actions, io.max.paperplay.ui.LocalGlassBackdrop provides (if (anyGlass) pageBackdrop else null)) {
         TagDialogHost(backend, tagDialogs) { m -> scope.launch { snack.showSnackbar(m) } }
-        Box(if (anyGlass) Modifier.fillMaxSize() else Modifier.fillMaxSize().then(pageBg)) {
+        Box(Modifier.fillMaxSize()) {
             // The page background alone is the layer glass cards and bars blur (content on it would recurse).
-            if (anyGlass) Box(Modifier.fillMaxSize().layerBackdrop(pageBackdrop).then(pageBg))
+            Box(if (anyGlass) Modifier.fillMaxSize().layerBackdrop(pageBackdrop) else Modifier.fillMaxSize()) {
+                AppBackground(prefs, pb.current?.coverUri, base)
+            }
             if (isPhone) {
                 val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
                 val bottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
                 val navHeight = if (prefs.navLayout == NavLayout.Labels || prefs.navLayout == NavLayout.Dock) 76.dp else 64.dp
-                val barsHeight = (if (pb.current != null) 70.dp + 8.dp else 0.dp) + navHeight + (if (prefs.floatingNav) 24.dp else 0.dp) + bottomInset
+                val barsHeight = (if (pb.current != null) 70.dp + 8.dp else 0.dp) + navHeight + (if (prefs.floatingNav) 24.dp else 0.dp) + bottomInset + 40.dp // extra scroll room so the last item clears the bar
                 Box((if (navGlass) Modifier.fillMaxSize().layerBackdrop(backdrop) else Modifier.fillMaxSize()).padding(top = top)) {
                     val d = detail
                     when {
@@ -221,7 +223,7 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
                     }
                 }
                 Column(
-                    Modifier.align(Alignment.BottomCenter).fillMaxWidth().then(if (prefs.floatingNav) Modifier.padding(start = 24.dp, end = 24.dp, bottom = (bottomInset - 10.dp).coerceAtLeast(6.dp)) else Modifier),
+                    Modifier.align(Alignment.BottomCenter).fillMaxWidth().then(if (prefs.floatingNav) Modifier.padding(start = 16.dp, end = 16.dp, bottom = bottomInset.coerceAtLeast(12.dp)) else Modifier),
                 ) {
                     if (pb.current != null) {
                         MiniPlayer(pb, { showPlayer = true }, backend::togglePlay, backend::next, backend::previous, { pos.value.progress(pb.durationMs) }, if (prefs.floatingNav) Modifier else Modifier.padding(horizontal = 8.dp))
@@ -242,11 +244,19 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
                 // Desktop: sidebar, content card, now playing panel, player bar.
                 LaunchedEffect(settings) { if (settings && settingsStack.isEmpty()) settingsStack.add("style") }
                 val playlistId = (detail as? Detail.Playlist)?.id
-                val panel = prefs.nowPlayingPanel && pb.current != null
+                var showNow by remember { mutableStateOf(false) }
+                LaunchedEffect(page, detail, settings) { showNow = false }
+                val keys = rememberPlayerKeys(backend, volume)
+                PublishMiniState(pb, backend)
+                val panel = prefs.nowPlayingPanel && pb.current != null && !showNow
                 var sidebarExpanded by remember { mutableStateOf(true) }
                 WindowTint(g0.value)
                 // The mouse back button goes back like the phone gesture.
-                Column(Modifier.fillMaxSize().mouseBackButton(::handleBack)) {
+                // While the full now playing view is open the whole window takes the song's colours, so the sidebar and
+                // player bar sit on the same wash as the card instead of on the plain page background.
+                val nowSong = if (showNow) pb.current else null
+                val shell: @Composable () -> Unit = {
+                Column(Modifier.fillMaxSize().mouseBackButton(::handleBack).playerKeys(keys)) {
                     Row(Modifier.weight(1f).fillMaxWidth().padding(start = 12.dp, top = 12.dp, end = 12.dp)) {
                         Sidebar(
                             page, playlistId, lib.playlists,
@@ -260,13 +270,14 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
                             },
                             onPlaylist = { g -> navigate { detail = Detail.Playlist(g.id, g.name); settings = false } },
                             onNewPlaylist = { newPlaylist = true },
-                            modifier = Modifier.width(if (sidebarExpanded) 240.dp else 72.dp).fillMaxHeight(),
+                            modifier = Modifier.width(if (sidebarExpanded) prefs.sidebarWidth.dp else 72.dp).fillMaxHeight(),
                         )
                         Spacer(Modifier.width(12.dp))
                         Box(Modifier.weight(1f).fillMaxHeight().deskCard()) {
                             val d = detail
                             val pad = 16.dp
                             when {
+                                showNow && pb.current != null -> DesktopNowPlayingView(pb, backend, actions, { showNow = false }, Modifier.fillMaxSize())
                                 settings -> DesktopSettings(settingsStack, prefs, conn, songs.size, backend, onRestore, ::goBack, Modifier.fillMaxSize())
                                 d != null -> DetailScreen(d, backend, currentId, actions, ::goBack, pad)
                                 page == "home" -> HomeScreen(lib, home, favorites, currentId, conn, scan, actions, { d2 -> navigate { detail = d2 } }, pad, name = prefs.profileName)
@@ -314,11 +325,29 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
                             NowPlayingPanel(pb, backend, actions, { showPlayer = true }, { prefs.putNowPlayingPanel(false) }, Modifier.width(320.dp).fillMaxHeight().deskCard())
                         }
                     }
-                    PlayerBar(pb, volume, prefs.nowPlayingPanel, backend, actions, { showPlayer = true }, { prefs.putNowPlayingPanel(!prefs.nowPlayingPanel) })
+                    PlayerBar(pb, volume, prefs.nowPlayingPanel, backend, actions, { showPlayer = true }, { prefs.putNowPlayingPanel(!prefs.nowPlayingPanel) },
+                        onNowPlaying = { showNow = !showNow }, extras = { DevicePickerButton(); MiniPlayerToggle() })
                 }
+                }
+                if (nowSong != null) CoverTinted(nowSong.coverUri) {
+                    Box(Modifier.fillMaxSize()) {
+                        // One tone per main colour of the cover, running diagonally; a cover with one colour fades to a darker shade of it.
+                        val top = MaterialTheme.colorScheme.primaryContainer
+                        val tones = CoverSeeds.palette(nowSong.coverUri).map { schemeFromSeed(it, true).primaryContainer }.ifEmpty { listOf(top) }
+                        val stops = if (tones.size > 1) tones else listOf(top, androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.35f).compositeOver(top))
+                        Box(Modifier.fillMaxSize().drawBehind {
+                            drawRect(androidx.compose.ui.graphics.Brush.linearGradient(stops, androidx.compose.ui.geometry.Offset.Zero, androidx.compose.ui.geometry.Offset(size.width, size.height)))
+                        })
+                        shell()
+                    }
+                } else shell()
                 if (showPlayer) FullPlayer(pb, pbError, backend, actions, { showPlayer = false })
                 SnackbarHost(snack, Modifier.align(Alignment.BottomCenter).padding(bottom = 96.dp))
+                ShortcutsOverlay(keys, Modifier.fillMaxSize())
             }
+            NetplayIndicator(
+                backend, Modifier.align(Alignment.TopEnd).padding(top = if (isPhone) WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 8.dp else 16.dp, end = 12.dp),
+            ) { navigate { settings = true; settingsDeep = true; settingsStack.clear(); settingsStack.add("netplay") } }
             StatusToast(
                 conn, scan, if (lib.songs is Load.Ready) songs.size else 1, g0.value,
                 Modifier.align(Alignment.TopCenter).padding(top = if (isPhone) WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 8.dp else 16.dp),

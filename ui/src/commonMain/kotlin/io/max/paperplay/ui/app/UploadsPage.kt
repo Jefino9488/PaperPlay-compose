@@ -39,6 +39,11 @@ object IncomingShares {
     val files = MutableStateFlow<List<String>>(emptyList())
 }
 
+/** Files dropped on the desktop window. The uploads page queues them (as originals, never deleted) and clears this. */
+object IncomingDrops {
+    val files = MutableStateFlow<List<String>>(emptyList())
+}
+
 private data class UploadTarget(val chatId: Long, val chatTitle: String, val topicId: Long? = null, val topicName: String? = null)
 
 /** The uploads hub: where songs go, picking files, and the queue with retry. */
@@ -81,6 +86,15 @@ internal fun UploadsPage(backend: CoreBackend) {
         }
     }
 
+    val dropped by IncomingDrops.files.collectAsState()
+    LaunchedEffect(dropped, target) {
+        if (dropped.isNotEmpty() && target != null) {
+            val files = dropped
+            IncomingDrops.files.value = emptyList()
+            queue(files, temporary = false)
+        }
+    }
+
     Column(Modifier.fillMaxWidth()) {
         SectionLabel("Upload to")
         SettingsRow(
@@ -94,6 +108,8 @@ internal fun UploadsPage(backend: CoreBackend) {
                 AppIcon(Icons.Rounded.Upload, null, Modifier.size(18.dp))
                 Text("Choose songs", Modifier.padding(start = 8.dp))
             }
+            val pickFolder = env?.pickAudioFolder
+            if (pickFolder != null) OutlinedButton(onClick = { pickFolder { paths -> queue(paths, false) } }, enabled = target != null) { Text("Choose folder") }
             OutlinedButton(onClick = { uploader.setPaused(!paused) }, enabled = jobs.isNotEmpty()) { Text(if (paused) "Resume" else "Pause") }
         }
         message?.let { Text(it, Modifier.padding(horizontal = 20.dp, vertical = 4.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
@@ -102,7 +118,7 @@ internal fun UploadsPage(backend: CoreBackend) {
         val done = jobs.count { it.status == UploadStatus.Done }
         SectionLabel("Queue (${jobs.size})")
         if (jobs.isEmpty()) {
-            Text("Nothing is uploading. Songs you choose, or share to Paper Play from another app, wait here.", Modifier.padding(horizontal = 20.dp, vertical = 8.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(if (io.max.paperplay.ui.isPhone) "Nothing is uploading. Songs you choose, or share to Paper Play from another app, wait here." else "Nothing is uploading. Songs you choose, or drop onto the window while this page is open, wait here.", Modifier.padding(horizontal = 20.dp, vertical = 8.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
         } else {
             Row(Modifier.padding(horizontal = 12.dp)) {
                 if (failed > 0) TextButton({ uploader.retryAll() }) { Text("Retry $failed failed") }

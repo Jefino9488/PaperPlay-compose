@@ -60,7 +60,7 @@ internal fun EqualizerContent(on: Boolean, gains: List<Float>, onToggle: (Boolea
         SliderRow("${hz(f)}: ${db(drag[i])} dB", drag[i], -12f..12f, { v -> drag = drag.toMutableList().also { it[i] = v } },
             onDone = { onGains(drag) })
     }
-    Text("The system equalizer on a phone has few bands, so each takes the setting of the nearest one here.", Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+    if (io.max.paperplay.ui.isPhone) Text("The system equalizer on a phone has few bands, so each takes the setting of the nearest one here.", Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 

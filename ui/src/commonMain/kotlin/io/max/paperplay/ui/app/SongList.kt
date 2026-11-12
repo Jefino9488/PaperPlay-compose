@@ -2,7 +2,11 @@
 
 import io.max.paperplay.ui.components.AppIcon
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -70,6 +74,7 @@ class ListActions(
     val editTags: (SongUi) -> Unit = {},
     val changeCover: (SongUi) -> Unit = {},
     val setPinned: (SongUi, Boolean) -> Unit = { _, _ -> },
+    val deleteSong: (SongUi) -> Unit = {},
 )
 
 internal fun ListActions.rowActions(onRemove: ((SongUi) -> Unit)? = null) = object : SongActions {
@@ -80,6 +85,7 @@ internal fun ListActions.rowActions(onRemove: ((SongUi) -> Unit)? = null) = obje
     override fun setFavorite(song: SongUi, favorite: Boolean) = this@rowActions.setFavorite(song, favorite)
     override fun setPinned(song: SongUi, pinned: Boolean) { this@rowActions.setPinned(song, pinned); notice(if (pinned) "Keeping on this device" else "No longer kept on this device") }
     override fun addToPlaylist(song: SongUi) = this@rowActions.addToPlaylist(setOf(song.id))
+    override fun deleteFromTelegram(song: SongUi) = this@rowActions.deleteSong(song)
     override fun telegramLink(song: SongUi): String? = this@rowActions.telegramLink(song)
     override fun notice(text: String) = this@rowActions.notice(text)
     override fun findMetadata(song: SongUi) = this@rowActions.findMetadata(song)
@@ -179,125 +185,69 @@ fun SongList(
                 value = query,
                 onChange = { query = it },
                 hint = "Search songs, artists, albums",
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
             )
         }
 
         LazyColumn(
             modifier = Modifier.weight(1f),
-            contentPadding = PaddingValues(
-                start = 16.dp,
-                end = 16.dp,
-                top = 8.dp,
-                bottom = bottomPadding + 16.dp,
-            ),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            // Horizontal insets live on the items, so the pinned bar can span the full width and hide rows fully.
+            contentPadding = PaddingValues(bottom = bottomPadding + 16.dp),
         ) {
-            if (header != null) item { header() }
-            if (shown.isNotEmpty()) stickyHeader {
-                Surface(
-                    shape = appShape(20.dp),
-                    color = MaterialTheme.colorScheme.surfaceContainerLow,
+            if (header != null) item { Box(Modifier.padding(horizontal = 16.dp)) { header() } }
+            if (shown.isNotEmpty()) stickyHeader(key = "song-list-bar") {
+                val mins = shown.sumOf { it.durationSec } / 60
+                val summary = "${shown.size} ${if (shown.size == 1) "song" else "songs"} · " +
+                    if (mins >= 60) "${mins / 60} hr ${mins % 60} min" else "$mins min"
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 4.dp),
+                        .background(MaterialTheme.colorScheme.background)
+                        .padding(start = 16.dp, end = 12.dp, top = 6.dp, bottom = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        FilledIconButton(
-                            onClick = { actions.play(shown, 0) },
-                            modifier = Modifier.size(40.dp),
+                    FilledIconButton(
+                        onClick = { actions.play(shown, 0) },
+                        modifier = Modifier.size(44.dp),
+                        shape = CircleShape,
+                    ) { AppIcon(Icons.Rounded.PlayArrow, contentDescription = "Play all") }
+                    FilledTonalIconButton(
+                        onClick = { actions.shuffle(shown) },
+                        modifier = Modifier.size(44.dp),
+                        shape = CircleShape,
+                    ) { AppIcon(Icons.Rounded.Shuffle, contentDescription = "Shuffle all", modifier = Modifier.size(20.dp)) }
+                    Text(
+                        text = summary,
+                        modifier = Modifier.weight(1f).padding(start = 4.dp),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (sortable) {
+                        Row(
+                            modifier = Modifier
+                                .widthIn(max = 120.dp)
+                                .clip(CircleShape)
+                                .clickable { sortSheet = true }
+                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
                         ) {
-                            AppIcon(Icons.Rounded.PlayArrow, contentDescription = "Play all")
-                        }
-                        FilledTonalIconButton(
-                            onClick = { actions.shuffle(shown) },
-                            modifier = Modifier.size(40.dp),
-                        ) {
+                            AppIcon(Icons.AutoMirrored.Rounded.Sort, contentDescription = "Sort", modifier = Modifier.size(18.dp))
+                            Text(
+                                text = sort.label,
+                                style = MaterialTheme.typography.labelLarge,
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Ellipsis,
+                            )
                             AppIcon(
-                                Icons.Rounded.Shuffle,
-                                contentDescription = "Shuffle all",
-                                modifier = Modifier.size(20.dp)
+                                if (reverse) Icons.Rounded.ArrowUpward else Icons.Rounded.ArrowDownward,
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp),
                             )
-                        }
-                        Column(
-                            modifier = Modifier.weight(1f),
-                            verticalArrangement = Arrangement.Center,
-                        ) {
-                            val mins = shown.sumOf { it.durationSec } / 60
-                            Text(
-                                text = "${shown.size} ${if (shown.size == 1) "song" else "songs"}",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            Text(
-                                text = if (mins >= 60) "${mins / 60} hr ${mins % 60} min" else "$mins min",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-                        if (sortable) {
-                            Box(modifier = Modifier.wrapContentWidth(Alignment.End)) {
-                                AssistChip(
-                                    onClick = { sortSheet = true },
-                                    label = {
-                                        Text(
-                                            text = sort.label,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                    },
-                                    leadingIcon = {
-                                        AppIcon(
-                                            Icons.AutoMirrored.Rounded.Sort,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(16.dp),
-                                        )
-                                    },
-                                    trailingIcon = {
-                                        AppIcon(
-                                            if (reverse) Icons.Rounded.ArrowUpward else Icons.Rounded.ArrowDownward,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(16.dp),
-                                        )
-                                    },
-                                )
-                            }
-                        }
-                    }
-                }
-                if (sortSheet) {
-                    ModalBottomSheet(onDismissRequest = { sortSheet = false }) {
-                        Column(
-                            Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp),
-                            verticalArrangement = Arrangement.spacedBy(4.dp),
-                        ) {
-                            Text("Sort songs", style = MaterialTheme.typography.titleLarge)
-                            SongSort.entries.forEach { option ->
-                                TextButton(
-                                    onClick = {
-                                        if (option == sort) reverse = !reverse else { sort = option; reverse = false }
-                                        sortSheet = false
-                                    },
-                                    modifier = Modifier.fillMaxWidth(),
-                                ) {
-                                    Text(
-                                        text = "${option.label}${if (option == sort) if (reverse) " (descending)" else " (ascending)" else ""}",
-                                        modifier = Modifier.fillMaxWidth(),
-                                        textAlign = androidx.compose.ui.text.style.TextAlign.Start,
-                                    )
-                                }
-                            }
-                            Spacer(Modifier.height(16.dp))
                         }
                     }
                 }
@@ -308,7 +258,7 @@ fun SongList(
                     color = MaterialTheme.colorScheme.surfaceContainerLow,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 12.dp),
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
                 ) {
                     Text(
                         text = if (query.isNotBlank()) "No songs match \"${query.trim()}\"." else empty,
@@ -330,7 +280,34 @@ fun SongList(
                     selected = song.id in picked,
                     coverUriOverride = songCoverUri,
                     actions = if (picked.active) null else rowActions,
+                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 6.dp),
                 )
+            }
+        }
+        if (sortSheet) {
+            ModalBottomSheet(onDismissRequest = { sortSheet = false }) {
+                Column(
+                    Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Text("Sort songs", style = MaterialTheme.typography.titleLarge)
+                    SongSort.entries.forEach { option ->
+                        TextButton(
+                            onClick = {
+                                if (option == sort) reverse = !reverse else { sort = option; reverse = false }
+                                sortSheet = false
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(
+                                text = "${option.label}${if (option == sort) if (reverse) " (descending)" else " (ascending)" else ""}",
+                                modifier = Modifier.fillMaxWidth(),
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Start,
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(16.dp))
+                }
             }
         }
     }
@@ -376,10 +353,10 @@ private val previewSongList = listOf(
     SongUi(id = "2", title = "Song Two", artist = "Artist B", album = "Album 2", durationSec = 180, sizeBytes = 4_500_000, qualityLabel = "FLAC", favorite = false, pinned = true, offline = true),
 )
 
-@Preview
+@Preview(name = "Song list", widthDp = 360, heightDp = 640, showBackground = true)
 @Composable
-private fun SongListPreview() {
-    SongList(songs = previewSongList, currentId = "1", actions = previewActions)
+private fun SongListPreview() = io.max.paperplay.ui.PreviewFrame {
+    SongList(songs = previewSongList + io.max.paperplay.ui.previewSongs, currentId = "1", actions = previewActions)
 }
 
 @Preview

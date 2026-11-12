@@ -34,7 +34,7 @@ import kotlinx.coroutines.launch
 
 /** Settings > Telegram > Your account. Logs in as yourself, so chats and channels can be read and copied from. */
 @Composable
-internal fun AccountPage(backend: CoreBackend, onOpenIndex: () -> Unit, onLogOut: () -> Unit) {
+internal fun AccountPage(backend: CoreBackend, onOpenIndex: (() -> Unit)?, onLogOut: () -> Unit) {
     val account = backend.account
     val step by account.step.collectAsState()
     val indexed by backend.chatIndex.indexedChats.collectAsState()
@@ -58,7 +58,7 @@ internal fun AccountContent(
     onPassword: suspend (String) -> Unit,
     onRestore: suspend () -> Boolean,
     indexedChats: Int = 0,
-    onOpenIndex: () -> Unit = {},
+    onOpenIndex: (() -> Unit)? = null,
 ) {
     val scope = rememberCoroutineScope()
     var input by remember(step) { mutableStateOf("") }
@@ -94,7 +94,16 @@ internal fun AccountContent(
             }
             LoginStep.Password -> {
                 Text("Your account has a two-step password.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                OutlinedTextField(input, { input = it }, Modifier.fillMaxWidth(), label = { Text("Password") }, singleLine = true, visualTransformation = PasswordVisualTransformation())
+                var show by remember { mutableStateOf(false) }
+                OutlinedTextField(
+                    input, { input = it }, Modifier.fillMaxWidth(), label = { Text("Password") }, singleLine = true,
+                    visualTransformation = if (show) androidx.compose.ui.text.input.VisualTransformation.None else PasswordVisualTransformation(),
+                    trailingIcon = {
+                        androidx.compose.material3.IconButton({ show = !show }) {
+                            androidx.compose.material3.Icon(if (show) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility, if (show) "Hide password" else "Show password")
+                        }
+                    },
+                )
                 Button({ scope.launch { onPassword(input) } }, enabled = input.isNotEmpty()) { Text("Confirm") }
             }
             LoginStep.Ready -> {
@@ -104,7 +113,7 @@ internal fun AccountContent(
                 }
                 SettingsRow("Logged in", icon = Icons.Rounded.Person, subtitle = "Your chats and channels are available")
                 restored?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                NavRow(
+                if (onOpenIndex != null) NavRow(
                     "Chats and channels",
                     if (indexedChats == 0) "Nothing indexed yet. Pick chats to find songs in" else "$indexedChats chats indexed. Add more or copy songs to the main chat",
                     Icons.Rounded.Forum, onOpenIndex,

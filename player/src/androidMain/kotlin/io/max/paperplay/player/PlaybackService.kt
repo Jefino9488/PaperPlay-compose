@@ -2,7 +2,9 @@ package io.max.paperplay.player
 
 import android.app.PendingIntent
 import android.content.Intent
+import android.media.audiofx.DynamicsProcessing
 import android.media.audiofx.Equalizer
+import android.os.Build
 import android.os.Bundle
 import androidx.annotation.OptIn
 import androidx.media3.common.C
@@ -23,9 +25,10 @@ class PlaybackService : MediaSessionService() {
     private var player: ExoPlayer? = null
     private var session: MediaSession? = null
     private var eq: Equalizer? = null
+    private var leveller: DynamicsProcessing? = null
 
     private val playerListener = object : Player.Listener {
-        override fun onAudioSessionIdChanged(audioSessionId: Int) = applyEqualizer(audioSessionId)
+        override fun onAudioSessionIdChanged(audioSessionId: Int) { applyEqualizer(audioSessionId); applyNormalize(audioSessionId) }
     }
 
     private val sessionCallback = object : MediaSession.Callback {
@@ -36,6 +39,7 @@ class PlaybackService : MediaSessionService() {
             if (controller.packageName == packageName) {
                 val sessionCommands = MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS.buildUpon()
                     .add(PlaybackCore.CMD_SET_EQUALIZER)
+                    .add(PlaybackCore.CMD_SET_NORMALIZE)
                     .build()
                 return MediaSession.ConnectionResult.accept(
                     sessionCommands,
@@ -56,6 +60,11 @@ class PlaybackService : MediaSessionService() {
                 applyEqualizer(player?.audioSessionId ?: C.AUDIO_SESSION_ID_UNSET)
                 return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
             }
+            if (customCommand.customAction == PlaybackCore.ACTION_SET_NORMALIZE && controller.packageName == packageName) {
+                PlaybackCore.normalize = args.getBoolean(PlaybackCore.EXTRA_NORMALIZE, false)
+                applyNormalize(player?.audioSessionId ?: C.AUDIO_SESSION_ID_UNSET)
+                return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+            }
             return super.onCustomCommand(session, controller, customCommand, args)
         }
     }
@@ -63,10 +72,16 @@ class PlaybackService : MediaSessionService() {
     @OptIn(UnstableApi::class)
     override fun onCreate() {
         super.onCreate()
+        // The media notification's small icon is the app's paper plane, not Media3's round play icon. The drawable
+        // lives in the app module, so it is looked up by name.
+        resources.getIdentifier("ic_stat_paperplay", "drawable", packageName).takeIf { it != 0 }?.let { icon ->
+            setMediaNotificationProvider(androidx.media3.session.DefaultMediaNotificationProvider.Builder(this).build().also { it.setSmallIcon(icon) })
+        }
         val exo = PlaybackCore.createPlayer(this)
         exo.addListener(playerListener)
         player = exo
         applyEqualizer(exo.audioSessionId)
+        applyNormalize(exo.audioSessionId)
 
         // A tap on the notification opens the app on the player.
         val open = packageManager.getLaunchIntentForPackage(packageName)
@@ -100,12 +115,31 @@ class PlaybackService : MediaSessionService() {
     override fun onDestroy() {
         runCatching { eq?.release() }
         eq = null
+        runCatching { leveller?.release() }
+        leveller = null
         session?.release()
         session = null
         player?.removeListener(playerListener)
         player?.release()
         player = null
         super.onDestroy()
+    }
+
+    /** A limiter that pulls loud peaks down and lifts the rest, so songs mastered at different levels sound alike. Needs Android 9. */
+    private fun applyNormalize(audioSessionId: Int) {
+        runCatching { leveller?.release() }
+        leveller = null
+        if (!PlaybackCore.normalize || Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return
+        if (audioSessionId == C.AUDIO_SESSION_ID_UNSET || audioSessionId <= 0) return
+        runCatching {
+            val config = DynamicsProcessing.Config.Builder(
+                DynamicsProcessing.VARIANT_FAVOR_TIME_RESOLUTION, 2, false, 0, false, 0, false, 0, true,
+            ).build()
+            val dp = DynamicsProcessing(0, audioSessionId, config)
+            dp.setLimiterAllChannelsTo(DynamicsProcessing.Limiter(true, true, 0, 5f, 80f, 6f, -14f, 6f))
+            dp.enabled = true
+            leveller = dp
+        }
     }
 
     /** Device equalizers have a handful of bands, so each takes the gain of the nearest of [EQ_BANDS_HZ]. */

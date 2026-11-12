@@ -19,7 +19,14 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlin.random.Random
@@ -61,10 +68,49 @@ class Uploader(
     private val knownSongs: () -> Set<Pair<String, Long>>,
     /** Extra bots that share the sending; null sends everything with [client]. */
     private val pool: io.max.paperplay.core.telegram.BotPool? = null,
+    /** Saves the queue so it survives a restart. */
+    private val setPref: (String, String) -> Unit = { _, _ -> },
 ) {
     private val _jobs = MutableStateFlow<List<UploadJob>>(emptyList())
     val jobs: StateFlow<List<UploadJob>> = _jobs
     private val paused = MutableStateFlow(false)
+
+    init {
+        // Files still waiting when the app closed come back, paused so the owner chooses when to send.
+        val back = runCatching {
+            Json.parseToJsonElement(pref(QUEUE_PREF) ?: "[]").jsonArray.mapNotNull { e ->
+                val o = e.jsonObject
+                fun s(k: String) = o[k]?.jsonPrimitive?.contentOrNull
+                val path = s("p") ?: return@mapNotNull null
+                val size = fileLength(path)
+                if (size <= 0) return@mapNotNull null
+                UploadJob(
+                    s("i") ?: newUuid(), path, s("n").orEmpty(), size, s("c")?.toLongOrNull() ?: return@mapNotNull null, s("ct").orEmpty(),
+                    s("t")?.toLongOrNull(), s("tn"), if (s("f") == "1") UploadStatus.Failed else UploadStatus.Queued,
+                    error = s("e"), temporary = s("tmp") == "1",
+                )
+            }
+        }.getOrDefault(emptyList())
+        if (back.isNotEmpty()) {
+            _jobs.value = back
+            if (back.any { it.status == UploadStatus.Queued }) paused.value = true
+        }
+        scope.launch {
+            _jobs.map { l -> l.filter { it.status != UploadStatus.Done }.map { it.copy(progress = 0f, status = if (it.status == UploadStatus.Failed) it.status else UploadStatus.Queued) } }
+                .distinctUntilChanged().collect { l ->
+                    runCatching {
+                        setPref(QUEUE_PREF, buildJsonArray {
+                            for (j in l) add(buildJsonObject {
+                                put("i", j.id); put("p", j.path); put("n", j.name); put("c", j.chatId.toString()); put("ct", j.chatTitle)
+                                j.topicId?.let { put("t", it.toString()) }; j.topicName?.let { put("tn", it) }
+                                if (j.status == UploadStatus.Failed) put("f", "1"); j.error?.let { put("e", it) }
+                                if (j.temporary) put("tmp", "1")
+                            })
+                        }.toString())
+                    }
+                }
+        }
+    }
     val isPaused: StateFlow<Boolean> = paused
     private var running = false
     private val gate = Mutex()
@@ -112,6 +158,11 @@ class Uploader(
     fun retryAll() {
         _jobs.update { l -> l.map { if (it.status == UploadStatus.Failed) it.copy(status = UploadStatus.Queued, error = null, attempts = 0, progress = 0f) else it } }
         pump()
+    }
+
+    /** Takes every file that has not started out of the queue (the one being sent finishes). */
+    fun cancelWaiting() {
+        _jobs.value.filter { it.status == UploadStatus.Queued }.forEach { remove(it.id) }
     }
 
     /** Takes a waiting or failed file out of the queue. A file being sent is left alone. */
@@ -241,5 +292,6 @@ class Uploader(
 
     private companion object {
         const val MAX_ATTEMPTS = 4
+        const val QUEUE_PREF = "upload_queue"
     }
 }

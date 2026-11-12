@@ -114,7 +114,7 @@ internal fun RepairContent(ui: RepairUi, onRun: () -> Unit, onOpen: (String) -> 
         OutlinedButton({ onOpen("sort") }, Modifier.fillMaxWidth()) { Text("Sort General") }
         OutlinedButton({ onOpen("missing") }, Modifier.fillMaxWidth()) { Text("Song info left") }
         Text(
-            "A bot cannot read songs that another bot posted as itself. Have that bot post as the chat (anonymous admin), or forward those songs again as yourself.",
+            "A bot cannot read songs that another bot posted as itself. Use Recover songs in the Library settings: your account posts them again so the bot can read them.",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }

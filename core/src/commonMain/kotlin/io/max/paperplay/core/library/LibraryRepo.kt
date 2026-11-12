@@ -24,6 +24,11 @@ class LibraryRepo(val db: LibraryDatabase, private val clock: () -> Long) {
         lists.insertEntry(id, s.chat_id, s.message_id, now)
     }
 
+    /** Puts the live entries of [id] in the order of [songs] (first = top); others keep their place after them. */
+    fun setPlaylistOrder(id: Long, songs: List<Song>) = db.transaction {
+        songs.forEachIndexed { i, s -> lists.setEntryPosition((i + 1).toLong(), id, s.chat_id, s.message_id) }
+    }
+
     fun removeFromPlaylist(id: Long, s: Song) = lists.removeEntry(clock(), id, s.chat_id, s.message_id)
 
     fun setPref(key: String, value: String) = misc.setPref(key, value)
@@ -143,6 +148,7 @@ class LibraryRepo(val db: LibraryDatabase, private val clock: () -> Long) {
             val addedAt = if (keepOrder || e.added_at > now) e.added_at else now
             lists.reviveEntry(addedAt, e.playlist_id, toChat, toMessage)
             lists.insertEntry(e.playlist_id, toChat, toMessage, addedAt)
+            lists.setEntryPosition(e.position, e.playlist_id, toChat, toMessage)
             lists.removeEntry(now, e.playlist_id, fromChat, fromMessage)
         }
     }

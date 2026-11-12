@@ -18,3 +18,6 @@ internal actual fun readRange(path: String, offset: Long, length: Int): ByteArra
 internal actual fun fileLength(path: String): Long = java.io.File(path).let { if (it.isFile) it.length() else -1L }
 
 internal actual fun deleteFile(path: String) { runCatching { java.io.File(path).delete() } }
+
+internal actual fun listFiles(dir: String): List<String> =
+    runCatching { java.io.File(dir).listFiles()?.filter { it.isFile }?.map { it.path } }.getOrNull().orEmpty()

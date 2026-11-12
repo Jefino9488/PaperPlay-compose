@@ -54,3 +54,6 @@ internal expect fun readRange(path: String, offset: Long, length: Int): ByteArra
 internal expect fun fileLength(path: String): Long
 
 internal expect fun deleteFile(path: String)
+
+/** Full paths of the files directly in [dir], not its subfolders. Empty when it cannot be read. */
+internal expect fun listFiles(dir: String): List<String>
