@@ -1,0 +1,25 @@
+# Shrink only: no obfuscation, no optimisation. Removes unused Compose Material icons and library classes.
+-dontwarn **
+-ignorewarnings
+-keepattributes *Annotation*,Signature,InnerClasses,EnclosingMethod,RuntimeVisibleAnnotations,SourceFile,LineNumberTable
+-keep class io.max.paperplay.** { *; }
+-keep class com.sun.jna.** { *; }
+-keep class * implements com.sun.jna.** { *; }
+-keep class uk.co.caprica.vlcj.** { *; }
+-keep class org.sqlite.** { *; }
+-keep class app.cash.sqldelight.** { *; }
+-keep class org.jetbrains.skia.** { *; }
+-keep class org.jetbrains.skiko.** { *; }
+-keep class kotlinx.coroutines.swing.** { *; }
+-keep class kotlinx.coroutines.internal.MainDispatcherFactory { *; }
+-keep class * implements kotlinx.coroutines.internal.MainDispatcherFactory { *; }
+-keep class kotlinx.serialization.** { *; }
+-keepclassmembers class **$$serializer { *; }
+-keepclassmembers class * { *** Companion; }
+-keep class kotlin.Metadata { *; }
+-keepclassmembers class * { @kotlin.jvm.JvmStatic *; }
+-keep class androidx.compose.ui.platform.** { *; }
+-keep class androidx.compose.runtime.** { *; }
+-keep class androidx.compose.desktop.** { *; }
+-keepclasseswithmembers public class io.max.paperplay.desktop.MainKt { public static void main(java.lang.String[]); }
+-dontprocesskotlinmetadata

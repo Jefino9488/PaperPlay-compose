@@ -47,6 +47,22 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+    packaging {
+        // Licence texts, build metadata and Kotlin builtins (only kotlin-reflect reads those) are dead weight in the APK.
+        resources.excludes += listOf(
+            "/META-INF/{AL2.0,LGPL2.1,LICENSE*,NOTICE*,DEPENDENCIES}",
+            "/META-INF/androidx/**",
+            "/META-INF/*.version",
+            "/META-INF/com/android/build/gradle/**",
+            "/META-INF/proguard/**",
+            "**/*.kotlin_builtins",
+            "/kotlin-tooling-metadata.json",
+            "/DebugProbesKt.bin",
+            "/META-INF/*.kotlin_module",
+        )
+        // Compress libtdjson.so inside the APK (installed copy is extracted, so the on-device size is unchanged).
+        jniLibs.useLegacyPackaging = true
+    }
     testOptions {
         unitTests.isIncludeAndroidResources = true
     }
