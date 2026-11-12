@@ -1,5 +1,5 @@
 PaperPlay Compose - what's done and what's left
-Updated 12 Nov 2026, evening
+Updated 12 Nov 2026, night
 
 Marks: [x] done and builds, [~] half done, [ ] not done.
 Heads up: "done" means it compiles and I wrote it. The phone release build with
@@ -78,14 +78,14 @@ Speed and battery (12 Nov, big win on the phone)
     prefetched, stream reads use the known downloaded size
 [x] Smaller release APK: 35 MB down to 15.7 MB
 
-Profile and navigation (written 12 Nov, built and installed once the last build passes)
+Profile and navigation (12 Nov, compiles; debug build not yet installed on the phone)
 [x] Profile sections collapse with a chevron, open state saved per section
 [x] Profile rows fixed: Duplicates goes to the right page, new rows for Upload songs
     and Sort General, Connection and Devices rows
 [x] Desktop sidebar has a Tools group (Sort General, Duplicates, Song info left)
 [x] Back from a page opened from Profile returns to Profile, not the Settings list
 [x] Extra bots: add and remove tokens, bot pool shares uploads, rate limits per bot
-    (written, not compiled or tried yet; bots from a restored backup aren't started)
+    (compiles, not tried yet; bots from a restored backup aren't started)
 [x] Detail screen no longer redraws on every library change, seek bar reads
     progress at draw time, stable queue keys, handwritten baseline profile
 [x] Previews for equalizer, ListenBrainz, account, song info rows, stats and log
@@ -102,7 +102,7 @@ HALF DONE, FINISH THESE
 -----------------------
 [~] Small TDLib: built (14.4 MB raw, about 7.8 MB in the APK, same exports as the
     current one) but not swapped in or tested. Would give an APK of about 10.8 MB
-[~] Desktop opens slowly (over 2 minutes): fixes are written (VLC cache saved on exit
+[~] Desktop opens slowly (over 2 minutes): fixes compile (VLC cache saved on exit
     and made at build time, services built off the main thread with a splash,
     player starts on first play, startup.log with timings) but not tested on the PC
 [~] PC app still the old build: new icon, dark title bar and one shuffle button
