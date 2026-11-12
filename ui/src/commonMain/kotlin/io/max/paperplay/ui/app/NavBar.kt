@@ -86,6 +86,9 @@ fun NavBar(selected: Int, backdrop: Backdrop, prefs: UiPrefs, inset: Dp, onSelec
     }
     val bar = modifier.fillMaxWidth().height(height)
     when {
+        docked && glass -> GlassSurface(backdrop, modifier.fillMaxWidth().height(height + inset), cornerRadius = 0.dp, blur = prefs.glassBlur.dp, tintAlpha = prefs.glassTint) {
+            Box(Modifier.fillMaxSize().padding(bottom = inset)) { items() }
+        }
         docked -> {
             Box(modifier.fillMaxWidth().height(height + inset).background(MaterialTheme.colorScheme.surface)) { Box(Modifier.fillMaxSize().padding(bottom = inset)) { items() } }
         }
@@ -123,7 +126,10 @@ private fun NavItem(e: NavEntry, on: Boolean, prefs: UiPrefs, modifier: Modifier
             icon()
             if (on) { Spacer(Modifier.width(8.dp)); Text(e.label, style = MaterialTheme.typography.labelLarge, color = ink, maxLines = 1) }
         }
-        NavLayout.Icons -> Box(modifier.then(inner).padding(horizontal = 18.dp, vertical = 12.dp)) { icon() }
+        NavLayout.Icons -> Column(modifier.then(inner).padding(horizontal = 18.dp, vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            icon()
+            if (on && look == SelectionLook.Dot) Box(Modifier.padding(top = 2.dp).size(4.dp).clip(CircleShape).background(scheme.primary))
+        }
         else -> Column(modifier.then(inner).padding(horizontal = 14.dp, vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             icon()
             Text(e.label, style = MaterialTheme.typography.labelSmall, color = ink, maxLines = 1, fontWeight = if (on) FontWeight.Bold else null)

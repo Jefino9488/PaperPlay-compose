@@ -47,6 +47,7 @@ import org.jetbrains.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.max.paperplay.ui.components.CoverImage
+import com.kyant.backdrop.backdrops.layerBackdrop
 import io.max.paperplay.ui.isPhone
 
 internal class Category(val id: String, val title: String, val subtitle: String, val keywords: String, val icon: ImageVector, val phoneOnly: Boolean = false)
@@ -55,7 +56,7 @@ internal val categories = listOf(
     Category("style", "Style", "Material 3 Expressive or glass, mixed as you like", "style look glass material expressive blur", Icons.Rounded.AutoAwesome),
     Category("appearance", "Appearance", "Theme, colors, display", "theme dark amoled accent color", Icons.Rounded.Palette),
     Category("nav", "Navigation bar", "Floating bar and its style", "nav bar floating radius", Icons.Rounded.ViewAgenda, phoneOnly = true),
-    Category("glass", "Glass", "Liquid glass look", "glass blur refraction", Icons.Rounded.BlurOn, phoneOnly = true),
+    Category("glass", "Glass", "Blur and tint for every glass part", "glass blur refraction tint", Icons.Rounded.BlurOn),
     Category("telegram", "Telegram", "Channels, your account, bot activity, log out", "bot channels account log tdlib logout speed reading copy", Icons.Rounded.Send),
     Category("library", "Library", "Speeds, sorting, duplicates, rescan, song info", "speed rate rescan duplicates sort general covers info", Icons.Rounded.LibraryMusic),
     Category("mixes", "Mixes", "Taste learning and weather mixes", "mix taste learning weather city", Icons.Rounded.AutoAwesome),
@@ -124,7 +125,11 @@ private fun SettingsList(prefs: UiPrefs, backend: CoreBackend, stack: MutableLis
             }
         }
         shown.forEach { c -> SettingsCard(c.icon, c.title, c.subtitle, { stack.add(c.id) }) }
-        if (shown.isEmpty()) Text("No settings match", Modifier.padding(24.dp))
+        val tour = io.max.paperplay.ui.LocalAppEnv.current?.showTour
+        if (tour != null && (q.isEmpty() || "welcome tour intro about" .contains(q))) {
+            SettingsCard(Icons.Rounded.MusicNote, "Welcome tour", "Show the introduction again", { tour.value = true })
+        }
+        if (shown.isEmpty() && q.isNotEmpty() && !"welcome tour intro about".contains(q)) Text("No settings match", Modifier.padding(24.dp))
     }
 }
 
@@ -150,10 +155,14 @@ internal fun SettingsPage(
         "style" -> {
             Text("Pick Material 3 or glass for each part, or all at once.", Modifier.padding(20.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
             SectionLabel("All parts")
-            ChoiceRow(Look.entries, if (LookGroup.entries.all { prefs.look(it) == Look.Glass }) Look.Glass else Look.Material, { it.name }, { l ->
-                LookGroup.entries.forEach { prefs.setLook(it, l) }
+            val groups = LookGroup.entries.filter { it != LookGroup.Nav || io.max.paperplay.ui.glassLensSupported() }
+            ChoiceRow(Look.entries, if (groups.all { prefs.look(it) == Look.Glass }) Look.Glass else Look.Material, { it.name }, { l ->
+                groups.forEach { prefs.setLook(it, l) }
             })
-            LookGroup.entries.forEach { g ->
+            if (!io.max.paperplay.ui.glassLensSupported()) {
+                Text("On desktop, glass is blur, tint and gradient. The bottom bar is a phone part.", Modifier.padding(horizontal = 20.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            groups.forEach { g ->
                 SectionLabel(g.label)
                 Text(g.hint, Modifier.padding(horizontal = 20.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 ChoiceRow(Look.entries, prefs.look(g), { it.name }, { prefs.setLook(g, it) })
@@ -174,7 +183,7 @@ internal fun SettingsPage(
             }
             SectionLabel("Display")
             SwitchRow("Cover gradient", prefs.coverGradient, prefs::putCoverGradient, Icons.Rounded.Gradient, "The current cover's colours behind the app")
-            SwitchRow("Now playing panel", prefs.nowPlayingPanel, prefs::putNowPlayingPanel, Icons.Rounded.MusicNote, "Shown beside the lists on wide screens")
+            if (!isPhone) SwitchRow("Now playing panel", prefs.nowPlayingPanel, prefs::putNowPlayingPanel, Icons.Rounded.MusicNote, "Shown beside the lists on wide screens")
             SliderRow("Corner radius: ${prefs.cornerRadius.toInt()}%", prefs.cornerRadius, 0f..100f, { prefs.putCornerRadius(it) })
         }
         "nav" -> {
@@ -184,13 +193,24 @@ internal fun SettingsPage(
             Text(prefs.navLayout.hint, Modifier.padding(horizontal = 20.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             SectionLabel("Selection")
             ChoiceRow(SelectionLook.entries, prefs.selectionLook, { it.label }, { prefs.setNav(look = it) })
-            SliderRow("Corner radius: ${prefs.cornerRadius.toInt()}%", prefs.cornerRadius, 0f..100f, { prefs.putCornerRadius(it) })
+            if (prefs.floatingNav) SliderRow("Corner radius: ${prefs.cornerRadius.toInt()}%", prefs.cornerRadius, 0f..100f, { prefs.putCornerRadius(it) })
+            else Text("A docked bar spans the screen edge to edge, so it has no corner radius.", Modifier.padding(horizontal = 20.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         "glass" -> {
-            Text("Applies to every glass part.", Modifier.padding(20.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            GlassPreview(prefs)
+            Text("Applies to every part set to Glass on the Style page.", Modifier.padding(horizontal = 20.dp, vertical = 12.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
             SliderRow("Blur: ${prefs.glassBlur.toInt()}", prefs.glassBlur, 0f..40f, { prefs.setGlass(blur = it) })
             SliderRow("Tint: ${(prefs.glassTint * 100).toInt()}%", prefs.glassTint, 0f..1f, { prefs.setGlass(tint = it) })
-            Text("Lens and blur need Android 12 or newer; older phones get a plain tint.", Modifier.padding(20.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (LookGroup.entries.none { prefs.look(it) == Look.Glass }) {
+                Text("No part uses Glass yet. Choose it on the Style page.", Modifier.padding(horizontal = 20.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+            }
+            if (!io.max.paperplay.ui.glassLensSupported()) {
+                Text("Desktop glass is blur, tint and gradient. Lens and refraction are Android only.", Modifier.padding(20.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else if (!io.max.paperplay.ui.glassEffectsSupported()) {
+                Text("Blur needs Android 12 or newer; this device gets a plain tint.", Modifier.padding(20.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                Text("Dialogs, sheets and menus open in their own window, so they get the tint but not the blur.", Modifier.padding(20.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
         "telegram" -> {
             RateSlider("reading", backend, notice)
@@ -421,3 +441,25 @@ private fun AvatarPreview() {
     Avatar(photo = null, name = "Alex", size = 80.dp)
 }
 
+
+/** Live sample of the glass material over a colourful backdrop, using the current blur and tint. */
+@Composable
+private fun GlassPreview(prefs: UiPrefs) {
+    val backdrop = com.kyant.backdrop.backdrops.rememberLayerBackdrop()
+    val scheme = MaterialTheme.colorScheme
+    Box(Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth().height(150.dp).clip(RoundedCornerShape(28.dp))) {
+        Box(
+            Modifier.fillMaxSize().layerBackdrop(backdrop)
+                .background(androidx.compose.ui.graphics.Brush.linearGradient(listOf(scheme.primary, scheme.tertiary, scheme.secondary))),
+        ) {
+            Box(Modifier.padding(start = 24.dp, top = 20.dp).size(56.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.85f)))
+            Box(Modifier.align(Alignment.BottomEnd).padding(end = 40.dp, bottom = 16.dp).size(72.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.6f)))
+        }
+        io.max.paperplay.ui.GlassSurface(
+            backdrop, Modifier.align(Alignment.Center).fillMaxWidth(0.72f).height(68.dp),
+            cornerRadius = 24.dp, blur = prefs.glassBlur.dp, tintAlpha = prefs.glassTint,
+        ) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Glass preview", style = MaterialTheme.typography.titleMedium) }
+        }
+    }
+}

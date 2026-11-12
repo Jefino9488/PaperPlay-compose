@@ -84,6 +84,7 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
     val scope = rememberCoroutineScope()
     val loader = remember { FileCoverLoader() }
     val backdrop = rememberLayerBackdrop()
+    val pageBackdrop = rememberLayerBackdrop()
 
     val tagDialogs = remember { TagDialogState() }
     val actions = remember(backend) {
@@ -133,9 +134,11 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
     val g1 by androidx.compose.animation.animateColorAsState(tint.copy(alpha = 0.32f).compositeOver(base), androidx.compose.animation.core.tween(700))
     val pageBg = if (prefs.coverGradient) Modifier.background(Brush.verticalGradient(0f to g0, 0.45f to g1, 1f to base)) else Modifier.background(base)
 
-    CompositionLocalProvider(LocalCoverLoader provides loader, LocalOnMissingCover provides backend::ensureCover, LocalListActions provides actions) {
+    CompositionLocalProvider(LocalCoverLoader provides loader, LocalOnMissingCover provides backend::ensureCover, LocalListActions provides actions, io.max.paperplay.ui.LocalGlassBackdrop provides pageBackdrop) {
         TagDialogHost(backend, tagDialogs) { m -> scope.launch { snack.showSnackbar(m) } }
-        Box(Modifier.fillMaxSize().then(pageBg)) {
+        Box(Modifier.fillMaxSize()) {
+            // The page background alone is the layer glass cards and bars blur (content on it would recurse).
+            Box(Modifier.fillMaxSize().layerBackdrop(pageBackdrop).then(pageBg))
             if (isPhone) {
                 val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
                 val bottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()

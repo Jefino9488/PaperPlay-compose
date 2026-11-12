@@ -16,6 +16,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.kyant.backdrop.drawBackdrop
+import com.kyant.backdrop.effects.blur
+import com.kyant.backdrop.effects.vibrancy
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -164,16 +167,43 @@ fun appShape(base: Dp): RoundedCornerShape {
 
 private val rimColor = Color.White.copy(alpha = 0.18f)
 
-/** A card or overlay surface: a veil with a faint light rim when the part is glass, solid tonal colour otherwise. */
+/**
+ * A card, bar or overlay surface. Glass: the page background layer blurred behind a tint (real blur where a layer
+ * and Android 12+ or desktop exist), else a tint with enough opacity to keep text readable. Material: solid tonal colour.
+ * Blur and tint come from the Glass settings page and apply to every glass part.
+ */
 @Composable
-fun Modifier.partSurface(group: LookGroup, color: Color, shape: Shape): Modifier =
-    if (glassLook(group)) clip(shape).background(color.copy(alpha = 0.55f)).border(1.dp, rimColor, shape)
-    else clip(shape).background(color)
+fun Modifier.partSurface(group: LookGroup, color: Color, shape: Shape): Modifier {
+    val prefs = LocalUiPrefs.current
+    if (prefs == null || prefs.look(group) != Look.Glass) return clip(shape).background(color)
+    val backdrop = io.max.paperplay.ui.LocalGlassBackdrop.current
+    val reduced = io.max.paperplay.ui.theme.LocalReducedTransparency.current
+    val alpha = surfaceAlpha(prefs.glassTint)
+    val blurDp = prefs.glassBlur.dp
+    return if (backdrop != null && !reduced) {
+        clip(shape)
+            .drawBackdrop(
+                backdrop = backdrop,
+                shape = { shape },
+                effects = { vibrancy(); blur(blurDp.toPx()) },
+                onDrawSurface = { drawRect(color.copy(alpha = alpha)) },
+            )
+            .border(1.dp, rimColor, shape)
+    } else {
+        clip(shape).background(color.copy(alpha = if (reduced) 0.92f else maxOf(alpha, 0.6f))).border(1.dp, rimColor, shape)
+    }
+}
 
-/** Dialog and menu colour for the Overlays part. */
+/** Tint 0..1 mapped so even the lowest setting keeps text readable on cards and bars. */
+private fun surfaceAlpha(tint: Float): Float = 0.25f + tint.coerceIn(0f, 1f) * 0.7f
+
+/** Dialog and menu colour for the Overlays part. Dialogs live in their own window, so they use the tint without a blur layer. */
 @Composable
-fun overlayColor(base: Color = MaterialTheme.colorScheme.surfaceContainerHigh): Color =
-    if (glassLook(LookGroup.Overlays)) base.copy(alpha = 0.55f) else base
+fun overlayColor(base: Color = MaterialTheme.colorScheme.surfaceContainerHigh): Color {
+    val prefs = LocalUiPrefs.current
+    if (prefs == null || prefs.look(LookGroup.Overlays) != Look.Glass) return base
+    return base.copy(alpha = maxOf(surfaceAlpha(prefs.glassTint), 0.7f))
+}
 
 /** The light rim of a glass overlay; nothing for Material. */
 @Composable

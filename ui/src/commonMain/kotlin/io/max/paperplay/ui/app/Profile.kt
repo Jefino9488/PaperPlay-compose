@@ -48,10 +48,17 @@ import org.jetbrains.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
+/** Full-width bar; a rounded glass strip inset from the edges when the Top bars part is glass. */
+@Composable
+fun Modifier.barSurface(): Modifier =
+    if (glassLook(LookGroup.Bars)) fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)
+        .partSurface(LookGroup.Bars, MaterialTheme.colorScheme.surfaceContainer, appShape(24.dp))
+    else fillMaxWidth()
+
 /** Large title with actions on the right, like the Flutter top bars. */
 @Composable
 fun TopBar(title: String, modifier: Modifier = Modifier, actions: @Composable () -> Unit = {}) {
-    Row(modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 12.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(modifier.barSurface().padding(start = 16.dp, end = 8.dp, top = 12.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(title, Modifier.weight(1f), style = MaterialTheme.typography.headlineMedium)
         actions()
     }

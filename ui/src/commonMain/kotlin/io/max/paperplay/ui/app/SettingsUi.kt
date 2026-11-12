@@ -35,7 +35,7 @@ import androidx.compose.ui.unit.dp
 /** Page title with a back arrow. */
 @Composable
 fun BackTopBar(title: String, onBack: () -> Unit, modifier: Modifier = Modifier, actions: @Composable () -> Unit = {}) {
-    Row(modifier.fillMaxWidth().padding(start = 4.dp, end = 8.dp, top = 12.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(modifier.barSurface().padding(start = 4.dp, end = 8.dp, top = 12.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         IconButton(onBack) { AppIcon(Icons.AutoMirrored.Rounded.ArrowBack, "Back") }
         Text(title, Modifier.weight(1f).padding(start = 4.dp), style = MaterialTheme.typography.headlineMedium, maxLines = 1)
         actions()

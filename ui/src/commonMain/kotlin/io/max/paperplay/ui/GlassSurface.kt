@@ -3,6 +3,7 @@ package io.max.paperplay.ui
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Text
@@ -15,6 +16,9 @@ import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.effects.vibrancy
+
+/** The page background layer that cards and bars blur; null where no layer is provided (alpha fallback). */
+val LocalGlassBackdrop = staticCompositionLocalOf<Backdrop?> { null }
 
 @Composable
 fun GlassSurface(
@@ -34,7 +38,7 @@ fun GlassSurface(
             effects = {
                 vibrancy()
                 blur(blur.toPx())
-                lens(12.dp.toPx(), 24.dp.toPx())
+                if (glassLensSupported()) lens(12.dp.toPx(), 24.dp.toPx())
             },
             onDrawSurface = { drawRect(tint.copy(alpha = if (reduced) 0.88f else tintAlpha)) },
         ),
@@ -43,6 +47,9 @@ fun GlassSurface(
 
 /** True when blur/vibrancy RenderEffects work (Android 12+; always on desktop). Below that the surface is a plain translucent tint. */
 internal expect fun glassEffectsSupported(): Boolean
+
+/** Lens refraction needs Android shaders; desktop gets blur, tint and gradient only. */
+internal expect fun glassLensSupported(): Boolean
 
 @Preview
 @Composable
