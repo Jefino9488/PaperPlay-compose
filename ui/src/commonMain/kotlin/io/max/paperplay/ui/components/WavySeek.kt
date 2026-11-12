@@ -65,7 +65,7 @@ fun WavySeek(
         }
     }
     var phase by remember { mutableFloatStateOf(0f) }
-    val moving = playing && dragging == null
+    val moving = playing && dragging == null && io.max.paperplay.ui.rememberAppForeground()
     val wave by animateFloatAsState(if (moving) 1f else 0f, tween(350))
     LaunchedEffect(moving) {
         if (!moving) return@LaunchedEffect

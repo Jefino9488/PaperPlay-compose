@@ -89,7 +89,7 @@ internal fun CoreBackend.playlistSource(playlistId: String): String? {
 internal suspend fun CoreBackend.refreshPlaylist(playlistId: String): String {
     val link = playlistSource(playlistId) ?: return "This playlist was not imported from a link."
     return try {
-        val r = withContext(Dispatchers.Default) { importPlaylist(importStore(), link, http) }
+        val r = withContext(Dispatchers.Default) { importPlaylist(importStore(), link, http, services.spotify::fetchPlaylist) }
         "${r.name}: ${r.matched} in your library, ${r.missing} not yet."
     } catch (e: Exception) {
         e.message ?: "The refresh failed."
@@ -165,7 +165,21 @@ private fun MissingTrackRow(backend: CoreBackend, store: ImportStore, t: Missing
                 )
             }
         }
-        if (p != null && state == null) TextButton({
+        if (p != null && state == null && backend.pref("index_auto_copy") != "true") IconButton({
+            state = "Adding"
+            scope.launch {
+                val ok = withContext(Dispatchers.Default) {
+                    runCatching {
+                        backend.chatIndex.copyToMain(p)
+                        val song = store.songs().firstOrNull { it.chat_id == p.chatId && it.message_id == p.messageId }
+                        if (song != null) acceptMatch(store, t, song) else reconcileImports(store)
+                    }.isSuccess
+                }
+                state = if (ok) "Added" else null
+                if (ok) onChanged()
+            }
+        }) { AppIcon(Icons.Rounded.Add, "Copy to main chat") }
+        else if (p != null && state == null) TextButton({
             state = "Adding"
             scope.launch {
                 val ok = withContext(Dispatchers.Default) {

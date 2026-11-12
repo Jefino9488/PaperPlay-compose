@@ -104,7 +104,7 @@ class LibraryRepository(val repo: LibraryRepo, private val clock: () -> Long) {
         val rows = lists.playlistCoverRows().executeAsList().groupBy { it.playlist_id }
         lists.livePlaylists().executeAsList().map { p ->
             val r = rows[p.id].orEmpty()
-            PlaylistSummary(p.id, p.uuid, p.name, r.size, r.mapNotNull { it.cover_path ?: it.cover_url }.distinct().take(4))
+            PlaylistSummary(p.id, p.uuid, p.name, r.size, r.mapNotNull { it.cover_path }.distinct().take(4))
         }
     }
 
@@ -171,6 +171,13 @@ class LibraryRepository(val repo: LibraryRepo, private val clock: () -> Long) {
         val fresh = songs.song(s.chat_id, s.message_id).executeAsOneOrNull() ?: return@write
         songs.setFavorite(!fresh.favorite, clock(), s.chat_id, s.message_id)
     }
+
+    /** Marks songs as kept on this device (or not). */
+    fun setPinned(uniqueIds: Collection<String>, pinned: Boolean) = write {
+        uniqueIds.forEach { songs.setPinnedById(pinned, it) }
+    }
+
+    fun incompletePins(): List<Song> = songs.incompletePins().executeAsList()
 
     /** Stores [ms] listened to [s] today and, when [finished] is not null, counts a play (true) or skip (false). */
     fun recordListen(s: Song, ms: Long, finished: Boolean?, notify: Boolean = true) = write(soft = true, notify = notify) {

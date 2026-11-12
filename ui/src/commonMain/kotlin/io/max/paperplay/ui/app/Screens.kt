@@ -81,11 +81,13 @@ import androidx.compose.runtime.snapshotFlow
 sealed interface Detail {
     val title: String
 
-    data class Album(val name: String) : Detail { override val title get() = name }
+    data class Album(val name: String, val artist: String? = null) : Detail { override val title get() = name }
     data class Artist(val name: String) : Detail { override val title get() = name }
     data class Playlist(val id: String, val name: String) : Detail { override val title get() = name }
     /** A fixed list: a mix, a generated tile or a genre. */
     data class Songs(override val title: String, val songs: List<SongUi>) : Detail
+    /** A daily mix; songs can be marked as not fitting [moodId]. */
+    data class Mix(override val title: String, val moodId: String, val songs: List<SongUi>) : Detail
 }
 
 // ---- Setup ---------------------------------------------------------------------------------------------
@@ -168,7 +170,7 @@ fun LibraryScreen(
                 is Load.Error -> Text(s.message, Modifier.padding(24.dp), color = MaterialTheme.colorScheme.error)
                 is Load.Ready -> SongList(s.value, currentId, actions, Modifier.fillMaxSize(), bottomPadding, empty = "No songs yet. Add a chat in Settings.")
             }
-            1 -> GroupGrid(lib.albums, bottomPadding, "No albums yet.") { onOpen(Detail.Album(it.name)) }
+            1 -> GroupGrid(lib.albums, bottomPadding, "No albums yet.") { onOpen(Detail.Album(it.name, it.owner)) }
             2 -> GroupList(lib.artists, bottomPadding, "No artists yet.", circle = true) { onOpen(Detail.Artist(it.name)) }
             3 -> PlaylistsTab(lib.playlists, favorites, recents, bottomPadding, onOpen, onNewPlaylist, onImportSpotify)
             else -> SongList(favorites, currentId, actions, Modifier.fillMaxSize(), bottomPadding, empty = "No favorites yet.")
@@ -221,10 +223,11 @@ fun DetailScreen(
 ) {
     val flow = remember(detail) {
         when (detail) {
-            is Detail.Album -> backend.album(detail.name)
+            is Detail.Album -> backend.album(detail.name, detail.artist)
             is Detail.Artist -> backend.artist(detail.name)
             is Detail.Playlist -> backend.playlist(detail.id.toLongOrNull() ?: -1)
             is Detail.Songs -> flowOf(detail.songs)
+            is Detail.Mix -> flowOf(detail.songs)
         }
     }
     val rawSongs by flow.collectAsState(emptyList())
@@ -236,17 +239,20 @@ fun DetailScreen(
     var refreshing by remember(detail) { mutableStateOf(false) }
     var bump by remember(detail) { mutableStateOf(0) }
     val scope = rememberCoroutineScope()
-    val songs = remember(rawSongs, sort) { sort.apply(rawSongs) }
+    var rejected by remember(detail) { mutableStateOf(emptySet<String>()) }
+    val songs = remember(rawSongs, sort, rejected) { sort.apply(rawSongs).filter { it.id !in rejected } }
     val store = remember(backend) { backend.importStore() }
     val source = remember(detail) { if (detail is Detail.Playlist) backend.playlistSource(detail.id) else null }
     val missing by androidx.compose.runtime.produceState(emptyList<io.max.paperplay.core.library.MissingTrack>(), detail, bump, refreshing) {
         if (detail !is Detail.Playlist) return@produceState
         backend.services.library.changes.collect { value = detail.id.toLongOrNull()?.let { store.missing(it) }.orEmpty() }
     }
-    Column(modifier) {
+    val mixSnack = remember { androidx.compose.material3.SnackbarHostState() }
+    Box(modifier) {
+    Column(Modifier.fillMaxSize()) {
         BackTopBar(name, onBack) {
             if (detail is Detail.Playlist) {
-                IconButton({ actions.notice("Pinning a playlist for offline is not built yet.") }) { AppIcon(Icons.Rounded.PushPin, "Pin for offline") }
+                IconButton({ actions.notice(if (backend.togglePinAll(rawSongs.map { it.id })) "Keeping this playlist on this device" else "Playlist no longer kept on this device") }) { AppIcon(Icons.Rounded.PushPin, "Pin for offline") }
                 Box {
                     IconButton({ sortMenu = true }) { AppIcon(Icons.AutoMirrored.Rounded.Sort, "Sort") }
                     DropdownMenu(sortMenu, { sortMenu = false }) {
@@ -274,8 +280,24 @@ fun DetailScreen(
                 DetailHero(detail, name, songs)
                 if (missing.isNotEmpty()) MissingRow(missing.size) { missingSheet = true }
             },
-            onRemove = if (detail is Detail.Playlist) { s -> backend.removeFromPlaylist(detail.id, s.id) } else null,
+            onRemove = when (detail) {
+                is Detail.Playlist -> { s -> backend.removeFromPlaylist(detail.id, s.id) }
+                is Detail.Mix -> { s ->
+                    rejected = rejected + s.id
+                    backend.rejectFromMix(s, detail.moodId)
+                    scope.launch {
+                        val r = mixSnack.showSnackbar("Removed from ${detail.title}.", "Undo")
+                        if (r == androidx.compose.material3.SnackbarResult.ActionPerformed) {
+                            rejected = rejected - s.id
+                            backend.undoRejectFromMix(s, detail.moodId)
+                        }
+                    }
+                }
+                else -> null
+            },
         )
+    }
+    androidx.compose.material3.SnackbarHost(mixSnack, Modifier.align(Alignment.BottomCenter).padding(bottom = bottomPadding))
     }
     if (missingSheet && missing.isNotEmpty()) MissingSheet(backend, store, missing, name, { missingSheet = false }) { bump++ }
     if (detail is Detail.Playlist) {
@@ -308,7 +330,7 @@ private fun DetailHero(detail: Detail, title: String, songs: List<SongUi>) {
         is Detail.Album -> "Album"
         is Detail.Artist -> "Artist"
         is Detail.Playlist -> "Playlist"
-        is Detail.Songs -> "Collection"
+        is Detail.Songs, is Detail.Mix -> "Collection"
     }
     val extra = when (detail) {
         is Detail.Album -> listOfNotNull(

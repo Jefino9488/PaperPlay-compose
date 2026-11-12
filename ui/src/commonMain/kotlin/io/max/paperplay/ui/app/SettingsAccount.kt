@@ -34,14 +34,16 @@ import kotlinx.coroutines.launch
 
 /** Settings > Telegram > Your account. Logs in as yourself, so chats and channels can be read and copied from. */
 @Composable
-internal fun AccountPage(backend: CoreBackend, onLogOut: () -> Unit) {
+internal fun AccountPage(backend: CoreBackend, onOpenIndex: () -> Unit, onLogOut: () -> Unit) {
     val account = backend.account
     val step by account.step.collectAsState()
+    val indexed by backend.chatIndex.indexedChats.collectAsState()
     AccountContent(
         step, onLogOut,
         onBegin = { account.begin() }, onBeginQr = { account.beginQr() },
         onPhone = { account.phone(it) }, onCode = { account.code(it) }, onPassword = { account.password(it) },
         onRestore = { runCatching { backend.services.indexCloud.restore() }.getOrDefault(false) },
+        indexedChats = indexed.size, onOpenIndex = onOpenIndex,
     )
 }
 
@@ -55,6 +57,8 @@ internal fun AccountContent(
     onCode: suspend (String) -> Unit,
     onPassword: suspend (String) -> Unit,
     onRestore: suspend () -> Boolean,
+    indexedChats: Int = 0,
+    onOpenIndex: () -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
     var input by remember(step) { mutableStateOf("") }
@@ -100,6 +104,15 @@ internal fun AccountContent(
                 }
                 SettingsRow("Logged in", icon = Icons.Rounded.Person, subtitle = "Your chats and channels are available")
                 restored?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                NavRow(
+                    "Chats and channels",
+                    if (indexedChats == 0) "Nothing indexed yet. Pick chats to find songs in" else "$indexedChats chats indexed. Add more or copy songs to the main chat",
+                    Icons.Rounded.Forum, onOpenIndex,
+                )
+                Text(
+                    "Your account is only used to read chats the bot is not in and to copy songs into your main chat.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 OutlinedButton(onLogOut) { Text("Log out") }
             }
             is LoginStep.Failed -> {
@@ -163,4 +176,10 @@ private fun AccountDesktopPreview() {
     io.max.paperplay.ui.theme.PaperPlayTheme {
         Column(Modifier.size(1024.dp, 500.dp)) { AccountContent(LoginStep.Phone, {}, {}, {}, {}, {}, {}, { false }) }
     }
+}
+
+@org.jetbrains.compose.ui.tooling.preview.Preview(name = "Account logged in", widthDp = 390, heightDp = 500, showBackground = true)
+@Composable
+private fun AccountLoggedInPreview() = io.max.paperplay.ui.PreviewFrame {
+    Column { AccountContent(LoginStep.Ready, {}, {}, {}, {}, {}, {}, { false }, indexedChats = 3) }
 }

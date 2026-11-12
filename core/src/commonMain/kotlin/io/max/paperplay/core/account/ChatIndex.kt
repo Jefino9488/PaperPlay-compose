@@ -266,8 +266,79 @@ class IndexCloud(private val account: AccountApi, private val index: ChatIndexAp
                 put(IndexPrefs.AUTO, library.pref(IndexPrefs.AUTO) ?: "false")
                 put(IndexPrefs.AUTO_COPY, library.pref(IndexPrefs.AUTO_COPY) ?: "false")
             })
+            put("version", 2)
+            put("user", userData())
         }.toString()
         account.saveToCloud(tag, "paperplay-index.json", body.encodeToByteArray())
+    }
+
+    /** Favorites, listening counts, edited tags, pins and playlists, keyed by unique_id. */
+    private fun userData(): JsonObject {
+        val q = library.repo.db
+        val rows = q.songsQueries.allSongs().executeAsList()
+        return buildJsonObject {
+            put("songs", buildJsonArray {
+                for (s in rows) {
+                    if (!(s.favorite || s.plays > 0 || s.skips > 0 || s.last_played_at != null || s.user_edited || s.pinned)) continue
+                    add(buildJsonObject {
+                        put("id", s.unique_id); put("fav", s.favorite); put("favAt", s.favorite_at); put("plays", s.plays); put("skips", s.skips)
+                        s.last_played_at?.let { put("last", it) }
+                        put("pinned", s.pinned); put("edited", s.user_edited)
+                        if (s.user_edited) {
+                            put("title", s.title); put("artist", s.artist); put("album", s.album)
+                            s.genre?.let { put("genre", it) }; s.year?.let { put("year", it) }
+                        }
+                    })
+                }
+            })
+            put("playlists", buildJsonArray {
+                for (p in q.playlistsQueries.livePlaylists().executeAsList()) add(buildJsonObject {
+                    put("name", p.name)
+                    put("songs", buildJsonArray {
+                        for (s in q.playlistsQueries.playlistSongs(p.id).executeAsList()) add(JsonPrimitive(s.unique_id))
+                    })
+                })
+            })
+        }
+    }
+
+    /** Merges saved user data into matching songs: newer favorite wins, counts and last play take the larger value. */
+    private fun applyUserData(user: JsonObject) {
+        val q = library.repo.db
+        val local = q.songsQueries.allSongs().executeAsList().associateBy { it.unique_id }
+        val changed = ArrayList<Song>()
+        for (e in user["songs"] as? JsonArray ?: JsonArray(emptyList())) {
+            val o = e as? JsonObject ?: continue
+            val s = local[(o["id"] as? JsonPrimitive)?.contentOrNull] ?: continue
+            fun l(k: String) = (o[k] as? JsonPrimitive)?.longOrNull
+            fun b(k: String) = (o[k] as? JsonPrimitive)?.contentOrNull == "true"
+            fun t(k: String) = (o[k] as? JsonPrimitive)?.contentOrNull
+            var n = s
+            val favAt = l("favAt") ?: 0L
+            if (favAt > s.favorite_at) n = n.copy(favorite = b("fav"), favorite_at = favAt)
+            n = n.copy(
+                plays = maxOf(n.plays, l("plays") ?: 0L), skips = maxOf(n.skips, l("skips") ?: 0L),
+                last_played_at = listOfNotNull(n.last_played_at, l("last")).maxOrNull(), pinned = n.pinned || b("pinned"),
+            )
+            if (b("edited") && !s.user_edited) {
+                n = n.copy(
+                    user_edited = true, title = t("title") ?: n.title, artist = t("artist") ?: n.artist, album = t("album") ?: n.album,
+                    genre = t("genre") ?: n.genre, year = l("year") ?: n.year, tags_at = maxOf(n.tags_at, 1L),
+                )
+            }
+            if (n != s) changed += n
+        }
+        if (changed.isNotEmpty()) library.replaceSongs(changed)
+        val have = q.playlistsQueries.livePlaylists().executeAsList().map { it.name }.toSet()
+        for (e in user["playlists"] as? JsonArray ?: JsonArray(emptyList())) {
+            val o = e as? JsonObject ?: continue
+            val name = (o["name"] as? JsonPrimitive)?.contentOrNull ?: continue
+            if (name in have) continue
+            val members = (o["songs"] as? JsonArray).orEmpty().mapNotNull { local[(it as? JsonPrimitive)?.contentOrNull] }
+            if (members.isEmpty()) continue
+            val id = library.createPlaylist(name)
+            members.forEach { library.addToPlaylist(id, it) }
+        }
     }
 
     /** True when a snapshot was found and merged. */
@@ -279,6 +350,13 @@ class IndexCloud(private val account: AccountApi, private val index: ChatIndexAp
         (root["prefs"] as? JsonObject)?.forEach { (k, v) ->
             if (k == IndexPrefs.AUTO || k == IndexPrefs.AUTO_COPY) (v as? JsonPrimitive)?.contentOrNull?.let { library.setPref(k, it) }
         }
+        (root["user"] as? JsonObject)?.let { runCatching { applyUserData(it) } }
         return true
+    }
+
+    /** Restores once after the first login on this install; failures are ignored and tried again next start. */
+    suspend fun restoreOnce() {
+        if (library.pref("cloud_restored") == "1") return
+        runCatching { restore(); library.setPref("cloud_restored", "1") }
     }
 }

@@ -95,55 +95,6 @@ internal fun ConnectionPage(conn: ConnectionUi, backend: CoreBackend) {
     if (!conn.ready) Column(Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) { OutlinedButton(backend::connect) { Text("Reconnect") } }
 }
 
-/** Settings > Telegram > Bot activity. */
-@Composable
-internal fun LogPage(backend: CoreBackend) {
-    val lines by backend.log.collectAsState()
-    LogBody(lines, backend::clearLog)
-}
-
-@Composable
-internal fun LogBody(lines: List<LogLine>, onClearLog: () -> Unit) {
-    val env = io.max.paperplay.ui.LocalAppEnv.current
-    var crash by remember { mutableStateOf(env?.lastCrash?.invoke()) }
-    Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        crash?.let { text ->
-            Text("The app crashed last time", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.error)
-            Text(text, style = MaterialTheme.typography.bodySmall)
-            OutlinedButton({ env?.clearCrash?.invoke(); crash = null }) { Text("Clear crash") }
-        }
-        OutlinedButton(onClearLog, enabled = lines.isNotEmpty()) { Text("Clear") }
-        if (lines.isEmpty()) Text("Nothing yet. Connecting, scanning and problems show here.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        lines.asReversed().take(300).forEach { l ->
-            Text(
-                "${clock(l.at)}  ${l.source}  ${l.message}",
-                style = MaterialTheme.typography.bodySmall,
-                color = if (l.error) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
-            )
-        }
-    }
-}
-
-private fun clock(ms: Long): String {
-    val s = (ms / 1000).mod(86_400L)
-    fun two(n: Long) = n.toString().padStart(2, '0')
-    return "${two(s / 3600)}:${two(s / 60 % 60)}:${two(s % 60)}"
-}
-
-@org.jetbrains.compose.ui.tooling.preview.Preview
-@Composable
-private fun LogBodyPreview() {
-    io.max.paperplay.ui.theme.PaperPlayTheme {
-        LogBody(
-            listOf(
-                LogLine(3_600_000, "Telegram", "Connected"),
-                LogLine(3_660_000, "Scan", "Chat not found", error = true),
-            ),
-            {},
-        )
-    }
-}
-
 @org.jetbrains.compose.ui.tooling.preview.Preview
 @Composable
 private fun ConnectionPagePhonePreview() {

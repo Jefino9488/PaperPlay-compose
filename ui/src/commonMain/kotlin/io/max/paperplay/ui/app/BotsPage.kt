@@ -2,13 +2,20 @@ package io.max.paperplay.ui.app
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Key
+import androidx.compose.material.icons.rounded.SmartToy
 import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -31,36 +38,105 @@ private fun status(b: PoolBot, now: Long): String {
     return "$base. Sent ${b.sent}, limited ${b.floods} times$flood"
 }
 
-/** Settings > Extra bots. More bots share the uploading; each must be an admin of the chat. */
+/**
+ * Settings > Telegram > Bots. The main bot's credentials and the extra bots that share uploads, in one place.
+ * Each bot must be an admin of the chat it posts to.
+ */
 @Composable
 internal fun BotsPage(backend: CoreBackend) {
     val pool = backend.services.botPool
     val bots by pool.bots.collectAsState()
     val main by pool.mainBot.collectAsState()
+    var now by remember { mutableStateOf(Clock.System.now().toEpochMilliseconds()) }
+    LaunchedEffect(Unit) { pool.load(); while (true) { delay(1000); now = Clock.System.now().toEpochMilliseconds() } }
     val scope = rememberCoroutineScope()
+    BotsContent(
+        mainStatus = status(main, now), bots = bots.map { it to status(it, now) },
+        onSaveCredentials = backend::saveCredentials,
+        onAddBot = { token -> pool.add(token) },
+        onRemove = { id -> scope.launch { pool.remove(id) } },
+    )
+}
+
+@Composable
+internal fun BotsContent(
+    mainStatus: String,
+    bots: List<Pair<PoolBot, String>>,
+    onSaveCredentials: (apiId: String, apiHash: String, token: String) -> String?,
+    onAddBot: suspend (token: String) -> String?,
+    onRemove: (Long) -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    var editMain by remember { mutableStateOf(false) }
+    var adding by remember { mutableStateOf(false) }
     var token by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
-    var now by remember { mutableStateOf(Clock.System.now().toEpochMilliseconds()) }
-    LaunchedEffect(Unit) { pool.load(); while (true) { delay(1000); now = Clock.System.now().toEpochMilliseconds() } }
-    Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(
-            "Extra bots share the uploading so it goes faster. Make each one an admin of your library chats.",
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        OutlinedTextField(token, { token = it }, Modifier.fillMaxWidth(), label = { Text("Bot token from BotFather") }, singleLine = true)
-        Button({
-            busy = true
-            scope.launch { message = pool.add(token) ?: "Added".also { token = "" }; busy = false }
-        }, enabled = token.isNotBlank() && !busy) { Text(if (busy) "Checking" else "Add bot") }
-        message?.let { Text(it) }
+
+    SectionLabel("Main bot")
+    SettingsRow("Main bot", icon = Icons.Rounded.Key, subtitle = mainStatus) {
+        TextButton({ editMain = !editMain }) { Text(if (editMain) "Close" else "Edit") }
     }
-    SectionLabel("Bots")
-    SettingsRow("Main bot", subtitle = status(main, now))
-    for (b in bots) {
-        SettingsRow(b.username ?: "Bot ${b.id}", subtitle = status(b, now)) {
-            OutlinedButton({ scope.launch { pool.remove(b.id) } }) { Text("Remove") }
+    if (editMain) {
+        Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("API id, API hash and bot token. Saving reconnects the bot.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            CredentialsForm(onSaveCredentials, { editMain = false })
         }
     }
-    if (bots.isEmpty()) Text("No extra bots yet.", Modifier.padding(20.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+    SectionLabel("Extra bots")
+    Text(
+        "Extra bots share the uploading so it goes faster. Make each one an admin of your library chats.",
+        Modifier.padding(horizontal = 20.dp), color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    for ((b, text) in bots) {
+        SettingsRow(b.username ?: "Bot ${b.id}", icon = Icons.Rounded.SmartToy, subtitle = text) {
+            OutlinedButton({ onRemove(b.id) }) { Text("Remove") }
+        }
+    }
+    if (bots.isEmpty()) Text("No extra bots yet.", Modifier.padding(horizontal = 20.dp, vertical = 8.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+    if (adding) {
+        Column(Modifier.padding(horizontal = 20.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedTextField(token, { token = it }, Modifier.fillMaxWidth(), label = { Text("Bot token from BotFather") }, singleLine = true)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button({
+                    busy = true
+                    scope.launch {
+                        val error = onAddBot(token.trim())
+                        message = error ?: "Added"
+                        if (error == null) { token = ""; adding = false }
+                        busy = false
+                    }
+                }, enabled = token.isNotBlank() && !busy) { Text(if (busy) "Checking" else "Add") }
+                OutlinedButton({ adding = false; token = ""; message = null }) { Text("Cancel") }
+            }
+        }
+    } else {
+        OutlinedButton({ adding = true; message = null }, Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
+            Icon(Icons.Rounded.Add, null, Modifier.padding(end = 8.dp))
+            Text("Add bot")
+        }
+    }
+    message?.let { Text(it, Modifier.padding(horizontal = 20.dp)) }
+}
+
+@org.jetbrains.compose.ui.tooling.preview.Preview(name = "Bots", widthDp = 390, heightDp = 800, showBackground = true)
+@Composable
+private fun BotsPreview() = io.max.paperplay.ui.PreviewFrame {
+    Column {
+        BotsContent(
+            mainStatus = "Working. Sent 120, limited 2 times",
+            bots = listOf(
+                PoolBot(1, "uploader_one_bot", "working", sent = 40, floods = 1) to "Working. Sent 40, limited 1 times",
+                PoolBot(2, "uploader_two_bot", "error", error = "Not an admin of the chat") to "Not an admin of the chat. Sent 0, limited 0 times",
+            ),
+            onSaveCredentials = { _, _, _ -> null }, onAddBot = { null }, onRemove = {},
+        )
+    }
+}
+
+@org.jetbrains.compose.ui.tooling.preview.Preview(name = "Bots empty", widthDp = 390, heightDp = 500, showBackground = true)
+@Composable
+private fun BotsEmptyPreview() = io.max.paperplay.ui.PreviewFrame {
+    Column { BotsContent("Working. Sent 0, limited 0 times", emptyList(), { _, _, _ -> null }, { null }, {}) }
 }

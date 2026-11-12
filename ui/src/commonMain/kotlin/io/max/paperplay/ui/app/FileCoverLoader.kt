@@ -18,7 +18,7 @@ import kotlinx.coroutines.async
 
 /**
  * Covers are image files on disk (restored from a backup or saved by the scanner). They are decoded off the main thread,
- * at most three at a time, once per (file, size), and kept in a small least-recently-used cache.
+ * at most six at a time, once per (file, size), and kept in a small least-recently-used cache.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class FileCoverLoader(private val limit: Int = 200) : CoverLoader {
@@ -27,7 +27,7 @@ class FileCoverLoader(private val limit: Int = 200) : CoverLoader {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, ImageBitmap>?) = size > limit
     }
     private val inFlight = HashMap<String, Deferred<ImageBitmap?>>()
-    private val decoder = CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(3))
+    private val decoder = CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(6))
 
     @Composable
     override fun painter(uri: String, maxSide: Int): Painter? {

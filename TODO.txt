@@ -22,6 +22,16 @@ App and look
     top bars with blur and tint, desktop glass is blur, tint and gradient only
 [x] Dark Windows title bar that follows the app colours (needs a PC rebuild to see)
 [x] Windows icon with all sizes (needs a PC rebuild and an icon cache refresh)
+[x] Desktop icon recoloured: blue square now transparent, purple badge now blue (icon.png, app.ico, tray.ico; needs a PC rebuild and an icon cache refresh)
+[x] Desktop media keys (play/pause, next, previous, stop) work globally; app id io.max.paperplay (WindowsMedia.kt, needs a PC check)
+[ ] Windows now playing overlay and lock screen controls (needs WinRT media session)
+[x] Home no longer flashes "No songs yet" while the library loads after a force close (needs a phone check)
+[x] Storage page shows used cache and pinned size; Profile has more space at the bottom (needs a phone check)
+[ ] Settings entry in the phone side menu (asked; phone has no side menu, desktop sidebar already has Settings)
+[x] Settings > Repair library: one button reads every chat again (adds missed songs, drops removed ones), starts info and cover lookups, shows counts; links to Duplicates, Sort General and Song info left, which still need a yes (RepairPage.kt, not tried on a device)
+[ ] Repair: also read embedded tags from cached files, run lyrics after lookups, and retry the bot-posted songs it cannot see
+[x] Settings > Telegram: Bot credentials and Extra bots merged into one Bots page (main bot Edit, Add bot opens a token box); Channels page redone with status card, Add channel / Scan now buttons and cards; Your account page shows indexed chats and a link to Chats and channels; Activity log (was Bot activity) has search, source and problems filters, copy, save to file, save crash log, clear, up to 3000 lines (not tried on a device)
+[ ] Activity log: keep lines across restarts, add warning level, log more sources (playback, sound, sync, covers) like the Flutter app
 [x] Android Studio previews with fake data: PreviewSupport.kt, full player, queue,
     now playing panel, lyrics and sleep dialogs, search, settings list, desktop
     player bar (1280, 900 dark, idle), plus many small pieces (not checked in the IDE by me)
@@ -30,7 +40,7 @@ App and look
 [x] Desktop player bar: Fullscreen icon, smaller volume thumb
 [ ] Previews for pages that still take CoreBackend: bots, sort, uploads, Spotify,
     tag dialogs, index, detail, setup, main shell (split into stateless content or a small interface)
-[ ] Desktop Back (mouse back button) does not use the history stack
+[x] Desktop mouse back button and sidebar, detail, settings and tasks use the same history stack (needs a PC check)
 
 Playback
 [x] Android (Media3) and desktop (bundled libvlc, no VLC install needed)
@@ -61,6 +71,9 @@ Playlists and Spotify
 [x] Quality, bitrate and size on song rows
 [x] Song menu: Open in Telegram, Song info, Find metadata, Edit tags, Change cover
 [x] Library Playlists tab (Favorites, Recently played, New playlist, Import)
+[x] Plus button on a not-added track copies the indexed match to the main chat (when auto copy is off)
+[x] Spotify added dates kept; playlist "Date added" sort uses them; manual refresh uses the Spotify login
+[x] Cloud save in Saved Messages also holds favorites, plays, skips, pinned, edited tags, playlists; restored once after login, saved on logout
 [x] Spotify login with my own client id (PKCE), reads whole playlists
     - redirect to register: paperplay://spotify (phone), http://127.0.0.1:8888/callback (desktop)
 
@@ -107,11 +120,8 @@ Header, status toast, lyrics (12 Nov, compiles; not checked on screen)
 [x] Desktop player bar right side: same size icons, thin volume slider
 [x] Settings item in the desktop sidebar
 [x] Album page header says "Various artists" when songs differ
-[ ] Albums are grouped by album name only, so a wrong tag merges songs from
-    different artists (e.g. Now That's What WE Call Music! (25)); decide on
-    splitting by artist or fixing the tag
-[ ] Proper DesktopShell preview (PlayerBar needs a backend, so the existing
-    PlayerBarPreview can't really render)
+[x] Albums with the same name are split by artist unless one artist has 60% of the songs or 4+ artists share it (compilation); core splitAlbum with tests (needs a phone check)
+[x] Desktop player bar previews render with fake controls (1280, 900 dark, idle)
 
 Other
 [x] Task centre page (running tasks, history, clear)
@@ -131,12 +141,12 @@ HALF DONE, FINISH THESE
 [~] PC app still the old build: new icon, dark title bar and one shuffle button
     only show after the PC image is built and installed
 [~] Baseline profile is handwritten, not recorded on a phone
-[~] Seek bar wave doesn't pause when the app is in the background
+[x] Seek bar wave stops drawing when the Android app is in the background (rememberAppForeground; needs a phone check)
 [~] LAN sync: only the merge rules are done (pure core with tests from the Flutter
     sync tests). No hub, pairing, Devices page, queue sync or Android permissions
-[~] Mood scan: code written, but nothing starts it yet
-[~] Mixes: MixPage is written but Home still opens a mix as a normal list
-[~] "Doesn't fit" votes: not passed into the daily mixes, no vote screens
+[x] Mood scan: starts after the first catch-up and metadata run (untested on a device)
+[x] Mixes: Home opens a mix with a remove (does not fit) action
+[x] "Doesn't fit" votes: passed into the daily mixes; no separate vote screens
 [~] Task centre: scan, index and sync tasks have no stop button, history is lost
     when the app closes
 [~] Uploads: queue is lost on restart, not shown in the task centre, no folder
@@ -145,16 +155,15 @@ HALF DONE, FINISH THESE
 [~] Lyrics: Genius and Musixmatch not used (they need keys), lyrics screen is
     still a small dialog, not full screen
 [~] Covers: online cover thumbnails in Change cover may not show
-[~] Embedded tags: very big Ogg covers get cut, ID3 genre numbers like (17)
-    aren't turned into names
+[~] Embedded tags: very big Ogg covers get cut (ID3 genre numbers like (17) now become names)
 [~] Sort General: doesn't check the bot can post and delete first, "song is
     playing" check isn't connected, deletes only go through the bot
 [~] Duplicates: Dart duplicates tests not ported
-[~] Playlist page: Pin for offline only says "not built", Favorites and Recently
+[~] Playlist page: Pin for offline now pins every song (untested on a device), Favorites and Recently
     played open as fixed lists
 [~] Missing info page: no multi select, no "no match found" retry, no save to file
-[~] Offline cache: eviction exists, pinning and cache manager screen don't
-[~] Quality badges: text only, no Hi-Res / Lossless / High badges
+[~] Offline cache: eviction and pinning exist (pinned songs download whole, retried after each connect), cache manager screen doesn't
+[x] Quality badges: format badge plus Hi-Res badge on song rows
 [~] Detail screens: no reorder, no add-songs picker
 [~] Spotify login: if Android kills the app during the browser step the
     login is lost and you start again
@@ -163,8 +172,10 @@ HALF DONE, FINISH THESE
 NOT STARTED
 -----------
 Fix first
-[ ] Android crash after the merge (error text is in Settings > Telegram > Bot activity)
-[ ] Songs missing: 2753 in the app vs about 3269 posts in Telegram
+[ ] Android crash after the merge (error text is in Settings > Telegram > Activity log)
+[x] Songs missing: cause found, the bot cannot see posts another bot made as itself (anonymous admin or forwarding them again fixes new and old posts)
+[x] Rescans never remove songs by themselves any more: songs whose post looks gone are kept and listed in Repair library with a Remove button
+[ ] Make the uploader save the song right after an extra bot sends it, so it does not depend on the main bot seeing it
 [ ] Check everything above on the phone: login, QR, indexing, copying, refresh,
     cloud restore, uploads, lyrics run, duplicates delete
 
@@ -184,9 +195,7 @@ Library
     and Apple links, save CSV; the export functions already exist in core)
 [ ] Library status page (banner of what is running plus tiles: total songs, matched,
     no match, covers, song info left)
-[ ] Pin playlists and songs for offline: groundwork exists (pinned column, eviction
-    skips pinned, streaming downloads pinned songs whole). Still to build: the pin
-    queue, the Pin button and menu wiring, the Cache manager page
+[~] Pin playlists and songs for offline: Pin button and song menu work (account-read songs skipped). Still to build: the Cache manager page, no pause on mobile data
 [ ] One-time repair for songs other bots posted (account downloads, our bot
     re-uploads), and describing the account as optional in onboarding and Settings
 [ ] Topic picker page
@@ -237,7 +246,7 @@ ORDER I'D DO IT IN
 3. Go through the device checks and the crash and missing songs
 4. Finish the half done list (mood, mixes, task stop buttons, upload queue)
 5. Auto filing, export list, library status
-6. Offline pinning, cache manager, quality badges
+6. Cache manager page
 7. Queue editing, speed, loudness
 8. LAN hub, pairing and devices
 9. Desktop tray and shortcuts, then macOS and Linux

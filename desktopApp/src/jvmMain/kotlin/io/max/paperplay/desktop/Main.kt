@@ -65,6 +65,16 @@ fun main() {
             }
         }
     }
+    WindowsMedia.start { key ->
+        val s = liveServices?.takeIf { it.playbackStarted } ?: return@start
+        val p = s.playback
+        when (key) {
+            "playpause" -> if (p.nowPlayingStatic.value.isPlaying) p.pause() else p.play()
+            "next" -> p.next()
+            "previous" -> p.previous()
+            "stop" -> p.pause()
+        }
+    }
     application {
         val dir = File(System.getenv("APPDATA") ?: System.getProperty("user.home"), "PaperPlay")
         val target = desktopRestoreTarget(dir)

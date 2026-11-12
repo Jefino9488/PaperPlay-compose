@@ -181,9 +181,20 @@ private fun id3Text(b: ByteArray, s: Int, e: Int): String {
     return decodeText(enc, b, s + 1, end)
 }
 
-private fun genreOf(raw: String?): String? {
-    val g = raw ?: return null
-    val stripped = g.replace(Regex("^(\\(\\d+\\)|\\(RX\\)|\\(CR\\))+"), "").trim()
+private val ID3_GENRES = ("Blues,Classic Rock,Country,Dance,Disco,Funk,Grunge,Hip-Hop,Jazz,Metal,New Age,Oldies,Other,Pop,R&B,Rap,Reggae,Rock,Techno,Industrial," +
+    "Alternative,Ska,Death Metal,Pranks,Soundtrack,Euro-Techno,Ambient,Trip-Hop,Vocal,Jazz+Funk,Fusion,Trance,Classical,Instrumental,Acid,House,Game,Sound Clip,Gospel,Noise," +
+    "Alternative Rock,Bass,Soul,Punk,Space,Meditative,Instrumental Pop,Instrumental Rock,Ethnic,Gothic,Darkwave,Techno-Industrial,Electronic,Pop-Folk,Eurodance,Dream,Southern Rock,Comedy,Cult,Gangsta," +
+    "Top 40,Christian Rap,Pop/Funk,Jungle,Native American,Cabaret,New Wave,Psychedelic,Rave,Showtunes,Trailer,Lo-Fi,Tribal,Acid Punk,Acid Jazz,Polka,Retro,Musical,Rock & Roll,Hard Rock").split(',')
+
+internal fun genreOf(raw: String?): String? {
+    val g = raw?.trim() ?: return null
+    fun byNumber(n: String) = n.toIntOrNull()?.let { ID3_GENRES.getOrNull(it) }
+    Regex("""^\((\d+)\)""").find(g)?.let { m ->
+        val rest = g.substring(m.value.length).replace(Regex("""^(\(\d+\)|\(RX\)|\(CR\))+"""), "").trim()
+        return rest.ifEmpty { byNumber(m.groupValues[1]) }
+    }
+    byNumber(g)?.let { if (g.all { it.isDigit() }) return it }
+    val stripped = g.replace(Regex("""^(\(RX\)|\(CR\))+"""), "").trim()
     if (stripped.isEmpty() || stripped.all { it.isDigit() }) return null
     return stripped
 }

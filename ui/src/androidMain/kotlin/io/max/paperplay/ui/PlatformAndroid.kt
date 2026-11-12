@@ -4,7 +4,17 @@ import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
 import androidx.activity.BackEventCompat
 import androidx.activity.compose.PredictiveBackHandler
+import android.content.ContextWrapper
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.LifecycleOwner
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import java.io.File
@@ -24,6 +34,20 @@ actual fun PlatformBackHandler(enabled: Boolean, onBack: () -> Unit) {
         }
     }
 }
+
+@Composable
+actual fun rememberAppForeground(): Boolean {
+    val owner = generateSequence(LocalContext.current) { (it as? ContextWrapper)?.baseContext }.filterIsInstance<LifecycleOwner>().firstOrNull()
+    var foreground by remember { mutableStateOf(owner?.lifecycle?.currentState?.isAtLeast(Lifecycle.State.STARTED) ?: true) }
+    DisposableEffect(owner) {
+        val observer = LifecycleEventObserver { _, _ -> foreground = owner?.lifecycle?.currentState?.isAtLeast(Lifecycle.State.STARTED) ?: true }
+        owner?.lifecycle?.addObserver(observer)
+        onDispose { owner?.lifecycle?.removeObserver(observer) }
+    }
+    return foreground
+}
+
+actual fun androidx.compose.ui.Modifier.mouseBackButton(onBack: () -> Unit): androidx.compose.ui.Modifier = this
 
 actual fun decodeImageFile(path: String, maxSide: Int): ImageBitmap? = runCatching {
     if (path.startsWith("http://") || path.startsWith("https://")) {
@@ -73,6 +97,10 @@ actual fun decodeImageFile(path: String, maxSide: Int): ImageBitmap? = runCatchi
     while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= maxSide) sample *= 2
     BitmapFactory.decodeFile(path, BitmapFactory.Options().apply { inSampleSize = sample })?.asImageBitmap()
 }.getOrNull()
+
+actual fun localTimeLabel(epochMs: Long): String =
+    java.time.LocalDateTime.ofInstant(java.time.Instant.ofEpochMilli(epochMs), java.time.ZoneId.systemDefault())
+        .format(java.time.format.DateTimeFormatter.ofPattern("dd/MM HH:mm:ss"))
 
 actual fun currentHour(): Int = java.time.LocalTime.now().hour
 

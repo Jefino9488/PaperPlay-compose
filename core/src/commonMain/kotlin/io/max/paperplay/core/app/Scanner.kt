@@ -221,11 +221,29 @@ class Scanner(
         for (chat in repo.chatList()) scanChat(chat)
     }
 
-    /** Rescans from scratch and drops songs whose message no longer exists. */
-    suspend fun rescanChat(chat: LibraryChat): Boolean {
+    private val _gone = MutableStateFlow<List<Song>>(emptyList())
+
+    /**
+     * Songs a full read did not see and Telegram said are not there. A bot cannot see posts another bot made as itself,
+     * so "not found" can be wrong; these are kept until the owner confirms with [removeGone].
+     */
+    val gone: StateFlow<List<Song>> = _gone
+
+    /** Removes the songs in [gone] from the library (not from Telegram). */
+    fun removeGone() {
+        for (s in _gone.value) repo.removePost(s.chat_id, s.message_id)
+        _gone.value = emptyList()
+    }
+
+    /**
+     * Rescans from scratch. Songs whose message looks gone are listed in [gone] and kept; with [prune] they are removed
+     * at once, which is only safe when no other bot posts in the chat.
+     */
+    suspend fun rescanChat(chat: LibraryChat, prune: Boolean = false): Boolean {
         // A failed scan saw only part of the chat, so it proves nothing was deleted.
         val seen = scanChat(chat, full = true) ?: return false
         val client = td ?: return false
+        val missing = mutableListOf<Song>()
         for (s in repo.songsInChat(chat.id)) {
             if (s.message_id in seen || s.remote_id == ACCOUNT_REMOTE) continue
             // The read can come back empty for a post that exists, so each one is asked for by itself. Only
@@ -233,12 +251,14 @@ class Scanner(
             try {
                 val m = client.call(request("getMessage") { put("chat_id", s.chat_id); put("message_id", s.message_id) })
                 val song = songFromMessage(m)
-                if (song == null) repo.removePost(s.chat_id, s.message_id) else repo.upsertBotSong(song)
+                if (song == null) missing += s else repo.upsertBotSong(song)
             } catch (e: TdError) {
-                if (e.code == 404 || e.message.contains("not found", ignoreCase = true)) repo.removePost(s.chat_id, s.message_id)
+                if (e.code == 404 || e.message.contains("not found", ignoreCase = true)) missing += s
                 else return false
             }
         }
+        if (prune) for (s in missing) repo.removePost(s.chat_id, s.message_id)
+        else _gone.value = _gone.value.filter { it.chat_id != chat.id } + missing
         return true
     }
 

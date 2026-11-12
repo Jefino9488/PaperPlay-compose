@@ -101,6 +101,7 @@ fun SongRow(
                     if (song.pinned) Badge("Pinned")
                     else if (song.offline) Badge("Offline")
                     song.qualityLabel?.substringBefore(' ')?.takeIf { it.isNotBlank() }?.let { Badge(it) }
+                    if (isHiRes(song)) Badge("Hi-Res")
                     Text(
                         text = song.artist,
                         maxLines = 1,
@@ -138,6 +139,13 @@ fun SongRow(
             if (actions != null) SongMenu(song, actions) else Box(Modifier.size(8.dp))
         }
     }
+}
+
+/** Lossless with more than 16 bits or a rate above 48 kHz, read from labels like "FLAC 24/96". */
+private fun isHiRes(song: SongUi): Boolean {
+    if (!song.lossless) return false
+    val m = Regex("""(\d+)/([\d.]+)""").find(song.qualityLabel.orEmpty()) ?: return false
+    return m.groupValues[1].toInt() > 16 || (m.groupValues[2].toDoubleOrNull() ?: 0.0) > 48
 }
 
 @Composable

@@ -102,7 +102,8 @@ data class LibraryUi(
 )
 
 /** An album, artist or playlist entry. [coverUris] feed the mosaic. */
-data class GroupUi(val id: String, val name: String, val subtitle: String = "", val coverUris: List<String?> = emptyList())
+/** [owner] is set for an album split off by artist; see core splitAlbum. */
+data class GroupUi(val id: String, val name: String, val subtitle: String = "", val coverUris: List<String?> = emptyList(), val owner: String? = null)
 
 enum class TaskStatus { Running, Queued, Done, Failed }
 

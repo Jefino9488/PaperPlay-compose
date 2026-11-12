@@ -1,4 +1,4 @@
-package io.max.paperplay.ui.app
+﻿package io.max.paperplay.ui.app
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -53,13 +53,14 @@ import io.max.paperplay.ui.PlatformBackHandler
 import io.max.paperplay.ui.components.LocalCoverLoader
 import io.max.paperplay.ui.components.LocalOnMissingCover
 import io.max.paperplay.ui.isPhone
+import io.max.paperplay.ui.mouseBackButton
 import io.max.paperplay.ui.state.Load
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 
 private data class NavSnapshot(
     val tab: Int, val libraryTab: Int?, val profilePage: String?, val detail: Detail?,
-    val settings: Boolean, val settingsStack: List<String>, val settingsDeep: Boolean,
+    val settings: Boolean, val settingsStack: List<String>, val settingsDeep: Boolean, val page: String,
 )
 
 @Composable
@@ -90,7 +91,7 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
     var showPlayer by remember { mutableStateOf(false) }
     // Where the phone came from, so Back returns there instead of jumping to Home or Settings.
     val history = remember { mutableStateListOf<NavSnapshot>() }
-    fun snapshot() = NavSnapshot(tab, libraryTab, profilePage, detail, settings, settingsStack.toList(), settingsDeep)
+    fun snapshot() = NavSnapshot(tab, libraryTab, profilePage, detail, settings, settingsStack.toList(), settingsDeep, page)
     fun navigate(change: () -> Unit) {
         val before = snapshot()
         change()
@@ -103,13 +104,20 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
         val to = history.removeLastOrNull()
         if (to != null) {
             tab = to.tab; libraryTab = to.libraryTab; profilePage = to.profilePage; detail = to.detail
-            settings = to.settings; settingsDeep = to.settingsDeep
+            settings = to.settings; settingsDeep = to.settingsDeep; page = to.page
             settingsStack.clear(); settingsStack.addAll(to.settingsStack)
         } else when {
             settings -> { settings = false; settingsStack.clear() }
             detail != null -> detail = null
             profilePage != null -> profilePage = null
-            else -> tab = 0
+            else -> { tab = 0; page = "home" }
+        }
+    }
+    fun handleBack() {
+        when {
+            showPlayer -> showPlayer = false
+            settings && settingsStack.size > (if (settingsDeep || !isPhone) 1 else 0) -> settingsStack.removeAt(settingsStack.lastIndex)
+            else -> goBack()
         }
     }
     var pickFor by remember { mutableStateOf<Set<String>?>(null) }
@@ -134,6 +142,7 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
             addToPlaylist = { pickFor = it },
             notice = { scope.launch { snack.showSnackbar(it) } },
             playNext = { s -> backend.playNext(s); scope.launch { snack.showSnackbar("Plays next") } },
+            setPinned = { s, p -> backend.setPinned(s.id, p) },
             telegramLink = backend::telegramLink,
             findMetadata = { s -> tagDialogs.match = s },
             editTags = { s -> tagDialogs.tags = s },
@@ -152,13 +161,7 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
         if (openRequest != null) open?.value = null
     }
     // One handler: several enabled handlers would let the last one win.
-    PlatformBackHandler(showPlayer || settings || detail != null || profilePage != null || tab != 0 || history.isNotEmpty()) {
-        when {
-            showPlayer -> showPlayer = false
-            settings && settingsStack.isNotEmpty() && !(settingsDeep && settingsStack.size <= 1) -> settingsStack.removeAt(settingsStack.lastIndex)
-            else -> goBack()
-        }
-    }
+    PlatformBackHandler(showPlayer || settings || detail != null || profilePage != null || tab != 0 || history.isNotEmpty(), ::handleBack)
 
     val songs = (lib.songs as? Load.Ready)?.value.orEmpty()
     val currentId = pb.current?.id
@@ -218,7 +221,7 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
                     }
                 }
                 Column(
-                    Modifier.align(Alignment.BottomCenter).fillMaxWidth().then(if (prefs.floatingNav) Modifier.padding(start = 24.dp, end = 24.dp, bottom = 12.dp + bottomInset) else Modifier),
+                    Modifier.align(Alignment.BottomCenter).fillMaxWidth().then(if (prefs.floatingNav) Modifier.padding(start = 24.dp, end = 24.dp, bottom = (bottomInset - 10.dp).coerceAtLeast(6.dp)) else Modifier),
                 ) {
                     if (pb.current != null) {
                         MiniPlayer(pb, { showPlayer = true }, backend::togglePlay, backend::next, backend::previous, { pos.value.progress(pb.durationMs) }, if (prefs.floatingNav) Modifier else Modifier.padding(horizontal = 8.dp))
@@ -242,17 +245,20 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
                 val panel = prefs.nowPlayingPanel && pb.current != null
                 var sidebarExpanded by remember { mutableStateOf(true) }
                 WindowTint(g0.value)
-                Column(Modifier.fillMaxSize()) {
+                // The mouse back button goes back like the phone gesture.
+                Column(Modifier.fillMaxSize().mouseBackButton(::handleBack)) {
                     Row(Modifier.weight(1f).fillMaxWidth().padding(start = 12.dp, top = 12.dp, end = 12.dp)) {
                         Sidebar(
                             page, playlistId, lib.playlists,
                             expanded = sidebarExpanded,
                             onToggle = { sidebarExpanded = !sidebarExpanded },
-                            onPage = {
-                                detail = null; settingsStack.clear()
-                                if (it == "settings") { settings = true; settingsDeep = false } else if (it in toolPages.map { t -> t.id }) { settings = true; settingsStack.add(it) } else { page = it; settings = false }
+                            onPage = { target ->
+                                navigate {
+                                    detail = null; settingsStack.clear()
+                                    if (target == "settings") { settings = true; settingsDeep = false } else if (target in toolPages.map { t -> t.id }) { settings = true; settingsStack.add(target) } else { page = target; settings = false }
+                                }
                             },
-                            onPlaylist = { detail = Detail.Playlist(it.id, it.name); settings = false },
+                            onPlaylist = { g -> navigate { detail = Detail.Playlist(g.id, g.name); settings = false } },
                             onNewPlaylist = { newPlaylist = true },
                             modifier = Modifier.width(if (sidebarExpanded) 240.dp else 72.dp).fillMaxHeight(),
                         )
@@ -261,40 +267,44 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
                             val d = detail
                             val pad = 16.dp
                             when {
-                                settings -> DesktopSettings(settingsStack, prefs, conn, songs.size, backend, onRestore, { settings = false; settingsStack.clear() }, Modifier.fillMaxSize())
-                                d != null -> DetailScreen(d, backend, currentId, actions, { detail = null }, pad)
-                                page == "home" -> HomeScreen(lib, home, favorites, currentId, conn, scan, actions, { detail = it }, pad, name = prefs.profileName)
-                                page == "search" -> SearchScreen(backend::search, songs, currentId, actions, { detail = it }, pad)
+                                settings -> DesktopSettings(settingsStack, prefs, conn, songs.size, backend, onRestore, ::goBack, Modifier.fillMaxSize())
+                                d != null -> DetailScreen(d, backend, currentId, actions, ::goBack, pad)
+                                page == "home" -> HomeScreen(lib, home, favorites, currentId, conn, scan, actions, { d2 -> navigate { detail = d2 } }, pad, name = prefs.profileName)
+                                page == "search" -> SearchScreen(backend::search, songs, currentId, actions, { d2 -> navigate { detail = d2 } }, pad)
                                 page == "profile" -> ProfileScreen(
                                     songs.size, favorites.size, lib.playlists.size, conn, prefs,
                                     mainChatTitle,
                                     onSettings = { id ->
-                                        settings = true
-                                        settingsDeep = id != null
-                                        settingsStack.clear()
-                                        id?.let(settingsStack::add)
+                                        navigate {
+                                            settings = true
+                                            settingsDeep = id != null
+                                            settingsStack.clear()
+                                            id?.let(settingsStack::add)
+                                        }
                                     },
-                                    onTasks = { page = "tasks" },
+                                    onTasks = { navigate { page = "tasks" } },
                                     onLibraryTab = { selected ->
-                                        page = when (selected) {
-                                            3 -> "playlists"
-                                            4 -> "favorites"
-                                            else -> "songs"
+                                        navigate {
+                                            page = when (selected) {
+                                                3 -> "playlists"
+                                                4 -> "favorites"
+                                                else -> "songs"
+                                            }
                                         }
                                     },
                                     pad,
                                     scan = scan,
                                 )
-                                page == "tasks" -> TasksScreen(backend.tasks, onBack = { page = "profile" })
+                                page == "tasks" -> TasksScreen(backend.tasks, onBack = ::goBack)
                                 page == "upload" -> Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState())) { TopBar("Upload"); UploadsPage(backend); androidx.compose.foundation.layout.Spacer(Modifier.height(120.dp)) }
                                 page == "songs" -> Column { TopBar("Songs"); SongList(songs, currentId, actions, Modifier.fillMaxSize(), pad, empty = "No songs yet. Add a chat in Settings.") }
                                 page == "playlists" -> Column {
                                     TopBar("Playlists")
-                                    PlaylistsTab(lib.playlists, favorites, recents, pad, { detail = it }, { newPlaylist = true },
-                                        { settings = true; settingsDeep = true; settingsStack.clear(); settingsStack.add("spotify") })
+                                    PlaylistsTab(lib.playlists, favorites, recents, pad, { d2 -> navigate { detail = d2 } }, { newPlaylist = true },
+                                        { navigate { settings = true; settingsDeep = true; settingsStack.clear(); settingsStack.add("spotify") } })
                                 }
-                                page == "albums" -> Column { TopBar("Albums"); GroupGrid(lib.albums, pad, "No albums yet.") { detail = Detail.Album(it.name) } }
-                                page == "artists" -> Column { TopBar("Artists"); GroupList(lib.artists, pad, "No artists yet.", circle = true) { detail = Detail.Artist(it.name) } }
+                                page == "albums" -> Column { TopBar("Albums"); GroupGrid(lib.albums, pad, "No albums yet.") { g -> navigate { detail = Detail.Album(g.name, g.owner) } } }
+                                page == "artists" -> Column { TopBar("Artists"); GroupList(lib.artists, pad, "No artists yet.", circle = true) { g -> navigate { detail = Detail.Artist(g.name) } } }
                                 page == "favorites" -> Column { TopBar("Favorites"); SongList(favorites, currentId, actions, Modifier.fillMaxSize(), pad, empty = "No favorites yet.") }
                                 else -> Column { TopBar("Recently played"); SongList(recents, currentId, actions, Modifier.fillMaxSize(), pad, sortable = false, empty = "Nothing played yet.") }
                             }

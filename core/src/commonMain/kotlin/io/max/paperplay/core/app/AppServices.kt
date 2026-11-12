@@ -23,6 +23,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -131,6 +132,13 @@ class AppServices(
 
     /** Looks songs up on MusicBrainz, Deezer and iTunes and writes the result back. */
     val enricher = MetadataEnricher(platform.dataDir, library, defaultHttpFetcher(), scope, clock)
+
+    /** Tags songs with moods from lyrics and metadata, one at a time, once lookups are idle. */
+    val moodScanner = io.max.paperplay.core.recs.MoodScanner(
+        driver, library.repo, io.max.paperplay.core.integrations.defaultHttp(), scope, clock,
+        allowed = { io.max.paperplay.core.recs.TasteSettings.parse(library.pref(io.max.paperplay.core.recs.TasteSettings.PREF_KEY)).lookups },
+        enrichRunning = { enricher.progress.value != null },
+    )
 
     /** Deletes duplicate posts and songs: bot, then Bot API, then the owner's account. */
     val deleteQueue: io.max.paperplay.core.dupes.DeleteQueue by lazy {
@@ -257,6 +265,12 @@ class AppServices(
                     }, 1) { bindString(0, ACCOUNT_REMOTE) }.value
                     for (id in chats) (account as? io.max.paperplay.core.account.UserSession)?.warmUp(id)
                 }
+                // After the first login on this install, bring back the saved index and the user's song data once.
+                launch {
+                    account.loggedIn.first { it }
+                    delay(5.seconds)
+                    runCatching { indexCloud.restoreOnce() }
+                }
                 // Covers wait a while, so the first seconds after connecting stay light.
                 launch {
                     delay(30.seconds)
@@ -273,6 +287,8 @@ class AppServices(
                         _error.value = e.message ?: e::class.simpleName
                     }
                     enricher.kick()
+                    moodScanner.start()
+                    downloadPins()
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -356,6 +372,28 @@ class AppServices(
         driver.execute(null, "UPDATE songs SET cached_bytes = 0 WHERE pinned = 0", 0)
         library.invalidate()
         return true
+    }
+
+    /** Pins or unpins songs; pinned songs download in full and are never evicted. */
+    fun setPinned(uniqueIds: Collection<String>, pinned: Boolean) {
+        library.setPinned(uniqueIds, pinned)
+        if (pinned) scope.launch { downloadPins() }
+    }
+
+    /** Starts a full download for every pinned song that is not complete yet. Safe to call again. */
+    suspend fun downloadPins() {
+        val c = client ?: return
+        for (s in library.incompletePins()) {
+            runCatching {
+                val msg = c.call(request("getMessage") { put("chat_id", s.chat_id); put("message_id", s.message_id) })
+                val fileId = fileOfMessage(msg)?.long("id")?.toInt()
+                if (fileId != null && fileId != 0) {
+                    c.call(request("downloadFile") {
+                        put("file_id", fileId); put("priority", 1); put("offset", 0); put("limit", 0); put("synchronous", false)
+                    })
+                }
+            }
+        }
     }
 
     private fun onFileUpdate(c: TdClient, file: kotlinx.serialization.json.JsonObject) {

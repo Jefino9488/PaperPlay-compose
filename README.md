@@ -22,8 +22,19 @@ Telegram bot and chats as storage. It targets Android and desktop JVM.
   - library sorting bottom sheet
   - swipe-up queue opening and long-press seek preview
   - recent search chips above genre tiles
-- Back (swipe or button) on the phone returns to where you came from: previous
-  tab, album or playlist, Profile page or Settings page, not always Home.
+- Back (phone swipe or button, desktop mouse back button) returns to where you
+  came from: previous tab or page, album or playlist, Profile page or Settings
+  page, not always Home.
+- Albums that share a name are split by artist, except compilations and albums
+  where one artist owns most songs.
+- The seek bar wave stops animating while the Android app is in the background.
+- **Settings > Repair library**: reads every chat again, adds missed songs, starts
+  info and cover lookups and shows counts. It never deletes by itself; songs whose
+  post looks gone are kept until you confirm removing them.
+- **Settings > Telegram**: one **Bots** page (main bot credentials plus extra bots
+  with an Add bot token box), a Channels page with Add channel and Scan now, an
+  account page that links to Chats and channels, and an **Activity log** with
+  search, source and problem filters, copy, save to file, crash log and clear.
 - Profile cards and statistics are interactive on Android and desktop:
   profile editing, library tabs, channels, tasks, listening, duplicates/song
   info settings, devices, storage, and playlist browsing all route to their
@@ -175,6 +186,7 @@ not upload this configuration to another service.
 
 ## Known limitations & upcoming ports
 
+- **Other bots' posts**: a bot cannot see songs another bot posted as itself in a group. Use a channel, post as the chat (anonymous admin), or forward them again as yourself.
 - **Previews**: pages that still take `CoreBackend` (bots, sort, uploads, Spotify, tag dialogs, index, detail, setup, main shell) cannot be previewed yet.
 - **Not built yet**: uploads and the Android share receiver, auto filing and topic moving, extra bots,
   the task centre, LAN sync and device pairing, offline pinning, loudness normalising, audio output choice,

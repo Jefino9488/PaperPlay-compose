@@ -71,6 +71,9 @@ SELECT * FROM songs WHERE cached_bytes > 0;
 cachedSongsIn:
 SELECT * FROM songs WHERE chat_id = :chatId AND cached_bytes > 0;
 
+setPinnedById:
+UPDATE songs SET pinned = :pinned WHERE unique_id = :uniqueId;
+
 incompletePins:
 SELECT * FROM songs WHERE pinned = 1 AND cached_bytes < size;
 

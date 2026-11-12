@@ -342,7 +342,7 @@ fun DesktopSettings(
             if (stack.size > 1) BackTopBar(title, onBack = { stack.removeAt(stack.lastIndex) })
             else Text(title, Modifier.padding(start = 20.dp, end = 16.dp, top = 24.dp, bottom = 8.dp), style = MaterialTheme.typography.headlineMedium)
 
-            val isLazy = page == "missing" || page == "index" || page?.startsWith("index:") == true
+            val isLazy = page == "missing" || page == "index" || page == "log" || page?.startsWith("index:") == true
             Column(
                 Modifier.fillMaxSize()
                     .then(if (isLazy) Modifier else Modifier.verticalScroll(rememberScrollState()))

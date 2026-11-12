@@ -116,7 +116,7 @@ fun HomeScreen(
             Column {
                 Section("Your daily mixes")
                 LazyRow(contentPadding = PaddingValues(horizontal = 8.dp)) {
-                    items(home.mixes, key = { it.id }) { m -> MixCard(m) { onOpen(Detail.Songs(m.name, m.songs)) } }
+                    items(home.mixes, key = { it.id }) { m -> MixCard(m) { onOpen(Detail.Mix(m.name, m.id, m.songs)) } }
                 }
             }
         } else if (songs.isNotEmpty()) item {

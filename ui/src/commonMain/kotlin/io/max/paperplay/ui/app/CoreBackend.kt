@@ -118,7 +118,11 @@ class CoreBackend(val services: AppServices) : PlayerControls {
             byGroupKey = groupsByKey
             LibraryUi(
                 songs = Load.Ready(songs.map(Song::toUi)),
-                albums = groups(songs, { it.album }) { name, list -> GroupUi(name, name, albumSubtitle(list), covers(list)) },
+                albums = songs.filter { it.album.isNotBlank() }.groupBy { it.album }.entries.sortedBy { it.key.lowercase() }.flatMap { (name, list) ->
+                    io.max.paperplay.core.library.splitAlbum(list) { it.artist }.map { (owner, part) ->
+                        GroupUi(if (owner == null) name else "$name | $owner", name, albumSubtitle(part), covers(part), owner)
+                    }
+                },
                 artists = groups(songs, { it.artist }) { name, list -> GroupUi(name, name, "${list.size} songs", covers(list)) },
             )
         },
@@ -496,7 +500,7 @@ class CoreBackend(val services: AppServices) : PlayerControls {
 
     fun addLog(source: String, message: String, error: Boolean = false) {
         val clean = message.replace(Regex("\\b\\d{5,}:[A-Za-z0-9_-]{20,}\\b"), "<bot token>")
-        log.value = (log.value + LogLine(nowMoment().epochMs, source, clean, error)).takeLast(1000)
+        log.value = (log.value + LogLine(nowMoment().epochMs, source, clean, error)).takeLast(3000)
     }
 
     fun clearLog() { log.value = emptyList() }
@@ -551,14 +555,15 @@ class CoreBackend(val services: AppServices) : PlayerControls {
             // Tiles and shelves show at once; the slower daily mixes join when they are ready.
             if (!input.taste.showMixes) { emit(HomePlanState(plan = plan)); return@transformLatest }
             // Saved mixes show at once, even from an older day or library; fresh ones replace them when computed.
-            val mixKey = "${now.dayKey}:${sizeBucket(input.songs.size)}:${input.favorites.size}:${input.taste.at}:${input.weather}"
+            val votes = runCatching { io.max.paperplay.core.recs.MoodVotes.verdicts(repo.repo, input.songs) }.getOrDefault(emptyList())
+            val mixKey = "${now.dayKey}:${sizeBucket(input.songs.size)}:${input.favorites.size}:${input.taste.at}:${input.weather}:${votes.size}:${services.moodScanner.scanned / 50}"
             val cached = runCatching { DailyMixCache.decode(repo.pref(DailyMixCache.PREF), input.songs.associateBy { it.unique_id }) }.getOrNull()
             emit(HomePlanState(plan = plan, mixes = cached?.second.orEmpty()))
             if (cached != null && cached.first == mixKey && cached.second.isNotEmpty()) return@transformLatest
             // Building mixes is heavy: not while the library is scanning or covers are loading.
             if (input.busy) return@transformLatest
             val daily = runCatching {
-                DailyMixes.build(input.songs, now, weather = input.weather, lists = tasteLists(input.favorites, input.taste), options = input.taste)
+                DailyMixes.build(input.songs, now, votes = votes, weather = input.weather, lists = tasteLists(input.favorites, input.taste), options = input.taste)
             }.getOrDefault(emptyList())
             val mixLead = daily.flatMap { it.songs.take(4) }.distinctBy { it.unique_id }
             if (mixLead.isNotEmpty()) services.covers.prioritize(mixLead)
@@ -572,8 +577,8 @@ class CoreBackend(val services: AppServices) : PlayerControls {
         fun fresh(s: Song) = freshById[s.unique_id] ?: s
         fun coverOf(lead: Song, groupSongs: List<Song>): String? {
             val f = fresh(lead)
-            return (f.cover_path ?: f.cover_url)
-                ?: groupSongs.firstNotNullOfOrNull { it.cover_path ?: it.cover_url }
+            return f.cover_path
+                ?: groupSongs.firstNotNullOfOrNull { it.cover_path }
         }
         HomeUi(
             tiles = plan.tiles.map { t ->
@@ -597,6 +602,16 @@ class CoreBackend(val services: AppServices) : PlayerControls {
     }
         .catch { emit(HomeUi()) }
         .flowOn(Dispatchers.Default).stateIn(scope, SharingStarted.Eagerly, HomeUi())
+
+    /** Records "does not fit" for [song] in the mix [moodId]; the next mix leaves it out. */
+    fun rejectFromMix(song: SongUi, moodId: String) = voteMix(song, moodId, -1)
+
+    fun undoRejectFromMix(song: SongUi, moodId: String) = voteMix(song, moodId, 0)
+
+    private fun voteMix(song: SongUi, moodId: String, vote: Int) {
+        val s = repo.songByUniqueId(song.id) ?: return
+        io.max.paperplay.core.recs.MoodVotes.vote(repo.repo, s, moodId, vote, kotlin.time.Clock.System.now().toEpochMilliseconds())
+    }
 
     private var queueCache: Triple<List<Song>, Long, List<SongUi>> = Triple(emptyList(), -1L, emptyList())
     private var currentCache: Pair<Song?, SongUi?> = null to null
@@ -712,7 +727,10 @@ class CoreBackend(val services: AppServices) : PlayerControls {
         .stateIn(scope, SharingStarted.Eagerly, false)
 
     // Reading
-    fun album(name: String): Flow<List<SongUi>> = repo.album(name)
+    fun album(name: String, owner: String? = null): Flow<List<SongUi>> = repo.album(name).map { list ->
+        if (owner == null) list
+        else io.max.paperplay.core.library.splitAlbum(list) { it.artist }.firstOrNull { it.first == owner }?.second ?: list
+    }
         .onEach { if (it.isNotEmpty()) services.covers.prioritize(it.take(30)) }
         .map { it.map(Song::toUi) }.flowOn(Dispatchers.Default)
     fun artist(name: String): Flow<List<SongUi>> = repo.artist(name)
@@ -720,7 +738,12 @@ class CoreBackend(val services: AppServices) : PlayerControls {
         .map { it.map(Song::toUi) }.flowOn(Dispatchers.Default)
     fun playlist(id: Long): Flow<List<SongUi>> = repo.playlistSongs(id)
         .onEach { if (it.isNotEmpty()) services.covers.prioritize(it.take(30)) }
-        .map { it.map(Song::toUi) }.flowOn(Dispatchers.Default)
+        .map { songs ->
+            // Spotify's added date, when the import has it, so "Date added" sorts like Spotify.
+            val dates = io.max.paperplay.core.integrations.ImportStore(services.library.repo, services.driver).entries(id)
+                .filter { it.removed_at == null && it.source_added_at != null }.associate { (it.chat_id to it.message_id) to it.source_added_at!! }
+            songs.map { s -> s.toUi().let { u -> dates[s.chat_id to s.message_id]?.let { u.copy(addedAt = it) } ?: u } }
+        }.flowOn(Dispatchers.Default)
     fun search(query: String): Flow<List<SongUi>> = repo.search(query)
         .onEach { if (it.isNotEmpty()) services.covers.prioritize(it.take(20)) }
         .map { it.map(Song::toUi) }.flowOn(Dispatchers.Default)
@@ -762,6 +785,16 @@ class CoreBackend(val services: AppServices) : PlayerControls {
     fun setFavorite(id: String, favorite: Boolean) {
         val s = byId[id] ?: return
         if (s.favorite != favorite) scope.launch(Dispatchers.IO) { repo.toggleFavorite(s) }
+    }
+
+    fun setPinned(id: String, pinned: Boolean) = services.setPinned(listOf(id), pinned)
+
+    /** Pins every song of a playlist, or unpins them all when they are already pinned. Returns the new state. */
+    fun togglePinAll(ids: Collection<String>): Boolean {
+        val all = ids.mapNotNull { byId[it] }
+        val pin = all.any { !it.pinned }
+        services.setPinned(all.map { it.unique_id }, pin)
+        return pin
     }
 
     fun createPlaylist(name: String, thenAdd: Collection<String> = emptyList()) {
@@ -839,7 +872,7 @@ private fun <T> groups(songs: List<Song>, key: (Song) -> String, make: (String, 
     songs.filter { key(it).isNotBlank() }.groupBy { key(it) }.entries
         .sortedBy { it.key.lowercase() }.map { make(it.key, it.value) }
 
-private fun covers(songs: List<Song>): List<String?> = songs.mapNotNull { it.cover_path ?: it.cover_url }.distinct().take(4)
+private fun covers(songs: List<Song>): List<String?> = songs.mapNotNull { it.cover_path }.distinct().take(4)
 
 private fun albumSubtitle(list: List<Song>): String {
     val artists = list.map { it.artist }.distinct()
@@ -858,7 +891,7 @@ internal fun Song.toUi(): SongUi {
         else if (!lossless && kbps > 0) append(" ${kbps}k")
     }.trim().ifEmpty { null }
     return SongUi(
-        id = unique_id, title = title, artist = artist, album = album, genre = genre, coverUri = cover_path ?: cover_url,
+        id = unique_id, title = title, artist = artist, album = album, genre = genre, coverUri = cover_path,
         durationSec = duration_sec.toInt(), sizeBytes = size, year = year?.toInt(), plays = plays.toInt(),
         addedAt = date, qualityLabel = label, qualityRank = if (lossless) 100_000 + (bit_depth ?: 16).toInt() * 1000 else kbps.toInt(),
         lossless = lossless, favorite = favorite, pinned = pinned, offline = size > 0 && cached_bytes >= size,

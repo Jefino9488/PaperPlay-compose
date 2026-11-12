@@ -81,7 +81,8 @@ fun NavBar(selected: Int, backdrop: Backdrop, prefs: UiPrefs, inset: Dp, onSelec
     val items: @Composable () -> Unit = {
         Row(Modifier.fillMaxSize().padding(6.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
             entries.forEachIndexed { i, e ->
-                NavItem(e, i == selected, prefs, if (layout == NavLayout.Dock) Modifier.weight(1f) else Modifier, taskRunning = taskRunning && i == 3) { onSelect(i) }
+                val w by animateFloatAsState(if (layout == NavLayout.Pill && i == selected) 1.9f else 1f)
+                NavItem(e, i == selected, prefs, if (layout == NavLayout.Dock || layout == NavLayout.Pill) Modifier.weight(w) else Modifier, taskRunning = taskRunning && i == 3) { onSelect(i) }
             }
         }
     }
@@ -123,7 +124,7 @@ private fun NavItem(e: NavEntry, on: Boolean, prefs: UiPrefs, modifier: Modifier
     }
     val inner = Modifier.clip(shape).background(bg).then(ring).clickable(onClick = onClick).animateContentSize()
     when (layout) {
-        NavLayout.Pill -> Row(modifier.then(inner).padding(horizontal = if (on) 20.dp else 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        NavLayout.Pill -> Row(modifier.then(inner).padding(vertical = 12.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
             icon()
             if (on) { Spacer(Modifier.width(8.dp)); Text(e.label, style = MaterialTheme.typography.labelLarge, color = ink, maxLines = 1) }
         }

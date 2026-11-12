@@ -58,6 +58,7 @@ internal val categories = listOf(
     Category("nav", "Navigation bar", "Floating bar and its style", "nav bar floating radius", Icons.Rounded.ViewAgenda, phoneOnly = true),
     Category("glass", "Glass", "Blur and tint for every glass part", "glass blur refraction tint", Icons.Rounded.BlurOn),
     Category("telegram", "Telegram", "Channels, your account, bot activity, log out", "bot channels account log tdlib logout speed reading copy", Icons.Rounded.Send),
+    Category("repair", "Repair library", "Read every chat again and fill in what is missing", "repair fix rescan missing songs metadata covers organize tidy", Icons.Rounded.Build),
     Category("library", "Library", "Speeds, sorting, duplicates, rescan, song info", "speed rate rescan duplicates sort general covers info", Icons.Rounded.LibraryMusic),
     Category("mixes", "Mixes", "Taste learning and weather mixes", "mix taste learning weather city", Icons.Rounded.AutoAwesome),
     Category("uploads", "Uploads", "Upload pace and skipping known songs", "upload slow skip speed parallel", Icons.Rounded.Upload),
@@ -94,7 +95,7 @@ fun SettingsHost(
     Column(modifier) {
         BackTopBar(title, onBack = { if (stack.isEmpty() || (deep && stack.size <= 1)) onExit() else stack.removeAt(stack.lastIndex) })
         // The chat pages hold long lists, so they scroll lazily instead of inside the shared scroll column.
-        val isLazy = page == "index" || page == "missing" || page?.startsWith("index:") == true
+        val isLazy = page == "index" || page == "missing" || page == "log" || page?.startsWith("index:") == true
         if (page == "index") IndexPage(backend, stack, bottomPadding)
         else if (page != null && page.startsWith("index:")) ChatSongsPage(backend, page.removePrefix("index:").toLongOrNull() ?: 0L, stack, bottomPadding)
         else Column(
@@ -108,9 +109,9 @@ fun SettingsHost(
 }
 
 internal val subTitles = mapOf(
-    "channels" to "Channels", "bots" to "Extra bots", "account" to "Your account", "log" to "Bot activity",
+    "channels" to "Channels", "bots" to "Bots", "account" to "Your account", "log" to "Activity log",
     "sort" to "Sort General", "dupes" to "Find duplicates", "missing" to "Song info left", "uploadhub" to "Upload songs", "mixlearn" to "Mixes and learning", "weather" to "Weather",
-    "conn" to "Connection", "index" to "Chats and channels", "eq" to "Equalizer", "listenbrainz" to "ListenBrainz", "stats" to "Listening statistics", "credentials" to "Bot credentials", "profile" to "Profile",
+    "conn" to "Connection", "index" to "Chats and channels", "eq" to "Equalizer", "listenbrainz" to "ListenBrainz", "stats" to "Listening statistics", "credentials" to "Bots", "profile" to "Profile",
 )
 
 @Composable
@@ -225,10 +226,14 @@ internal fun SettingsPage(
             RateSlider("accountCopy", backend, notice)
             NavRow("Channels", "See what's added, add more, and choose the main chat", Icons.Rounded.Forum) { stack.add("channels") }
             NavRow("Chats and channels", "Index songs in your chats and copy them to the main chat", Icons.Rounded.Forum) { stack.add("index") }
-            NavRow("Bot credentials", "API id, API hash and bot token", Icons.Rounded.Key) { stack.add("credentials") }
-            NavRow("Extra bots", "More bots share the uploading", Icons.Rounded.SmartToy) { stack.add("bots") }
-            NavRow("Your account (optional)", "Log in as yourself to read and copy from your chats", Icons.Rounded.Person) { stack.add("account") }
-            NavRow("Bot activity since the app opened", "Message reads, downloads, uploads and rate limits", Icons.Rounded.MonitorHeart) { stack.add("log") }
+            NavRow("Bots", "Main bot credentials and extra bots for uploading", Icons.Rounded.SmartToy) { stack.add("bots") }
+            val accountStep by backend.account.step.collectAsState()
+            NavRow(
+                "Your account (optional)",
+                if (accountStep == io.max.paperplay.core.account.LoginStep.Ready) "Logged in. Your chats can be read and copied from" else "Log in as yourself to read and copy from your chats",
+                Icons.Rounded.Person,
+            ) { stack.add("account") }
+            NavRow("Activity log", "Reads, downloads, uploads, rate limits and problems. Search, copy and save", Icons.Rounded.MonitorHeart) { stack.add("log") }
             SettingsRow("Log out", icon = Icons.Rounded.Logout, subtitle = "Forgets the bot's credentials. Your library stays on this device", onClick = { confirm = "logout" })
         }
         "library" -> {
@@ -301,10 +306,6 @@ internal fun SettingsPage(
             }
         }
         "channels" -> ChannelsPage(conn, backend, stack)
-        "credentials" -> Column(Modifier.padding(16.dp)) {
-            Text("Saving reconnects the bot with the new details.", Modifier.padding(bottom = 12.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
-            CredentialsForm(backend::saveCredentials, { stack.removeAt(stack.lastIndex) })
-        }
         "profile" -> {
             var name by remember { mutableStateOf(prefs.profileName) }
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -322,12 +323,13 @@ internal fun SettingsPage(
         "weather" -> WeatherPage(backend)
         "conn" -> ConnectionPage(conn, backend)
         "log" -> LogPage(backend)
-        "bots" -> BotsPage(backend)
+        "bots", "credentials" -> BotsPage(backend)
+        "repair" -> RepairPage(backend, stack)
         "dupes" -> DuplicatesPage(backend)
         "sort" -> SortPage(backend)
         "missing" -> MissingInfoPage(backend)
         "uploadhub" -> UploadsPage(backend)
-        "account" -> AccountPage(backend) { confirm = "accountout" }
+        "account" -> AccountPage(backend, onOpenIndex = { stack.add("index") }) { confirm = "accountout" }
         "index" -> IndexPage(backend, stack)
         else -> if (id.startsWith("index:")) ChatSongsPage(backend, id.removePrefix("index:").toLongOrNull() ?: 0L, stack) else NotBuilt(subTitles[id] ?: id)
     }
@@ -339,7 +341,7 @@ internal fun SettingsPage(
         "rescan" -> ConfirmDialog("Run a full rescan?", "Re-reads every message in your music chats. Takes a few minutes and sends Telegram a lot of requests.", "Rescan", backend::rescan) { confirm = null }
         "restore" -> ConfirmDialog("Restore a backup?", "This replaces your library, playlists and favorites with the backup.", "Restore", onRestore) { confirm = null }
         "clearcache" -> ConfirmDialog("Clear the cache?", "Streamed songs stored on this device are deleted. Stop playback first. They download again when played.", "Clear", { backend.clearCache { notice.value = it } }) { confirm = null }
-        "accountout" -> ConfirmDialog("Log out of your account?", "Your index stays on this device. Chats and channels need a new login.", "Log out", { backend.services.scope.launch { backend.account.logOut() } }) { confirm = null }
+        "accountout" -> ConfirmDialog("Log out of your account?", "Your index stays on this device. Chats and channels need a new login.", "Log out", { backend.services.scope.launch { runCatching { backend.services.indexCloud.save() }; backend.account.logOut() } }) { confirm = null }
         "clearlearned" -> ConfirmDialog("Clear what mixes have learned?", "Forgets play and skip counts and your \"doesn't fit this mix\" choices. Songs and playlists stay.", "Clear", backend::clearLearned) { confirm = null }
         "logout" -> ConfirmDialog("Log out?", "The bot's API id, hash and token are forgotten and the setup screen shows again. Songs, playlists and settings stay.", "Log out", backend::logOut) { confirm = null }
     }
@@ -354,72 +356,7 @@ private fun RateSlider(key: String, backend: CoreBackend, notice: androidx.compo
 }
 
 @Composable
-private fun ChannelsPage(conn: ConnectionUi, backend: CoreBackend, stack: MutableList<String>) {
-    var mainChatId by remember { mutableStateOf(backend.mainChatId()) }
-    var showAdd by remember { mutableStateOf(false) }
-    val mainChat = conn.chats.firstOrNull { it.id == mainChatId }
-    val otherChats = conn.chats.filterNot { it.id == mainChatId }
-    Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(
-            when {
-                conn.ready -> "Connected as your bot."
-                conn.state.isEmpty() -> "Not connected."
-                else -> "Connecting… (${conn.state.removePrefix("authorizationState")})"
-            },
-        )
-        if (conn.error != null) Text(conn.error, color = MaterialTheme.colorScheme.error)
-        if (!conn.ready) OutlinedButton(backend::connect) { Text("Reconnect") }
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Spacer(Modifier.weight(1f))
-            IconButton({ showAdd = true }) { AppIcon(Icons.Rounded.Add, "Add channel") }
-            OutlinedButton(backend::rescan, enabled = conn.ready && conn.chats.isNotEmpty()) { Text("Scan") }
-        }
-        NavRow("Your other chats and channels", "Index songs from chats the bot is not in", Icons.Rounded.Forum) { stack.add("index") }
-        SectionLabel("Main chat")
-        if (mainChat != null) {
-            SettingsRow(
-                mainChat.title,
-                icon = Icons.Rounded.Forum,
-                subtitle = "${mainChat.id}  •  Used for filing and duplicates",
-            )
-        } else {
-            Text(
-                if (conn.chats.isEmpty()) "Add a channel to choose the main chat."
-                else "Choose a channel below as the main chat.",
-                Modifier.padding(horizontal = 20.dp),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        SectionLabel("Other channels")
-        if (otherChats.isEmpty()) {
-            Text(
-                if (conn.chats.isEmpty()) "No channels added yet." else "No other channels.",
-                Modifier.padding(horizontal = 20.dp),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        otherChats.forEach { chat ->
-            SettingsRow(
-                chat.title,
-                icon = Icons.Rounded.Forum,
-                subtitle = chat.id.toString(),
-                trailing = {
-                    OutlinedButton({
-                        backend.setMainChat(chat.id)
-                        mainChatId = chat.id
-                    }) { Text("Set as main") }
-                },
-            )
-        }
-        val scanText by backend.scan.collectAsState()
-        scanText?.let { Text(it.text) }
-        if (!conn.ready) Text("Connect first to add a chat.", style = MaterialTheme.typography.bodySmall)
-    }
-    if (showAdd) AddChannelDialog(backend, conn.ready) { showAdd = false }
-}
-
-@Composable
-private fun AddChannelDialog(backend: CoreBackend, connected: Boolean, onDismiss: () -> Unit) {
+internal fun AddChannelDialog(backend: CoreBackend, connected: Boolean, onDismiss: () -> Unit) {
     var chatId by remember { mutableStateOf("") }
     var chatTitle by remember { mutableStateOf("") }
     var chatError by remember { mutableStateOf<String?>(null) }
