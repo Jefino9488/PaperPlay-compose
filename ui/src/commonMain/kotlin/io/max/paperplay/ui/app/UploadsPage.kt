@@ -178,3 +178,25 @@ private fun TargetDialog(
         dismissButton = { TextButton(onDismiss) { Text("Cancel") } },
     )
 }
+
+@org.jetbrains.compose.ui.tooling.preview.Preview
+@Composable
+private fun JobRowPhonePreview() {
+    val sampleJob = UploadJob(id = "1", path = "/music/song.mp3", name = "Starlight.mp3", size = 10485760L, chatId = 100, chatTitle = "Music Channel", status = UploadStatus.Done)
+    io.max.paperplay.ui.theme.PaperPlayTheme {
+        androidx.compose.foundation.layout.Box(Modifier.padding(8.dp)) {
+            JobRow(job = sampleJob, onRetry = {}, onRemove = {})
+        }
+    }
+}
+
+@org.jetbrains.compose.ui.tooling.preview.Preview
+@Composable
+private fun JobRowDesktopPreview() {
+    val sampleJob = UploadJob(id = "1", path = "/music/song.mp3", name = "Starlight.mp3", size = 10485760L, chatId = 100, chatTitle = "Music Channel", status = UploadStatus.Done)
+    io.max.paperplay.ui.theme.PaperPlayTheme {
+        androidx.compose.foundation.layout.Box(Modifier.padding(16.dp)) {
+            JobRow(job = sampleJob, onRetry = {}, onRemove = {})
+        }
+    }
+}

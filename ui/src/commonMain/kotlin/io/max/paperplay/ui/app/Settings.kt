@@ -93,7 +93,10 @@ fun SettingsHost(
     val title = categories.firstOrNull { it.id == page }?.title ?: settingsPageTitle(page) ?: "Settings"
     Column(modifier) {
         BackTopBar(title, onBack = { if (stack.isEmpty()) onExit() else stack.removeAt(stack.lastIndex) })
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = bottomPadding)) {
+        // The chat pages hold long lists, so they scroll lazily instead of inside the shared scroll column.
+        if (page == "index") IndexPage(backend, stack, bottomPadding)
+        else if (page != null && page.startsWith("index:")) ChatSongsPage(backend, page.removePrefix("index:").toLongOrNull() ?: 0L, stack, bottomPadding)
+        else Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = bottomPadding)) {
             if (page == null) SettingsList(prefs, backend, stack) else SettingsPage(page, stack, prefs, conn, songCount, backend, onRestore)
         }
     }
@@ -267,7 +270,7 @@ internal fun SettingsPage(
         "eq" -> EqualizerPage(backend)
         "devices" -> {
             if (isPhone) {
-                var keep by remember { mutableStateOf(pref("keep_running") != "false") }
+                var keep by remember { mutableStateOf(pref("keep_running") == "true") }
                 SwitchRow("Keep running in the background", keep, { keep = it; backend.setPref("keep_running", "$it"); env?.setKeepRunning?.invoke(it) },
                     Icons.Rounded.Sync, "Syncing carries on after you leave. A notification shows what the app is doing")
             }
@@ -400,7 +403,8 @@ private fun ChannelsPage(conn: ConnectionUi, backend: CoreBackend, stack: Mutabl
                 },
             )
         }
-        if (conn.scanText != null) Text(conn.scanText)
+        val scanText by backend.scan.collectAsState()
+        scanText?.let { Text(it.text) }
         if (!conn.ready) Text("Connect first to add a chat.", style = MaterialTheme.typography.bodySmall)
     }
     if (showAdd) AddChannelDialog(backend, conn.ready) { showAdd = false }

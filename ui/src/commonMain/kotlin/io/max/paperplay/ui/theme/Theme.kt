@@ -10,6 +10,7 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
@@ -39,10 +40,14 @@ fun PaperPlayTheme(
     content: @Composable () -> Unit,
 ) {
     val platform = if (seed == null && dynamic) platformDynamicScheme(dark) else null
-    val base = platform ?: schemeFromSeed(seed ?: FallbackSeed, dark)
-    val scheme = if (dark && amoled) base.amoled() else base
+    val seeded = remember(seed, dark) { schemeFromSeed(seed ?: FallbackSeed, dark) }
+    val scheme = remember(platform, seeded, dark, amoled) {
+        val base = platform ?: seeded
+        if (dark && amoled) base.amoled() else base
+    }
+    val typography = nunitoTypography()
     CompositionLocalProvider(LocalReducedTransparency provides !glassEffectsSupported()) {
-        MaterialTheme(colorScheme = scheme, typography = nunitoTypography(), shapes = PaperShapes) {
+        MaterialTheme(colorScheme = scheme, typography = typography, shapes = PaperShapes) {
             androidx.compose.material3.Surface(color = scheme.background, contentColor = scheme.onBackground, content = content)
         }
     }
@@ -65,18 +70,24 @@ object Spacing {
 }
 
 val PaperShapes = Shapes(
-    extraSmall = RoundedCornerShape(6.dp),
-    small = RoundedCornerShape(8.dp),
-    medium = RoundedCornerShape(16.dp),
-    large = RoundedCornerShape(24.dp),
-    extraLarge = RoundedCornerShape(32.dp),
+    extraSmall = RoundedCornerShape(8.dp),
+    small = RoundedCornerShape(12.dp),
+    medium = RoundedCornerShape(20.dp),
+    large = RoundedCornerShape(28.dp),
+    extraLarge = RoundedCornerShape(36.dp),
 )
 
 @OptIn(ExperimentalTextApi::class)
 @Composable
 private fun nunitoTypography(): Typography {
     @Composable fun family(w: Int) = FontFamily(Font(Res.font.nunito, FontWeight(w), variationSettings = FontVariation.Settings(FontVariation.weight(w))))
-    val f = mapOf(500 to family(500), 700 to family(700), 800 to family(800))
+    val f5 = family(500)
+    val f7 = family(700)
+    val f8 = family(800)
+    return remember(f5, f7, f8) { buildTypography(mapOf(500 to f5, 700 to f7, 800 to f8)) }
+}
+
+private fun buildTypography(f: Map<Int, FontFamily>): Typography {
     fun TextStyle.w(weight: Int) = copy(fontFamily = f[weight], fontWeight = FontWeight(weight))
     val b = Typography()
     // Same weights as the Flutter theme (800 display and headline, 700 titles and labels, 500 body).

@@ -115,7 +115,7 @@ fun SongList(
         if (sortable) sortSongs(found, sort, reverse) else found
     }
     val rowActions = remember(actions, onRemove) { actions.rowActions(onRemove) }
-    val picked = selection.retain(songs.mapTo(HashSet()) { it.id })
+    val picked = remember(selection, songs) { if (selection.ids.isEmpty()) selection else selection.retain(songs.mapTo(HashSet()) { it.id }) }
 
     val songCovers = remember(shown) {
         val map = mutableMapOf<String, String>()

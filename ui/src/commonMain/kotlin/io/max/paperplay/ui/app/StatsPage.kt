@@ -53,3 +53,23 @@ internal fun StatsPage(backend: CoreBackend) {
         Column { SettingsRow(s.title ?: "Unknown song", subtitle = "${s.artist.orEmpty()}$plays", trailing = { Text(time(s.ms)) }) }
     }
 }
+
+@org.jetbrains.compose.ui.tooling.preview.Preview
+@Composable
+private fun StatsRowPhonePreview() {
+    io.max.paperplay.ui.theme.PaperPlayTheme {
+        androidx.compose.foundation.layout.Box(Modifier.padding(16.dp)) {
+            SettingsRow("Muse", trailing = { Text("4 h 12 min") })
+        }
+    }
+}
+
+@org.jetbrains.compose.ui.tooling.preview.Preview
+@Composable
+private fun StatsRowDesktopPreview() {
+    io.max.paperplay.ui.theme.PaperPlayTheme {
+        androidx.compose.foundation.layout.Box(Modifier.padding(32.dp)) {
+            SettingsRow("Muse", trailing = { Text("4 h 12 min") })
+        }
+    }
+}

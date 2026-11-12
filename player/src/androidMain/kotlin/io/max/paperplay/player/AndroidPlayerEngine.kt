@@ -90,6 +90,11 @@ class AndroidPlayerEngine : PlayerEngine {
         }
     }
 
+    /** Set by the UI while a full player view needs smooth progress; otherwise the position ticks at 500 ms. */
+    @Volatile var fastTicks: Boolean = false
+
+    private fun pollMs() = if (fastTicks) FAST_POLL_MS else POSITION_POLL_MS
+
     private val ticker = object : Runnable {
         override fun run() {
             val mc = controller
@@ -99,7 +104,7 @@ class AndroidPlayerEngine : PlayerEngine {
             }
             _positionMs.value = mc.currentPosition.coerceAtLeast(0L)
             _bufferedMs.value = mc.bufferedPosition.coerceAtLeast(0L)
-            handler.postDelayed(this, POSITION_POLL_MS)
+            handler.postDelayed(this, pollMs())
         }
     }
 
@@ -123,7 +128,7 @@ class AndroidPlayerEngine : PlayerEngine {
         val want = p != null && !released && shouldTick(p)
         if (want && !tickerRunning) {
             tickerRunning = true
-            handler.postDelayed(ticker, POSITION_POLL_MS)
+            handler.postDelayed(ticker, pollMs())
         } else if (!want && tickerRunning) {
             stopTicker()
         }
@@ -429,7 +434,8 @@ class AndroidPlayerEngine : PlayerEngine {
     }
 
     private companion object {
-        const val POSITION_POLL_MS = 250L
+        const val POSITION_POLL_MS = 500L
+        const val FAST_POLL_MS = 250L
     }
 }
 

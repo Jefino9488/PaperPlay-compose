@@ -142,7 +142,7 @@ class Scanner(
 
     /** How many batches of message ids are asked for at once. Flood waits slow the whole read down on their own. */
     @kotlin.concurrent.Volatile
-    var parallelBatches = 3
+    var parallelBatches = 2
 
     @kotlin.concurrent.Volatile
     private var calm = false
@@ -277,8 +277,16 @@ class Scanner(
             }
             val knownEnd = maxOf(endHint, rows.lastOrNull()?.message_id ?: 0, last ?: 0, meta.lastMessageId)
             val window = ArrayDeque<JsonObject>()
+            val clockMark = kotlin.time.TimeSource.Monotonic
+            var lastWrite = clockMark.markNow() - 10.seconds
+            var lastChatCheck = clockMark.markNow()
+            var lastShown = lastWrite
             while (true) {
-                if (repo.chat(chat.id) == null) return seen // Removed while reading.
+                // The chat row is looked up again only every 10 s; removal is rare.
+                if (lastChatCheck.elapsedNow() > 10.seconds) {
+                    lastChatCheck = clockMark.markNow()
+                    if (repo.chat(chat.id) == null) return seen // Removed while reading.
+                }
                 if (window.isEmpty()) {
                     // Several batches are asked for at once; they are used in order below.
                     val starts = List(if (calm) 1 else parallelBatches.coerceIn(1, 6)) { next + it * WALK_BATCH * MESSAGE_ID_STEP }
@@ -316,23 +324,32 @@ class Scanner(
                 }
                 val messages: List<JsonObject> = got
                 holes += requested.size - messages.size
-                for (m in messages) {
-                    m.long("id")?.let { newest = maxOf(newest, it) }
-                    saveTopicName(m)
-                    val song = songFromMessage(m) ?: continue
-                    seen += song.message_id
-                    if (repo.upsertBotSong(song)) added++
+                // One transaction and one change notice for the whole page.
+                repo.repo.db.transaction {
+                    for (m in messages) {
+                        m.long("id")?.let { newest = maxOf(newest, it) }
+                        saveTopicName(m)
+                        val song = songFromMessage(m) ?: continue
+                        seen += song.message_id
+                        if (repo.repo.upsertBotSong(song)) added++
+                    }
                 }
-                // Saved each step, so a closed app continues here; only real message ids, or later posts could be skipped.
-                if (!full) repo.setScan(chat.id, newest, chat.walk_done)
+                repo.invalidate()
+                // Saved about once a second, so a closed app continues near here; only real message ids, or later posts could be skipped.
+                if (!full) {
+                    if (lastWrite.elapsedNow() >= 1.seconds) { repo.setScan(chat.id, newest, chat.walk_done); lastWrite = clockMark.markNow() }
+                }
                 next += WALK_BATCH * MESSAGE_ID_STEP
                 val share = if ((full || !chat.walk_done) && knownEnd > 0 && next <= knownEnd) next.toDouble() / knownEnd else null
-                val counts = "${seen.size} songs read, $added new"
-                _progress.value = ScanProgress(
-                    if (share == null) "Checking $chatTitle: $counts"
-                    else "Syncing $chatTitle: ${minOf(next, knownEnd) / MESSAGE_ID_STEP} of ${knownEnd / MESSAGE_ID_STEP} messages, $counts",
-                    share,
-                )
+                if (lastShown.elapsedNow() >= 1.seconds || _progress.value == null) {
+                    lastShown = clockMark.markNow()
+                    val counts = "${seen.size} songs read, $added new"
+                    _progress.value = ScanProgress(
+                        if (share == null) "Checking $chatTitle: $counts"
+                        else "Syncing $chatTitle: ${minOf(next, knownEnd) / MESSAGE_ID_STEP} of ${knownEnd / MESSAGE_ID_STEP} messages, $counts",
+                        share,
+                    )
+                }
                 val emptyLimit = if (chat.walk_done || (meta.lastMessageId > 0L && next > meta.lastMessageId)) 2 else 6
                 if (messages.isNotEmpty() || next <= knownEnd) empties = 0 else if (++empties >= emptyLimit) break
                 if (window.isEmpty()) delay(pause)

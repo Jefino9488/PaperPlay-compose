@@ -21,6 +21,7 @@ class KeepAliveService : Service() {
     override fun onCreate() {
         super.onCreate()
         running = true
+        lastKey = null
     }
 
     override fun onDestroy() {
@@ -45,6 +46,9 @@ class KeepAliveService : Service() {
 
         @Volatile
         private var running = false
+        private var lastKey: List<Any?>? = null
+        private var lastNotify = 0L
+        private var channelMade = false
 
         fun start(context: Context) {
             if (running) return
@@ -58,15 +62,25 @@ class KeepAliveService : Service() {
         /** Redraws the notification with the current activity. Does nothing while the service is off. */
         fun update(context: Context, title: String, text: String, progress: Int?, max: Int?, indeterminate: Boolean) {
             if (!running) return
+            val key = listOf(title, text, progress, max, indeterminate)
+            val now = android.os.SystemClock.elapsedRealtime()
+            synchronized(this) {
+                if (key == lastKey || now - lastNotify < 3000) return
+                lastKey = key
+                lastNotify = now
+            }
             val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             manager.notify(NOTIFICATION, build(context, title, text, progress, max, indeterminate))
         }
 
         private fun build(context: Context, title: String, text: String, progress: Int?, max: Int?, indeterminate: Boolean): Notification {
             val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            manager.createNotificationChannel(
-                NotificationChannel(CHANNEL, "Running in the background", NotificationManager.IMPORTANCE_LOW).apply { setShowBadge(false) },
-            )
+            if (!channelMade) {
+                manager.createNotificationChannel(
+                    NotificationChannel(CHANNEL, "Running in the background", NotificationManager.IMPORTANCE_LOW).apply { setShowBadge(false) },
+                )
+                channelMade = true
+            }
             val open = PendingIntent.getActivity(
                 context, 0,
                 Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP).putExtra(MainActivity.OPEN_EXTRA, "tasks"),

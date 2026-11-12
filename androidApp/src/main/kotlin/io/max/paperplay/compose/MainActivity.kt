@@ -74,19 +74,34 @@ class MainActivity : ComponentActivity() {
         auth.deliver(intent.data)
     }
 
-    /** Runs the keep-alive notification while the pref allows it, following the scanner. */
+    /** Runs the keep-alive notification while the pref allows it (off unless chosen), following the scanner. */
     @OptIn(FlowPreview::class)
     private fun watchActivity(s: AppServices) {
-        if (s.library.pref("keep_running") != "false") KeepAliveService.start(applicationContext)
+        val allowed = s.library.pref("keep_running") == "true"
+        if (allowed) KeepAliveService.start(applicationContext)
         // Updates are dropped while the service is off, so the collector can run either way.
         s.scope.launch {
-            combine(s.scanner.progress, s.ready, s.error, s.activity) { scan, ready, error, activity -> arrayOf(scan, ready, error, activity) }
-                .debounce(1000)
-                .collect { v ->
+            var idleSince = 0L
+            combine(
+                combine(s.scanner.progress, s.ready, s.error, s.activity) { scan, ready, error, activity -> arrayOf(scan, ready, error, activity) },
+                s.enricher.progress, s.uploader.jobs,
+            ) { v, enrich, uploads -> Triple(v, enrich != null, uploads.any { it.status == io.max.paperplay.core.app.UploadStatus.Queued || it.status == io.max.paperplay.core.app.UploadStatus.Uploading }) }
+                .debounce(3000)
+                .collect { (v, enriching, uploading) ->
                     val scan = v[0] as io.max.paperplay.core.app.ScanProgress?
                     val ready = v[1] as Boolean
                     val error = v[2] as String?
                     val activity = v[3] as String?
+                    val busy = scan != null || activity != null || enriching || uploading || !ready
+                    val now = System.currentTimeMillis()
+                    if (busy) {
+                        idleSince = 0L
+                        // Work began again: bring the service back if the pref allows it.
+                        if (allowed) KeepAliveService.start(applicationContext)
+                    } else {
+                        if (idleSince == 0L) idleSince = now
+                        if (now - idleSince >= 5 * 60_000L) KeepAliveService.stop(applicationContext)
+                    }
                     when {
                         error != null -> KeepAliveService.update(applicationContext, "Paper Play is running", error, null, null, false)
                         scan != null -> {
@@ -206,5 +221,19 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         const val OPEN_EXTRA = "open"
+
+        /** True while an activity of the app is visible. */
+        @Volatile
+        var foreground = false
+    }
+
+    override fun onStart() {
+        super.onStart()
+        foreground = true
+    }
+
+    override fun onStop() {
+        foreground = false
+        super.onStop()
     }
 }

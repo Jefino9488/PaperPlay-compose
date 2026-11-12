@@ -180,3 +180,23 @@ internal fun MissingInfoPage(backend: CoreBackend) {
         }
     }
 }
+
+@org.jetbrains.compose.ui.tooling.preview.Preview
+@Composable
+private fun MissingChipPhonePreview() {
+    io.max.paperplay.ui.theme.PaperPlayTheme {
+        androidx.compose.foundation.layout.Box(Modifier.size(390.dp, 200.dp)) {
+            FilterChip(selected = true, onClick = {}, label = { Text("${Missing.NoCover.label} (5)") })
+        }
+    }
+}
+
+@org.jetbrains.compose.ui.tooling.preview.Preview
+@Composable
+private fun MissingChipDesktopPreview() {
+    io.max.paperplay.ui.theme.PaperPlayTheme {
+        androidx.compose.foundation.layout.Box(Modifier.size(1024.dp, 200.dp)) {
+            FilterChip(selected = true, onClick = {}, label = { Text("${Missing.NoCover.label} (5)") })
+        }
+    }
+}

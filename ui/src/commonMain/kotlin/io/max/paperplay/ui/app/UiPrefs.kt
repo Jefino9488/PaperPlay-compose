@@ -8,6 +8,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
@@ -162,7 +163,7 @@ fun glassLook(group: LookGroup): Boolean = LocalUiPrefs.current?.look(group) == 
 @Composable
 fun appShape(base: Dp): RoundedCornerShape {
     val scale = LocalUiPrefs.current?.cornerScale ?: 1f
-    return RoundedCornerShape(base * scale)
+    return remember(base, scale) { RoundedCornerShape(base * scale) }
 }
 
 private val rimColor = Color.White.copy(alpha = 0.18f)

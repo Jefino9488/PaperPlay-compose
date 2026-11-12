@@ -199,7 +199,7 @@ private fun PlayerBody(
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     var showLyrics by remember { mutableStateOf(false) }
                     IconButton({ showLyrics = true }, enabled = state.current != null) { AppIcon(Icons.Outlined.Lyrics, "Lyrics") }
-                    if (showLyrics) state.current?.let { LyricsDialog(it.id, it.title, state.positionMs, backend) { showLyrics = false } }
+                    if (showLyrics) state.current?.let { LyricsDialog(it.id, it.title, backend) { showLyrics = false } }
                     IconButton(backend::toggleShuffle) {
                         AppIcon(Icons.Rounded.Shuffle, "Shuffle", tint = if (state.shuffle) scheme.primary else scheme.onSurface)
                     }
@@ -245,16 +245,17 @@ private fun Progress(song: SongUi, state: PlaybackUiState, backend: CoreBackend)
     val muted = MaterialTheme.typography.labelMedium.copy(color = scheme.onSurface.copy(alpha = 0.65f))
     var info by remember { mutableStateOf(false) }
     val total = if (state.durationMs > 0) state.durationMs else song.durationSec * 1000L
+    val pos by backend.position.collectAsState()
     WavySeek(
-        value = state.progress, buffered = state.bufferedProgress, playing = state.playing,
+        value = pos.progress(state.durationMs), buffered = pos.bufferedProgress(state.durationMs), playing = state.playing,
         onSeek = backend::seekTo,
         modifier = Modifier.fillMaxWidth(),
-        label = formatDuration(state.positionMs / 1000),
+        label = formatDuration(pos.positionMs / 1000),
         longPressLabel = { fraction -> formatDuration((total * fraction / 1000L).toLong()) },
     )
     Spacer(Modifier.height(8.dp))
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(formatDuration(state.positionMs / 1000), Modifier.weight(1f), style = muted)
+        Text(formatDuration(pos.positionMs / 1000), Modifier.weight(1f), style = muted)
         Box(
             Modifier.clip(RoundedCornerShape(12.dp)).background(scheme.onSurface.copy(alpha = 0.12f)).clickable { info = true }
                 .height(24.dp).padding(horizontal = 10.dp),
@@ -262,7 +263,7 @@ private fun Progress(song: SongUi, state: PlaybackUiState, backend: CoreBackend)
         ) {
             Text(song.qualityLabel ?: if (song.lossless) "Lossless" else "Lossy", style = muted)
         }
-        Text("-" + formatDuration(((total - state.positionMs) / 1000).coerceAtLeast(0)), Modifier.weight(1f), style = muted, textAlign = TextAlign.End)
+        Text("-" + formatDuration(((total - pos.positionMs) / 1000).coerceAtLeast(0)), Modifier.weight(1f), style = muted, textAlign = TextAlign.End)
     }
     if (info) SongInfoDialog(song) { info = false }
 }
@@ -327,7 +328,7 @@ fun CoverTinted(uri: String?, content: @Composable (ColorScheme?) -> Unit) {
 fun NowPlayingPanel(state: PlaybackUiState, backend: CoreBackend, actions: ListActions, onOpen: () -> Unit, onHide: () -> Unit, modifier: Modifier = Modifier) {
     val song = state.current ?: return
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
-    val next = if (state.queueIndex < 0) emptyList() else state.queue.drop(state.queueIndex + 1).take(10)
+    val next = remember(state.queue, state.queueIndex) { if (state.queueIndex < 0) emptyList() else state.queue.drop(state.queueIndex + 1).take(10) }
     LazyColumn(modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
         item {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -375,8 +376,8 @@ private val previewPlayerSong = SongUi(
 )
 
 private val previewPlayerState = PlaybackUiState(
-    current = previewPlayerSong, playing = true, positionMs = 120000, durationMs = 366000,
-    bufferedMs = 240000, queue = listOf(previewPlayerSong), queueIndex = 0,
+    current = previewPlayerSong, playing = true, durationMs = 366000,
+    queue = listOf(previewPlayerSong), queueIndex = 0,
 )
 
 private val previewPlayerActions = ListActions(play = { _, _ -> }, shuffle = {}, setFavorite = { _, _ -> }, addToPlaylist = {}, notice = {})
@@ -404,12 +405,13 @@ private fun SongInfoDialogPreview() {
 
 /** The song's lyrics. Timed lyrics follow the song; plain ones just scroll. */
 @Composable
-internal fun LyricsDialog(id: String, title: String, positionMs: Long, backend: CoreBackend, onClose: () -> Unit) {
+internal fun LyricsDialog(id: String, title: String, backend: CoreBackend, onClose: () -> Unit) {
     var text by remember(id) { mutableStateOf<String?>(null) }
     var loaded by remember(id) { mutableStateOf(false) }
     androidx.compose.runtime.LaunchedEffect(id) { text = backend.lyricsFor(id); loaded = true }
     val lines = remember(text) { text?.let { io.max.paperplay.core.metadata.parseLrc(it) }.orEmpty() }
-    val current = lines.indexOfLast { it.timeMs <= positionMs }
+    val pos = backend.position.collectAsState()
+    val current by remember(lines) { androidx.compose.runtime.derivedStateOf { lines.indexOfLast { it.timeMs <= pos.value.positionMs } } }
     val list = androidx.compose.foundation.lazy.rememberLazyListState()
     androidx.compose.runtime.LaunchedEffect(current) { if (current >= 0) list.animateScrollToItem(maxOf(0, current - 2)) }
     androidx.compose.material3.AlertDialog(

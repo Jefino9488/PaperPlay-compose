@@ -40,6 +40,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.luminance
@@ -62,7 +63,11 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
     val favorites by backend.favorites.collectAsState()
     val recents by backend.recents.collectAsState()
     val home by backend.home.collectAsState()
-    val pb by backend.playback.collectAsState()
+    val pb by backend.playbackMeta.collectAsState()
+    // Position and scan text change every tick: keep them as State and read them only in draw lambdas and small leaf composables.
+    val pos = backend.position.collectAsState()
+    val scan = backend.scan.collectAsState()
+    val scanning by backend.scanning.collectAsState()
     val pbError by backend.playbackError.collectAsState()
     val conn by backend.connection.collectAsState()
     val volume by backend.volume.collectAsState()
@@ -83,6 +88,9 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
     val snack = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val loader = remember { FileCoverLoader() }
+    // Glass needs blur layers; with every part on Material they are skipped.
+    val navGlass = prefs.look(LookGroup.Nav) == Look.Glass
+    val anyGlass = LookGroup.entries.any { prefs.look(it) == Look.Glass }
     val backdrop = rememberLayerBackdrop()
     val pageBackdrop = rememberLayerBackdrop()
 
@@ -125,38 +133,40 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
 
     val songs = (lib.songs as? Load.Ready)?.value.orEmpty()
     val currentId = pb.current?.id
+    val mainChatTitle = remember(conn.chats, settings) { conn.chats.firstOrNull { it.id == backend.mainChatId() }?.title }
 
     // Cover gradient: the current song's colours wash down from the top of every page.
     val base = MaterialTheme.colorScheme.background
     val dark = base.luminance() < 0.5f
     val tint = (if (prefs.coverGradient) coverScheme(pb.current?.coverUri, dark) else null)?.primaryContainer ?: MaterialTheme.colorScheme.primaryContainer
-    val g0 by androidx.compose.animation.animateColorAsState(tint.copy(alpha = 0.85f).compositeOver(base), androidx.compose.animation.core.tween(700))
-    val g1 by androidx.compose.animation.animateColorAsState(tint.copy(alpha = 0.32f).compositeOver(base), androidx.compose.animation.core.tween(700))
-    val pageBg = if (prefs.coverGradient) Modifier.background(Brush.verticalGradient(0f to g0, 0.45f to g1, 1f to base)) else Modifier.background(base)
+    val g0 = androidx.compose.animation.animateColorAsState(tint.copy(alpha = 0.85f).compositeOver(base), androidx.compose.animation.core.tween(700))
+    val g1 = androidx.compose.animation.animateColorAsState(tint.copy(alpha = 0.32f).compositeOver(base), androidx.compose.animation.core.tween(700))
+    // The animated colours are read while drawing, so the 700 ms wash does not recompose the shell.
+    val pageBg = if (prefs.coverGradient) Modifier.drawBehind { drawRect(Brush.verticalGradient(0f to g0.value, 0.45f to g1.value, 1f to base)) } else Modifier.background(base)
 
-    CompositionLocalProvider(LocalCoverLoader provides loader, LocalOnMissingCover provides backend::ensureCover, LocalListActions provides actions, io.max.paperplay.ui.LocalGlassBackdrop provides pageBackdrop) {
+    CompositionLocalProvider(LocalCoverLoader provides loader, LocalOnMissingCover provides backend::ensureCover, LocalListActions provides actions, io.max.paperplay.ui.LocalGlassBackdrop provides (if (anyGlass) pageBackdrop else null)) {
         TagDialogHost(backend, tagDialogs) { m -> scope.launch { snack.showSnackbar(m) } }
-        Box(Modifier.fillMaxSize()) {
+        Box(if (anyGlass) Modifier.fillMaxSize() else Modifier.fillMaxSize().then(pageBg)) {
             // The page background alone is the layer glass cards and bars blur (content on it would recurse).
-            Box(Modifier.fillMaxSize().layerBackdrop(pageBackdrop).then(pageBg))
+            if (anyGlass) Box(Modifier.fillMaxSize().layerBackdrop(pageBackdrop).then(pageBg))
             if (isPhone) {
                 val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
                 val bottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
                 val navHeight = if (prefs.navLayout == NavLayout.Labels || prefs.navLayout == NavLayout.Dock) 76.dp else 64.dp
                 val barsHeight = (if (pb.current != null) 70.dp + 8.dp else 0.dp) + navHeight + (if (prefs.floatingNav) 24.dp else 0.dp) + bottomInset
-                Box(Modifier.fillMaxSize().layerBackdrop(backdrop).padding(top = top)) {
+                Box((if (navGlass) Modifier.fillMaxSize().layerBackdrop(backdrop) else Modifier.fillMaxSize()).padding(top = top)) {
                     val d = detail
                     when {
                         settings -> SettingsHost(settingsStack, prefs, conn, songs.size, backend, onRestore, { settings = false }, barsHeight)
                         d != null -> DetailScreen(d, backend, currentId, actions, { detail = null }, barsHeight)
-                        tab == 0 -> HomeScreen(lib, home, favorites, pb, conn, actions, { detail = it }, barsHeight)
+                        tab == 0 -> HomeScreen(lib, home, favorites, currentId, conn, scan, actions, { detail = it }, barsHeight)
                         tab == 1 -> SearchScreen(backend, songs, currentId, actions, { detail = it }, barsHeight)
                         tab == 2 -> LibraryScreen(lib, favorites, currentId, actions, { detail = it }, { newPlaylist = true }, barsHeight, selectedTab = libraryTab,
                             recents = recents, onImportSpotify = { settings = true; settingsStack.clear(); settingsStack.add("spotify") })
                         tab == 3 && profilePage == "tasks" -> TasksScreen(backend.tasks, Modifier.fillMaxSize().padding(bottom = barsHeight), onBack = { profilePage = null })
                         else -> ProfileScreen(
                             songs.size, favorites.size, lib.playlists.size, conn, prefs,
-                            conn.chats.firstOrNull { it.id == backend.mainChatId() }?.title,
+                            mainChatTitle,
                             onSettings = { id ->
                                 settings = true
                                 settingsStack.clear()
@@ -169,6 +179,7 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
                                 tab = 2
                             },
                             barsHeight,
+                            scan = scan,
                         )
                     }
                 }
@@ -176,7 +187,7 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
                     Modifier.align(Alignment.BottomCenter).fillMaxWidth().then(if (prefs.floatingNav) Modifier.padding(start = 24.dp, end = 24.dp, bottom = 12.dp + bottomInset) else Modifier),
                 ) {
                     if (pb.current != null) {
-                        MiniPlayer(pb, { showPlayer = true }, backend::togglePlay, backend::next, backend::previous, if (prefs.floatingNav) Modifier else Modifier.padding(horizontal = 8.dp))
+                        MiniPlayer(pb, { showPlayer = true }, backend::togglePlay, backend::next, backend::previous, { pos.value.progress(pb.durationMs) }, if (prefs.floatingNav) Modifier else Modifier.padding(horizontal = 8.dp))
                         Box(Modifier.height(8.dp))
                     }
                     NavBar(
@@ -185,7 +196,7 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
                         prefs = prefs,
                         inset = bottomInset,
                         onSelect = { tab = it; detail = null; settings = false; settingsStack.clear() },
-                        taskRunning = conn.scanText != null,
+                        taskRunning = scanning,
                     )
                 }
                 if (showPlayer) FullPlayer(pb, pbError, backend, actions, { showPlayer = false })
@@ -211,11 +222,11 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
                             when {
                                 settings -> DesktopSettings(settingsStack, prefs, conn, songs.size, backend, onRestore, { settings = false; settingsStack.clear() }, Modifier.fillMaxSize())
                                 d != null -> DetailScreen(d, backend, currentId, actions, { detail = null }, pad)
-                                page == "home" -> HomeScreen(lib, home, favorites, pb, conn, actions, { detail = it }, pad)
+                                page == "home" -> HomeScreen(lib, home, favorites, currentId, conn, scan, actions, { detail = it }, pad)
                                 page == "search" -> SearchScreen(backend, songs, currentId, actions, { detail = it }, pad)
                                 page == "profile" -> ProfileScreen(
                                     songs.size, favorites.size, lib.playlists.size, conn, prefs,
-                                    conn.chats.firstOrNull { it.id == backend.mainChatId() }?.title,
+                                    mainChatTitle,
                                     onSettings = { id ->
                                         settings = true
                                         settingsStack.clear()
@@ -230,6 +241,7 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
                                         }
                                     },
                                     pad,
+                                    scan = scan,
                                 )
                                 page == "tasks" -> TasksScreen(backend.tasks, onBack = { page = "profile" })
                                 page == "upload" -> Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState())) { TopBar("Upload"); UploadsPage(backend); androidx.compose.foundation.layout.Spacer(Modifier.height(120.dp)) }

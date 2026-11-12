@@ -61,6 +61,12 @@ JOIN playlist_songs ON playlist_songs.chat_id = songs.chat_id AND playlist_songs
 WHERE playlist_songs.playlist_id = :playlistId AND playlist_songs.removed_at IS NULL
 ORDER BY playlist_songs.added_at ASC;
 
+playlistCoverRows:
+SELECT playlist_songs.playlist_id AS playlist_id, songs.cover_path AS cover_path, songs.cover_url AS cover_url FROM songs
+JOIN playlist_songs ON playlist_songs.chat_id = songs.chat_id AND playlist_songs.message_id = songs.message_id
+WHERE playlist_songs.removed_at IS NULL
+ORDER BY playlist_songs.playlist_id ASC, playlist_songs.added_at ASC;
+
 sourceDates:
 SELECT chat_id, message_id, source_added_at FROM playlist_songs
 WHERE playlist_id = :playlistId AND removed_at IS NULL AND source_added_at IS NOT NULL;

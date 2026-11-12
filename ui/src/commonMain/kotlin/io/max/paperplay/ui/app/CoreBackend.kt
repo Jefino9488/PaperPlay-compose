@@ -27,14 +27,19 @@ import io.max.paperplay.ui.state.HomeUi
 import io.max.paperplay.ui.state.ShelfKindUi
 import io.max.paperplay.ui.state.ShelfUi
 import kotlinx.coroutines.flow.distinctUntilChangedBy
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.transformLatest
 import io.max.paperplay.ui.state.GroupUi
 import io.max.paperplay.ui.state.LibraryUi
 import io.max.paperplay.ui.state.Load
 import io.max.paperplay.ui.state.PlaybackUiState
+import io.max.paperplay.ui.state.PositionUi
 import io.max.paperplay.ui.state.RepeatUi
 import io.max.paperplay.ui.state.SongUi
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.flow.Flow
@@ -58,10 +63,11 @@ data class ConnectionUi(
     val state: String = "",
     val ready: Boolean = false,
     val error: String? = null,
-    val scanText: String? = null,
-    val scanFraction: Double? = null,
     val chats: List<LibraryChat> = emptyList(),
 )
+
+/** What a running scan says; kept out of [ConnectionUi] so a scan tick does not recompose whole screens. */
+data class ScanUi(val text: String, val fraction: Double?)
 
 /**
  * Maps the app services onto the plain state the screens render and the actions they call.
@@ -99,11 +105,8 @@ class CoreBackend(val services: AppServices) {
                 artists = groups(songs, { it.artist }) { name, list -> GroupUi(name, name, "${list.size} songs", covers(list)) },
             )
         },
-        repo.changes.map {
-            repo.repo.db.playlistsQueries.livePlaylists().executeAsList().map { p ->
-                val songs = repo.repo.db.playlistsQueries.playlistSongs(p.id).executeAsList()
-                GroupUi(p.id.toString(), p.name, "${songs.size} songs", covers(songs))
-            }
+        repo.playlistSummaries().map { list ->
+            list.map { p -> GroupUi(p.id.toString(), p.name, "${p.count} songs", p.covers) }
         },
     ) { lib, playlists -> lib.copy(playlists = playlists) }
         .catch { emit(LibraryUi(songs = Load.Error(it.message ?: "The library could not be read."))) }
@@ -122,7 +125,7 @@ class CoreBackend(val services: AppServices) {
 
     private class HomeInput(
         val songs: List<Song>, val recent: List<Song>, val favorites: List<Song>, val reserved: Int,
-        val taste: TasteSettings, val weather: WeatherKind?,
+        val taste: TasteSettings, val weather: WeatherKind?, val busy: Boolean,
     )
 
     /** What mixes may learn from. Saved with the other preferences. */
@@ -207,7 +210,7 @@ class CoreBackend(val services: AppServices) {
     }
 
     fun playNext(song: SongUi) {
-        byId[song.id]?.let { services.playback.playNext(it) }
+        byId[song.id]?.let { player.playNext(it) }
     }
 
     /** Lyrics for a song: the saved ones, else looked up on LRCLIB (unless lookups are off) and saved. Null when none. */
@@ -229,7 +232,7 @@ class CoreBackend(val services: AppServices) {
     val lyricsRunning = MutableStateFlow(false)
 
     /**
-     * Background run: looks up lyrics for every song without them, four songs at a time, each against all lyrics
+     * Background run: looks up lyrics for every song without them, two songs at a time, each against all lyrics
      * sources at once (rate-limited per source). Songs nobody had lyrics for are remembered for two weeks
      * (pref "lyrics_miss") and skipped; a network failure is retried a couple of times and is not remembered.
      * Progress shows in the task centre. Calling it while running does nothing.
@@ -257,10 +260,25 @@ class CoreBackend(val services: AppServices) {
             val queue = kotlinx.coroutines.channels.Channel<String>(kotlinx.coroutines.channels.Channel.UNLIMITED)
             todo.forEach { queue.trySend(it) }
             queue.close()
+            val writes = ArrayList<Pair<String, String>>()
+            var lastTask = 0L
+            // Called under [lock]: all collected lyrics go in one transaction, then the lists refresh once.
+            fun flushLyrics() {
+                if (writes.isEmpty()) return
+                val batch = writes.toList()
+                writes.clear()
+                runCatching {
+                    repo.batch {
+                        for ((u, text) in batch) {
+                            services.driver.execute(null, "UPDATE songs SET lyrics = ? WHERE unique_id = ?", 2) { bindString(0, text); bindString(1, u) }
+                        }
+                    }
+                }
+            }
             fun saveMisses() = repo.setPref("lyrics_miss", misses.entries.joinToString("\n") { "${it.key}\t${it.value}" })
             try {
                 kotlinx.coroutines.coroutineScope {
-                    repeat(4) {
+                    repeat(2) {
                         launch {
                             for (uid in queue) {
                                 val song = byId[uid] ?: continue
@@ -278,30 +296,32 @@ class CoreBackend(val services: AppServices) {
                                         kotlinx.coroutines.delay(2_000L shl attempt)
                                     }
                                 }
-                                if (result != null) {
-                                    runCatching {
-                                        services.driver.execute(null, "UPDATE songs SET lyrics = ? WHERE unique_id = ?", 2) { bindString(0, result); bindString(1, uid) }
-                                    }
-                                }
                                 lock.withLock {
+                                    if (result != null) {
+                                        writes += uid to result
+                                        if (writes.size >= 20) flushLyrics()
+                                    }
                                     if (result != null) { found++; misses.remove(uid) }
                                     else {
                                         missed++
                                         if (!failed) misses[uid] = nowMoment().epochMs
                                     }
                                     done++
-                                    tasks.update(id, done = done, detail = song.title)
+                                    val t = nowMoment().epochMs
+                                    if (t - lastTask >= 1_000L) { lastTask = t; tasks.update(id, done = done, detail = song.title) }
                                     if (done % 25 == 0) saveMisses()
                                 }
                             }
                         }
                     }
                 }
+                lock.withLock { flushLyrics() }
                 tasks.update(id, done = todo.size)
                 tasks.finish(id, io.max.paperplay.core.app.TaskState.Done, "$found found, $missed without lyrics")
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } finally {
+                runCatching { kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { lock.withLock { flushLyrics() } } }
                 runCatching { saveMisses() }
                 lyricsRunning.value = false
             }
@@ -314,7 +334,7 @@ class CoreBackend(val services: AppServices) {
         tasks.running.value.firstOrNull { it.id == lyricsTask }?.let { tasks.stop(it.id) }
     }
 
-    fun seekToMs(ms: Long) = services.playback.seek(ms)
+    fun seekToMs(ms: Long) = player.seek(ms)
 
     /** Listening totals for the last [days] days (0 for all time): per song and per day. */
     fun listenStats(days: Int): Pair<List<io.max.paperplay.core.library.ListenTotal>, Map<String, Long>> {
@@ -352,7 +372,7 @@ class CoreBackend(val services: AppServices) {
         sleepAt.value = end
         sleepJob = scope.launch {
             kotlinx.coroutines.delay(minutes * 60_000L)
-            services.playback.pause()
+            player.pause()
             sleepAt.value = null
         }
     }
@@ -412,7 +432,7 @@ class CoreBackend(val services: AppServices) {
         eqGains.value = gains
         repo.setPref("eq_on", "$on")
         repo.setPref("eq_gains", gains.joinToString(",", "[", "]"))
-        services.playback.setEqualizer(if (on) gains else null)
+        player.setEqualizer(if (on) gains else null)
     }
 
     // ListenBrainz: the token lives in the secret store, never in a plain preference.
@@ -443,26 +463,13 @@ class CoreBackend(val services: AppServices) {
         lbUser.value = null
     }
 
-    init {
-        if (eqOn.value) services.playback.setEqualizer(eqGains.value)
-        // A listen counts after half the song or four minutes, whichever comes first.
-        services.playback.onListened = { song, ms ->
-            val token = services.platform.secrets.get(io.max.paperplay.core.backup.SecretKeys.LISTENBRAINZ_TOKEN)
-            val full = song.duration_sec * 1000L
-            val counts = if (full > 0) ms >= minOf(full / 2, 240_000L) else ms >= 30_000L
-            if (token != null && repo.pref("listenbrainz_on") == "true" && counts) scope.launch {
-                val ok = runCatching { listenBrainz.submit(token, song, (nowMoment().epochMs - ms) / 1000) }.getOrDefault(false)
-                if (!ok) addLog("ListenBrainz", "Could not send \"${song.title}\".", error = true)
-            }
-        }
-    }
 
     /** What the app has been doing, newest last. Kept in memory; bot tokens are blanked out. */
     val log = MutableStateFlow<List<LogLine>>(emptyList())
     private var lastScanLog = 0L
 
     /** Running background jobs and their history; features call tasks.start/update/finish. */
-    val tasks = io.max.paperplay.core.app.TaskQueue(scope).also { it.watchServices(services) }
+    val tasks = io.max.paperplay.core.app.TaskQueue(scope).also { q -> scope.launch(Dispatchers.Default) { q.watchServices(services) } }
 
     fun addLog(source: String, message: String, error: Boolean = false) {
         val clean = message.replace(Regex("\\b\\d{5,}:[A-Za-z0-9_-]{20,}\\b"), "<bot token>")
@@ -490,14 +497,24 @@ class CoreBackend(val services: AppServices) {
      * day changes, not on every play or cover update, so rows stay put while cover art pops in live.
      */
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    @Volatile private var homePlanned = false
+    private fun sizeBucket(n: Int) = if (n < 200) n else 200 + n / 100
     private val homePlan: Flow<HomePlanState> = combine(
-        repo.allSongs(), repo.recents(30), repo.favorites(), library, taste.combine(weather) { t, w -> t to w },
+        repo.allSongs(), repo.recents(30), repo.favorites(), library,
+        combine(taste, weather, services.scanner.progress.map { it != null }, services.covers.queued.map { it > 0 }) { t, w, scanning, covering ->
+            Triple(t, w, scanning || covering)
+        },
     ) { songs, recent, fav, lib, tw ->
-        HomeInput(songs, recent, fav, minOf(lib.playlists.size, 3) + if (fav.isEmpty()) 0 else 1, tw.first, tw.second)
+        HomeInput(songs, recent, fav, minOf(lib.playlists.size, 3) + if (fav.isEmpty()) 0 else 1, tw.first, tw.second, tw.third)
     }
-        .distinctUntilChangedBy { "${it.songs.size}:${it.favorites.size}:${it.reserved}:${it.taste.at}:${it.taste.showMixes}:${it.weather}:${nowMoment().dayKey}" }
+        .distinctUntilChangedBy {
+            "${it.favorites.size}:${it.reserved}:${it.taste.at}:${it.taste.showMixes}:${it.weather}:${it.busy}:${sizeBucket(it.songs.size)}:${nowMoment().dayKey}"
+        }
         .transformLatest { input ->
             if (input.songs.isEmpty()) { emit(HomePlanState()); return@transformLatest }
+            // Replanning waits two quiet seconds (a newer input cancels this one); the first plan is not delayed.
+            if (homePlanned) delay(2_000L)
+            homePlanned = true
             val now = nowMoment()
             val plan = HomeShelves.plan(input.songs, input.recent, input.favorites, now, tileCount = 6 - input.reserved)
             val leadSongs = buildList {
@@ -511,10 +528,12 @@ class CoreBackend(val services: AppServices) {
             // Tiles and shelves show at once; the slower daily mixes join when they are ready.
             if (!input.taste.showMixes) { emit(HomePlanState(plan = plan)); return@transformLatest }
             // Saved mixes show at once, even from an older day or library; fresh ones replace them when computed.
-            val mixKey = "${now.dayKey}:${input.songs.size}:${input.favorites.size}:${input.taste.at}:${input.weather}"
+            val mixKey = "${now.dayKey}:${sizeBucket(input.songs.size)}:${input.favorites.size}:${input.taste.at}:${input.weather}"
             val cached = runCatching { DailyMixCache.decode(repo.pref(DailyMixCache.PREF), input.songs.associateBy { it.unique_id }) }.getOrNull()
             emit(HomePlanState(plan = plan, mixes = cached?.second.orEmpty()))
             if (cached != null && cached.first == mixKey && cached.second.isNotEmpty()) return@transformLatest
+            // Building mixes is heavy: not while the library is scanning or covers are loading.
+            if (input.busy) return@transformLatest
             val daily = runCatching {
                 DailyMixes.build(input.songs, now, weather = input.weather, lists = tasteLists(input.favorites, input.taste), options = input.taste)
             }.getOrDefault(emptyList())
@@ -557,32 +576,78 @@ class CoreBackend(val services: AppServices) {
         .flowOn(Dispatchers.Default).stateIn(scope, SharingStarted.Eagerly, HomeUi())
 
     private var queueCache: Triple<List<Song>, Long, List<SongUi>> = Triple(emptyList(), -1L, emptyList())
+    private var currentCache: Pair<Song?, SongUi?> = null to null
 
-    val playback: StateFlow<PlaybackUiState> = combine(
-        services.playback.nowPlaying.onEach { np ->
-            val idx = np.index.coerceAtLeast(0)
-            val upcoming = if (idx < np.queue.size) np.queue.subList(idx, minOf(idx + 3, np.queue.size)) else emptyList()
-            val priority = (listOfNotNull(np.song) + upcoming).distinctBy { it.unique_id }
-            if (priority.isNotEmpty()) services.covers.prioritize(priority)
-        },
+    /** The player is created here on first use, on a background thread, so startup does not wait for it. */
+    /** Output volume, 0 to 1; kept here since the engines do not report it. */
+    val volume = kotlinx.coroutines.flow.MutableStateFlow(repo.pref("player_volume")?.toFloatOrNull()?.coerceIn(0f, 1f) ?: 1f)
+
+    private val player by lazy {
+        services.playback.also { p ->
+            if (eqOn.value) p.setEqualizer(eqGains.value)
+            if (volume.value != 1f) p.setVolume(volume.value)
+            // A listen counts after half the song or four minutes, whichever comes first.
+            p.onListened = { song, ms ->
+                val token = services.platform.secrets.get(io.max.paperplay.core.backup.SecretKeys.LISTENBRAINZ_TOKEN)
+                val full = song.duration_sec * 1000L
+                val counts = if (full > 0) ms >= minOf(full / 2, 240_000L) else ms >= 30_000L
+                if (token != null && repo.pref("listenbrainz_on") == "true" && counts) scope.launch {
+                    val ok = runCatching { listenBrainz.submit(token, song, (nowMoment().epochMs - ms) / 1000) }.getOrDefault(false)
+                    if (!ok) addLog("ListenBrainz", "Could not send \"${song.title}\".", error = true)
+                }
+            }
+        }
+    }
+
+    private val nowPlayingFlow: Flow<NowPlaying> = flow { emitAll(player.nowPlaying) }
+        .flowOn(Dispatchers.Default)
+
+    /** Everything about playback except the position: it changes on a song, queue or button, not every tick. */
+    val playbackMeta: StateFlow<PlaybackUiState> = combine(
+        nowPlayingFlow.distinctUntilChanged { a, b ->
+            a.song?.unique_id == b.song?.unique_id && a.index == b.index && a.isPlaying == b.isPlaying &&
+                a.durationMs == b.durationMs && a.shuffle == b.shuffle && a.repeat == b.repeat &&
+                (a.queue === b.queue || a.queue == b.queue)
+        }.onEach { np -> prioritizeNowPlaying(np) },
         repo.changes,
     ) { np, changes -> np.toUi(changes) }
+        .distinctUntilChanged()
         .flowOn(Dispatchers.Default).stateIn(scope, SharingStarted.Eagerly, PlaybackUiState())
 
+    /** Same as [playbackMeta]; kept for callers that only need the song or the play state. */
+    val playback: StateFlow<PlaybackUiState> get() = playbackMeta
+
+    /** Position and buffered time. Only the seek bar, mini progress and lyrics should read this. */
+    val position: StateFlow<PositionUi> = nowPlayingFlow.map { PositionUi(it.positionMs, it.bufferedMs) }
+        .distinctUntilChanged()
+        .stateIn(scope, SharingStarted.WhileSubscribed(5_000), PositionUi())
+
+    private var lastPriority: Pair<String?, Int> = null to -2
+
+    private fun prioritizeNowPlaying(np: NowPlaying) {
+        val key = np.song?.unique_id to np.index
+        if (key == lastPriority) return
+        lastPriority = key
+        val idx = np.index.coerceAtLeast(0)
+        val upcoming = if (idx < np.queue.size) np.queue.subList(idx, minOf(idx + 3, np.queue.size)) else emptyList()
+        val priority = (listOfNotNull(np.song) + upcoming).distinctBy { it.unique_id }
+        if (priority.isNotEmpty()) services.covers.prioritize(priority)
+    }
+
     private fun NowPlaying.toUi(changes: Long): PlaybackUiState {
-        // The queue is mapped once per queue or library cover update, not per position tick.
+        // The queue is mapped once per queue or library cover update, not per tick.
         val ui = if (queueCache.first === queue && queueCache.second == changes) {
             queueCache.third
         } else {
             queue.map { (byId[it.unique_id] ?: it).toUi() }.also { queueCache = Triple(queue, changes, it) }
         }
         val currentSong = song?.let { byId[it.unique_id] ?: it }
+        val currentUi = if (currentCache.first === currentSong) currentCache.second
+        else currentSong?.toUi().also { currentCache = currentSong to it }
         return PlaybackUiState(
-            current = currentSong?.toUi(),
+            current = currentUi,
             playing = isPlaying,
-            positionMs = positionMs,
             durationMs = durationMs,
-            bufferedMs = bufferedMs,
             shuffle = shuffle,
             repeat = when (repeat) { Repeat.OFF -> RepeatUi.Off; Repeat.ALL -> RepeatUi.All; Repeat.ONE -> RepeatUi.One },
             queue = ui,
@@ -591,14 +656,22 @@ class CoreBackend(val services: AppServices) {
     }
 
     /** Text of the last failure to start a track. */
-    val playbackError: StateFlow<String?> = services.playback.nowPlaying.map { it.error }
+    val playbackError: StateFlow<String?> = nowPlayingFlow.map { it.error }.distinctUntilChanged()
         .stateIn(scope, SharingStarted.Eagerly, null)
 
     val connection: StateFlow<ConnectionUi> = combine(
-        services.auth, services.ready, services.error, services.scanner.progress, repo.chats(),
-    ) { auth, ready, error, scan, chats ->
-        ConnectionUi(services.hasCredentials, auth, ready, error, scan?.text, scan?.fraction, chats)
+        services.auth, services.ready, services.error, repo.chats(),
+    ) { auth, ready, error, chats ->
+        ConnectionUi(services.hasCredentials, auth, ready, error, chats)
     }.stateIn(scope, SharingStarted.Eagerly, ConnectionUi(hasCredentials = services.hasCredentials))
+
+    /** The running scan, read only by the status chip, the task row and the task page. */
+    val scan: StateFlow<ScanUi?> = services.scanner.progress.map { p -> p?.let { ScanUi(it.text, it.fraction) } }
+        .stateIn(scope, SharingStarted.Eagerly, null)
+
+    /** True while a scan runs; changes twice per scan, unlike [scan]. */
+    val scanning: StateFlow<Boolean> = services.scanner.progress.map { it != null }.distinctUntilChanged()
+        .stateIn(scope, SharingStarted.Eagerly, false)
 
     // Reading
     fun album(name: String): Flow<List<SongUi>> = repo.album(name)
@@ -619,36 +692,32 @@ class CoreBackend(val services: AppServices) {
         val list = songs.mapNotNull { byId[it.id] }
         if (list.isEmpty()) return
         val start = list.indexOfFirst { it.unique_id == songs.getOrNull(index)?.id }.coerceAtLeast(0)
-        services.playback.setQueue(list, start)
+        player.setQueue(list, start)
     }
 
     fun shuffleAll(songs: List<SongUi>) {
         val list = songs.mapNotNull { byId[it.id] }.shuffled()
         if (list.isEmpty()) return
-        services.playback.setQueue(list, 0)
+        player.setQueue(list, 0)
     }
 
-    fun togglePlay() = if (playback.value.playing) services.playback.pause() else services.playback.play()
-    fun next() = services.playback.next()
-    fun previous() = services.playback.previous()
-    fun seekTo(fraction: Float) = services.playback.seek((fraction * playback.value.durationMs).toLong())
-    /** Output volume, 0 to 1; kept here since the engines do not report it. */
-    val volume = kotlinx.coroutines.flow.MutableStateFlow(repo.pref("player_volume")?.toFloatOrNull()?.coerceIn(0f, 1f) ?: 1f)
+    fun togglePlay() = if (playbackMeta.value.playing) player.pause() else player.play()
+    fun next() = player.next()
+    fun previous() = player.previous()
+    fun seekTo(fraction: Float) = player.seek((fraction * playbackMeta.value.durationMs).toLong())
     fun setVolume(v: Float) {
         volume.value = v.coerceIn(0f, 1f)
-        services.playback.setVolume(volume.value)
+        player.setVolume(volume.value)
         repo.setPref("player_volume", volume.value.toString())
     }
 
-    // The saved volume is applied when the player is created, not only when the slider moves.
-    init { if (volume.value != 1f) services.playback.setVolume(volume.value) }
-    fun toggleShuffle() = services.playback.setShuffle(!playback.value.shuffle)
-    fun cycleRepeat() = services.playback.setRepeat(
-        when (playback.value.repeat) { RepeatUi.Off -> Repeat.ALL; RepeatUi.All -> Repeat.ONE; RepeatUi.One -> Repeat.OFF },
+    fun toggleShuffle() = player.setShuffle(!playbackMeta.value.shuffle)
+    fun cycleRepeat() = player.setRepeat(
+        when (playbackMeta.value.repeat) { RepeatUi.Off -> Repeat.ALL; RepeatUi.All -> Repeat.ONE; RepeatUi.One -> Repeat.OFF },
     )
     fun playQueueIndex(index: Int) {
-        val q = services.playback.nowPlaying.value.queue
-        if (index in q.indices) services.playback.setQueue(q, index)
+        val q = player.nowPlaying.value.queue
+        if (index in q.indices) player.setQueue(q, index)
     }
 
     // Editing

@@ -94,6 +94,8 @@ class TdRuntime(
         scope.launch(receiveDispatcher) {
             while (isActive) {
                 val raw = native.receive(1.0) ?: continue
+                // Skip parsing updates nobody reads; replies carry "@extra" and updates of wanted types name their type.
+                if (!raw.contains("\"@extra\"") && wanted.none { raw.contains(it) }) continue
                 val m = runCatching { Json.parseToJsonElement(raw).jsonObject }.getOrNull() ?: continue
                 val client = clients.value[m["@client_id"]?.jsonPrimitive?.intOrNull] ?: continue
                 if ("@extra" in m || m.type in wanted) client.onMessage(m)

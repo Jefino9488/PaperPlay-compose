@@ -193,3 +193,25 @@ internal fun SortPage(backend: CoreBackend) {
         )
     }
 }
+
+@org.jetbrains.compose.ui.tooling.preview.Preview
+@Composable
+private fun TopicPickerDialogPhonePreview() {
+    val sampleTopics = listOf(TopicChoice(1, "Rock"), TopicChoice(2, "Pop"))
+    io.max.paperplay.ui.theme.PaperPlayTheme {
+        androidx.compose.foundation.layout.Box(Modifier.padding(16.dp)) {
+            TopicPickerDialog(title = "Move song to", topics = sampleTopics, onPick = {})
+        }
+    }
+}
+
+@org.jetbrains.compose.ui.tooling.preview.Preview
+@Composable
+private fun TopicPickerDialogDesktopPreview() {
+    val sampleTopics = listOf(TopicChoice(1, "Rock"), TopicChoice(2, "Pop"))
+    io.max.paperplay.ui.theme.PaperPlayTheme {
+        androidx.compose.foundation.layout.Box(Modifier.padding(32.dp)) {
+            TopicPickerDialog(title = "Move song to", topics = sampleTopics, onPick = {})
+        }
+    }
+}

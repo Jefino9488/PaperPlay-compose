@@ -46,11 +46,38 @@ class TaskQueue(private val scope: CoroutineScope, private val clock: () -> Long
         return id
     }
 
+    private class Patch(var done: Int? = null, var total: Int? = null, var detail: String? = null, var fraction: Float? = null)
+
+    private val lastEmit = HashMap<Long, Long>()
+    private val patches = HashMap<Long, Patch>()
+
+    /** Applies at most one change per task each 500 ms; the newest values wait and are applied shortly after. */
     fun update(id: Long, done: Int? = null, total: Int? = null, detail: String? = null, fraction: Float? = null) {
+        val wait: Long
+        synchronized(this) {
+            val p = patches.getOrPut(id) { Patch() }
+            done?.let { p.done = it }; total?.let { p.total = it }; detail?.let { p.detail = it }; fraction?.let { p.fraction = it }
+            val since = clock() - (lastEmit[id] ?: 0L)
+            if (since >= THROTTLE_MS) { flush(id); return }
+            wait = THROTTLE_MS - since
+            if (patches[id]?.let { scheduled.add(id) } != true) return
+        }
+        scope.launch {
+            kotlinx.coroutines.delay(wait)
+            synchronized(this@TaskQueue) { scheduled.remove(id); flush(id) }
+        }
+    }
+
+    private val scheduled = HashSet<Long>()
+
+    /** Caller holds the lock. */
+    private fun flush(id: Long) {
+        val p = patches.remove(id) ?: return
+        lastEmit[id] = clock()
         _running.update { list ->
             list.map { t ->
                 if (t.id != id) t else t.copy(
-                    done = done ?: t.done, total = total ?: t.total, detail = detail ?: t.detail, fraction = fraction ?: t.fraction,
+                    done = p.done ?: t.done, total = p.total ?: t.total, detail = p.detail ?: t.detail, fraction = p.fraction ?: t.fraction,
                 )
             }
         }
@@ -58,6 +85,8 @@ class TaskQueue(private val scope: CoroutineScope, private val clock: () -> Long
 
     @Synchronized
     fun finish(id: Long, state: TaskState = TaskState.Done, detail: String? = null) {
+        flush(id)
+        lastEmit.remove(id)
         val t = _running.value.firstOrNull { it.id == id } ?: return
         stops.remove(id)
         _running.update { l -> l.filter { it.id != id } }
@@ -127,3 +156,5 @@ class TaskQueue(private val scope: CoroutineScope, private val clock: () -> Long
         }
     }
 }
+
+private const val THROTTLE_MS = 500L

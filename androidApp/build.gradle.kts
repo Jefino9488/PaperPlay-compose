@@ -75,4 +75,5 @@ dependencies {
     implementation(project(":core"))
     implementation(project(":player"))
     implementation(libs.androidx.activity.compose)
+    implementation("androidx.profileinstaller:profileinstaller:1.4.1")
 }

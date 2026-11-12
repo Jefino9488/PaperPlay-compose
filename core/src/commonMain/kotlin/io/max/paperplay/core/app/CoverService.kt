@@ -53,10 +53,11 @@ class CoverService(
     private val http: HttpFetcher = defaultHttpFetcher(),
     private val scope: CoroutineScope,
     private val clock: () -> Long = { Clock.System.now().toEpochMilliseconds() },
-    private val maxWorkers: Int = 4,
+    private val maxWorkers: Int = 1,
     private val requestPauseMs: Long = 200L,
-    private val backgroundPauseMs: Long = 250L,
+    private val backgroundPauseMs: Long = 1500L,
     private val debounceMs: Long = 200L,
+    private val startDelayMs: Long = 30_000L,
 ) {
     private val queueMutex = Mutex()
     private val tdMutex = Mutex()
@@ -82,6 +83,7 @@ class CoverService(
     val queued: StateFlow<Int> = _queued
 
     @Volatile private var started = false
+    @Volatile private var startQueued = false
     @Volatile private var nextTdAt = 0L
     @Volatile private var tdBlockedUntil = 0L
     private var retryJob: Job? = null
@@ -100,7 +102,7 @@ class CoverService(
             for (signal in notifyWake) {
                 if (debounceMs > 0L) delay(debounceMs)
                 notifyWake.tryReceive()
-                repo.invalidate()
+                repo.invalidateSoon()
             }
         }
         repeat(maxWorkers.coerceAtLeast(1)) {
@@ -111,7 +113,13 @@ class CoverService(
     /** Starts the background cover workers and queues any songs still missing cover files. */
     fun start() {
         ensureStarted()
-        kick(retryTdMissing = true)
+        if (startQueued) return
+        startQueued = true
+        // The backlog is queued after a quiet half minute; screens ask for what they show before that.
+        scope.launch {
+            delay(startDelayMs)
+            kick(retryTdMissing = true)
+        }
     }
 
     /** Queues [songs] ahead of background cover work so visible cards and playback populate immediately. */
@@ -196,7 +204,7 @@ class CoverService(
     fun kick(retryTdMissing: Boolean = false) {
         ensureStarted()
         scope.launch {
-            val missing = (repo.songsNeedingCovers() + repo.songsNeedingUpgrade()).filter { !gaveUpRecently(it.unique_id) }
+            val missing = repo.coverCandidateIds().filter { !gaveUpRecently(it) }
             var enqueued = false
             queueMutex.withLock {
                 if (retryTdMissing && awaitingTd.isNotEmpty()) {
@@ -208,8 +216,7 @@ class CoverService(
                     }
                     awaitingTd.clear()
                 }
-                for (song in missing) {
-                    val uid = song.unique_id
+                for (uid in missing) {
                     if (uid !in inFlight && uid !in attempted && uid !in highPriority && uid !in awaitingTd && uid !in rateLimited) {
                         if (background.add(uid)) enqueued = true
                     }
@@ -222,9 +229,10 @@ class CoverService(
 
     private suspend fun workerLoop() {
         while (currentCoroutineContext().isActive) {
-            val item = nextWorkItem()
+            // Background work waits while the song-info run is going; screens and playback do not.
+            val item = nextWorkItem(allowBackground = !repo.enrichRunning.value)
             if (item == null) {
-                wake.receive()
+                if (repo.enrichRunning.value) withTimeoutOrNull(2.seconds) { wake.receive() } else wake.receive()
                 continue
             }
             val (uid, isHigh) = item
@@ -244,7 +252,7 @@ class CoverService(
         }
     }
 
-    private suspend fun nextWorkItem(): Pair<String, Boolean>? = queueMutex.withLock {
+    private suspend fun nextWorkItem(allowBackground: Boolean = true): Pair<String, Boolean>? = queueMutex.withLock {
         val high = highPriority.firstOrNull()
         if (high != null) {
             highPriority.remove(high)
@@ -252,14 +260,14 @@ class CoverService(
             _queued.value = highPriority.size + background.size
             return@withLock high to true
         }
-        val bg = background.firstOrNull()
+        val bg = if (allowBackground) background.firstOrNull() else null
         if (bg != null) {
             background.remove(bg)
             inFlight.add(bg)
             _queued.value = highPriority.size + background.size
             return@withLock bg to false
         }
-        _queued.value = 0
+        if (allowBackground) _queued.value = 0
         null
     }
 

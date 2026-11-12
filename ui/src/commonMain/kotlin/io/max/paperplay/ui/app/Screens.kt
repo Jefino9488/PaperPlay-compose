@@ -12,8 +12,13 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.text.font.FontWeight
+import io.max.paperplay.ui.RestoreHooks
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -38,6 +43,7 @@ import androidx.compose.material3.AssistChip
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.PrimaryScrollableTabRow
@@ -107,16 +113,38 @@ fun CredentialsForm(onSave: (apiId: String, apiHash: String, token: String) -> S
 }
 
 @Composable
-fun SetupScreen(backend: CoreBackend, onSaved: () -> Unit, onRestore: () -> Unit) {
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.Center) {
-        Text("PaperPlay", style = MaterialTheme.typography.displaySmall)
-        Text(
-            "Connect your own Telegram bot. The API id and hash come from my.telegram.org, the token from @BotFather. " +
-                "Everything stays on this device.",
-            Modifier.padding(vertical = 12.dp), color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        CredentialsForm(backend::saveCredentials, onSaved)
-        OutlinedButton(onRestore, Modifier.fillMaxWidth().padding(top = 16.dp)) { Text("Restore everything from a backup") }
+fun SetupScreen(
+    backend: CoreBackend,
+    restoreHooks: RestoreHooks? = null,
+    onSaved: () -> Unit,
+    onRestore: () -> Unit,
+) {
+    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+        Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+            Surface(
+                Modifier.widthIn(max = 640.dp).fillMaxWidth(),
+                shape = RoundedCornerShape(28.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerLow,
+                tonalElevation = 2.dp,
+            ) {
+                Column(
+                    Modifier.padding(24.dp).verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    Text("Set up a bot", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Connect your Telegram bot. The API id and hash come from my.telegram.org, the token from @BotFather.",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(20.dp))
+                    CredentialsForm(backend::saveCredentials, onSaved)
+                    Spacer(Modifier.height(16.dp))
+                    OutlinedButton(onRestore, Modifier.fillMaxWidth()) { Text("Restore everything from a backup") }
+                }
+            }
+        }
     }
 }
 

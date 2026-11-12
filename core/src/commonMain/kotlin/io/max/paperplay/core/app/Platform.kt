@@ -34,6 +34,9 @@ interface Platform {
     fun createPlayer(): PlayerEngine
     val deviceModel: String get() = "Android"
     val appVersion: String get() = "0.1.0"
+
+    /** False when heavy background work should wait: app hidden and on battery, or on a metered network. */
+    fun canRunBackground(): Boolean = true
 }
 
 /** Keys used in [SecretStore] and [Settings]. */

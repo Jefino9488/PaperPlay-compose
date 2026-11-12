@@ -9,4 +9,4 @@ private val random = SecureRandom()
 
 internal actual fun secureRandomBytes(count: Int): ByteArray = ByteArray(count).also { random.nextBytes(it) }
 
-internal actual fun defaultHttpFetcher(): HttpFetcher = JavaHttp()
+actual fun defaultHttpFetcher(): HttpFetcher = JavaHttp()

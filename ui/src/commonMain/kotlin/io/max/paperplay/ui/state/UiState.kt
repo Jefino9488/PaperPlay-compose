@@ -28,18 +28,19 @@ enum class RepeatUi { Off, All, One }
 data class PlaybackUiState(
     val current: SongUi? = null,
     val playing: Boolean = false,
-    val positionMs: Long = 0,
     val durationMs: Long = 0,
-    val bufferedMs: Long = 0,
     /** 0 to 1. */
     val volume: Float = 1f,
     val shuffle: Boolean = false,
     val repeat: RepeatUi = RepeatUi.Off,
     val queue: List<SongUi> = emptyList(),
     val queueIndex: Int = -1,
-) {
-    val progress: Float get() = if (durationMs > 0) (positionMs.toFloat() / durationMs).coerceIn(0f, 1f) else 0f
-    val bufferedProgress: Float get() = if (durationMs > 0) (bufferedMs.toFloat() / durationMs).coerceIn(0f, 1f) else 0f
+)
+
+/** The part of playback that changes every tick. Keep readers of it small and late. */
+data class PositionUi(val positionMs: Long = 0, val bufferedMs: Long = 0) {
+    fun progress(durationMs: Long): Float = if (durationMs > 0) (positionMs.toFloat() / durationMs).coerceIn(0f, 1f) else 0f
+    fun bufferedProgress(durationMs: Long): Float = if (durationMs > 0) (bufferedMs.toFloat() / durationMs).coerceIn(0f, 1f) else 0f
 }
 
 interface PlaybackActions {

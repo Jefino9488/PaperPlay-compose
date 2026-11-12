@@ -63,7 +63,7 @@ class MetadataEnricher(
     private val itunesIntervalMs: Long = 3500L,
     private val retryAfterMs: Long = 60_000L,
     private val maxBusyRetries: Int = 6,
-    private val workers: Int = 6,
+    private val workers: Int = 2,
     private val deezerIntervalMs: Long = 150L,
     private val audioDbIntervalMs: Long = 2100L,
 ) {
@@ -71,6 +71,7 @@ class MetadataEnricher(
     private var worker: Job? = null
     private var retryJob: Job? = null
     @Volatile private var stopped = false
+    @Volatile private var failures = 0
     private val mbGate = Gate(mbIntervalMs)
     private val itunesGate = Gate(itunesIntervalMs)
     private val deezerGate = Gate(deezerIntervalMs)
@@ -110,7 +111,7 @@ class MetadataEnricher(
     val failure: StateFlow<String?> = _failure
 
     /** Songs not yet looked up. */
-    fun waiting(): Int = repo.repo.db.songsQueries.pendingToEnrich(0).executeAsList().size
+    fun waiting(): Int = repo.repo.db.songsQueries.countPendingToEnrich().executeAsOne().toInt()
 
     /** Ends the run after the song being looked up. [kick] starts it again. */
     fun stop() {
@@ -125,10 +126,12 @@ class MetadataEnricher(
         retryJob?.cancel()
         worker = scope.launch {
             _running.value = true
+            repo.enrichRunning.value = true
             try {
                 runPending()
             } finally {
                 _running.value = false
+                repo.enrichRunning.value = false
                 _progress.value = null
             }
         }
@@ -136,57 +139,101 @@ class MetadataEnricher(
 
     private suspend fun runPending() {
         val lock = Mutex()
-        val inFlight = HashSet<String>()
+        val seen = HashSet<String>()
+        val queue = ArrayDeque<Song>()
+        val unsaved = ArrayList<Pair<String, (Song) -> Song>>()
         var done = 0
+        var total = waiting()
+        var lastProgress = 0L
+        var lastFlush = clock()
         var failed: String? = null
+
+        // Saves the collected results in one transaction (one change signal). Call under [lock].
+        fun flush() {
+            if (unsaved.isEmpty()) return
+            val rows = unsaved.mapNotNull { (uid, change) ->
+                repo.songByUniqueId(uid)?.takeIf { it.enrich_state == EnrichState.PENDING }?.let(change)
+            }
+            unsaved.clear()
+            repo.replaceSongs(rows)
+            lastFlush = clock()
+            total = done + waiting()
+        }
+
         coroutineScope {
             repeat(workers.coerceAtLeast(1)) {
                 launch {
                     var busy = 0
                     while (!stopped && failed == null) {
                         val song = lock.withLock {
-                            repo.repo.db.songsQueries.pendingToEnrich(0).executeAsList()
-                                .firstOrNull { it.unique_id !in inFlight }?.also { inFlight += it.unique_id }
+                            if (queue.isEmpty()) {
+                                repo.repo.db.songsQueries.pendingToEnrich(0).executeAsList()
+                                    .filter { it.unique_id !in seen }.forEach { queue.addLast(it) }
+                            }
+                            queue.removeFirstOrNull()?.also { seen += it.unique_id }
                         } ?: break
-                        lock.withLock { _progress.value = EnrichProgress(done, done + waiting(), song.title) }
+                        lock.withLock {
+                            val now = clock()
+                            if (done % 10 == 0 || now - lastProgress >= 1000L) {
+                                lastProgress = now
+                                _progress.value = EnrichProgress(done, maxOf(total, done), song.title)
+                            }
+                        }
                         try {
-                            enrich(song)
-                            lock.withLock { done++; inFlight -= song.unique_id; _failure.value = null }
+                            val change = lookup(song)
+                            lock.withLock {
+                                if (change != null) unsaved += song.unique_id to change
+                                done++
+                                failures = 0
+                                _failure.value = null
+                                if (unsaved.size >= 20 || clock() - lastFlush >= 5_000L) flush()
+                            }
                             busy = 0
                         } catch (e: CancellationException) {
                             throw e
                         } catch (e: ServiceBusy) {
-                            lock.withLock { inFlight -= song.unique_id }
+                            lock.withLock { queue.addFirst(song) }
                             if (busy >= maxBusyRetries) { failed = "A lookup service is busy"; break }
                             delay(busyDelay(busy++))
                         } catch (e: Exception) {
-                            lock.withLock { inFlight -= song.unique_id }
                             failed = "No connection"
                         }
                     }
                 }
             }
         }
+        // Also reached when the run is cancelled: what was looked up is kept.
+        lock.withLock { flush() }
         failed?.let { giveUp(it) } ?: run { if (!stopped) _failure.value = null }
     }
 
+    /** Waits 1x, 5x then 30x [retryAfterMs] (1 min, 5 min, 30 min) between tries while lookups keep failing. */
     private fun giveUp(why: String) {
         _failure.value = why
         if (stopped) return
+        val wait = retryAfterMs * when (failures) { 0 -> 1L; 1 -> 5L; else -> 30L }
+        failures++
         retryJob = scope.launch {
-            delay(retryAfterMs)
+            delay(wait)
             kick()
         }
     }
 
     /** Looks one song up and writes the result. Throws when nothing could be asked, so it is asked again. */
     suspend fun enrich(song: Song) {
-        val fresh = repo.songByUniqueId(song.unique_id) ?: return
-        if (fresh.enrich_state != EnrichState.PENDING) return
-        if (fresh.user_edited) {
-            repo.replaceSong(fresh.copy(enrich_state = EnrichState.DONE))
-            return
-        }
+        val change = lookup(song) ?: return
+        val row = repo.songByUniqueId(song.unique_id)?.takeIf { it.enrich_state == EnrichState.PENDING } ?: return
+        repo.replaceSong(change(row))
+    }
+
+    /**
+     * Looks one song up online. The result is a change to apply to the row as it is when saved (so a cover or
+     * edit made meanwhile is kept), or null when there is nothing to save. Throws when nothing could be asked.
+     */
+    private suspend fun lookup(song: Song): ((Song) -> Song)? {
+        val fresh = repo.songByUniqueId(song.unique_id) ?: return null
+        if (fresh.enrich_state != EnrichState.PENDING) return null
+        if (fresh.user_edited) return { it.copy(enrich_state = EnrichState.DONE) }
         val title = fresh.title
         val artist = fresh.artist
         val dur = fresh.duration_sec.toInt()
@@ -225,13 +272,10 @@ class MetadataEnricher(
                 if (d != null) { genre = genre ?: d.first; year = year ?: d.second }
             }
         }
-        val now = repo.songByUniqueId(song.unique_id) ?: return
-        if (now.user_edited) {
-            repo.replaceSong(now.copy(enrich_state = EnrichState.DONE))
-            return
-        }
+        return { now ->
+          if (now.user_edited) now.copy(enrich_state = EnrichState.DONE) else {
         val stamp = laterStamp(clock(), now.tags_at)
-        val out = when {
+        when {
             match != null -> now.copy(
                 title = match.title, artist = match.artist, album = match.album, release_id = match.releaseId,
                 cover_url = coverUrl ?: now.cover_url, genre = genre ?: now.genre,
@@ -246,7 +290,8 @@ class MetadataEnricher(
             )
             else -> now.copy(title = cleanTitle(now.title, now.artist), enrich_state = EnrichState.NO_MATCH)
         }
-        repo.replaceSong(out)
+          }
+        }
     }
 
     /** Runs one source with a time limit; its failure is a value, not a throw. */
@@ -272,22 +317,18 @@ class MetadataEnricher(
     /** Puts every unmatched song back in the queue and starts the run. Returns how many. */
     fun retryUnmatched(): Int {
         val list = repo.unmatchedSongs()
-        list.forEach { repo.replaceSong(it.copy(enrich_state = EnrichState.PENDING)) }
+        repo.replaceSongs(list.map { it.copy(enrich_state = EnrichState.PENDING) })
         if (list.isNotEmpty()) kick()
         return list.size
     }
 
     /** Looks these songs up again, even if they matched before. Edited songs are left alone. */
     fun retrySongs(songs: List<Song>): Int {
-        var n = 0
-        for (s in songs) {
-            val row = repo.songByUniqueId(s.unique_id) ?: continue
-            if (row.user_edited) continue
-            repo.replaceSong(row.copy(enrich_state = EnrichState.PENDING))
-            n++
-        }
-        if (n > 0) kick()
-        return n
+        val rows = songs.mapNotNull { s -> repo.songByUniqueId(s.unique_id)?.takeIf { !it.user_edited } }
+            .map { it.copy(enrich_state = EnrichState.PENDING) }
+        repo.replaceSongs(rows)
+        if (rows.isNotEmpty()) kick()
+        return rows.size
     }
 
     // Searching

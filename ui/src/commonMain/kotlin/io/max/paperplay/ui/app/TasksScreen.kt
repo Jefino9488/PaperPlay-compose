@@ -23,6 +23,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import org.jetbrains.compose.ui.tooling.preview.Preview
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -112,4 +113,14 @@ private fun ago(ms: Long): String {
         m < 60 * 24 -> "${m / 60} h ago"
         else -> "${m / (60 * 24)} d ago"
     }
+}
+
+@Preview
+@Composable
+private fun RunningRowPreview() {
+    val sampleTask = io.max.paperplay.core.app.TaskItem(
+        id = 1, kind = io.max.paperplay.core.app.TaskKind.Index, title = "Indexing chats",
+        done = 3, total = 10, detail = "Reading 3 of 10", startedAt = 0, state = io.max.paperplay.core.app.TaskState.Running,
+    )
+    RunningRow(t = sampleTask, onStop = {})
 }

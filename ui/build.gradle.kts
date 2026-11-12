@@ -33,6 +33,10 @@ kotlin {
     }
 }
 
+composeCompiler {
+    stabilityConfigurationFiles.add(layout.projectDirectory.file("stability_config.conf"))
+}
+
 compose.resources {
     publicResClass = false
     packageOfResClass = "io.max.paperplay.ui.res"

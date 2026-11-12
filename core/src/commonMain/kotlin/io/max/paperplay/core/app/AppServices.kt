@@ -79,7 +79,7 @@ class AppServices(
     val playlistSync: io.max.paperplay.core.integrations.PlaylistAutoSync by lazy {
         io.max.paperplay.core.integrations.PlaylistAutoSync(
             library, io.max.paperplay.core.integrations.ImportStore(library.repo, driver), io.max.paperplay.core.integrations.defaultHttp(),
-            account, chatIndex, scope, official = spotify::fetchPlaylist,
+            account, chatIndex, scope, official = spotify::fetchPlaylist, canRun = platform::canRunBackground,
         )
     }
 
@@ -137,7 +137,9 @@ class AppServices(
 
     @Volatile private var client: TdClient? = null
     private var runtime: TdRuntime? = null
-    private val cachePending = MutableStateFlow<Map<String, Pair<Long, Boolean>>>(emptyMap())
+    private val cachePending = HashMap<String, Pair<Long, Boolean>>()
+    private val clockMs = clock
+    private var lastEvict = 0L
     private var cacheFlushJob: Job? = null
     private val _auth = MutableStateFlow("")
     private val _error = MutableStateFlow<String?>(null)
@@ -200,7 +202,6 @@ class AppServices(
                 }
                 c.start()
                 c.ready()
-                scanner.catchUp()
                 playlistSync.start()
                 // Songs read through the account need its client running before they are played.
                 launch {
@@ -212,20 +213,23 @@ class AppServices(
                     }, 1) { bindString(0, ACCOUNT_REMOTE) }.value
                     for (id in chats) (account as? io.max.paperplay.core.account.UserSession)?.warmUp(id)
                 }
-                // A library restored from a backup keeps that backup's scan position, so posts it never saw stay
-                // missing. Read every chat from the start once; only a finished read counts.
-                if (library.pref("scan_verified") != "2") {
-                    var all = true
-                    scanner.retryEmptyIds = true
-                    try {
-                        for (chat in library.chatList()) if (!scanner.rescanChat(chat)) all = false
-                    } finally {
-                        scanner.retryEmptyIds = false
-                    }
-                    if (all) library.setPref("scan_verified", "2")
+                // Covers wait a while, so the first seconds after connecting stay light.
+                launch {
+                    delay(30.seconds)
+                    covers.start()
                 }
-                covers.start()
-                enricher.kick()
+                // Catching up and the one-time check run beside the rest, never in the way of connecting.
+                launch {
+                    try {
+                        scanner.catchUp()
+                        verifyChats()
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Throwable) {
+                        _error.value = e.message ?: e::class.simpleName
+                    }
+                    enricher.kick()
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: TdError) {
@@ -234,6 +238,31 @@ class AppServices(
                 _error.value = e.message ?: e::class.simpleName
             }
         }
+    }
+
+    /**
+     * A library restored from a backup keeps that backup's scan position, so posts it never saw stay missing. Every chat
+     * is read from the start once; the chats done so far are remembered, so a closed app carries on with the rest.
+     * Waits for the foreground or a charger, and for the enricher to be idle.
+     */
+    private suspend fun verifyChats() {
+        if (library.pref("scan_verified") == "2") return
+        val done = (library.pref("scan_verified_chats") ?: "").split(',').mapNotNull { it.toLongOrNull() }.toMutableSet()
+        var all = true
+        scanner.retryEmptyIds = true
+        try {
+            for (chat in library.chatList()) {
+                if (chat.id in done) continue
+                while (!platform.canRunBackground() || enricher.progress.value != null) delay(60.seconds)
+                if (scanner.rescanChat(chat)) {
+                    done += chat.id
+                    library.setPref("scan_verified_chats", done.joinToString(","))
+                } else all = false
+            }
+        } finally {
+            scanner.retryEmptyIds = false
+        }
+        if (all) library.setPref("scan_verified", "2")
     }
 
     /**
@@ -291,14 +320,13 @@ class AppServices(
         val local = file.obj("local") ?: return
         val downloaded = local.long("downloaded_size") ?: return
         val completed = (local["is_downloading_completed"] as? JsonPrimitive)?.booleanOrNull == true
-        cachePending.update { it + (uid to (downloaded to completed)) }
+        synchronized(cachePending) { cachePending[uid] = downloaded to completed }
         if (completed) {
             local.str("path")?.takeIf { it.isNotEmpty() }?.let { path ->
                 scope.launch(kotlinx.coroutines.Dispatchers.IO) { embeddedTags.apply(uid, path) }
             }
-            cacheFlushJob?.cancel()
-            cacheFlushJob = scope.launch { flushCache(c) }
-        } else if (cacheFlushJob?.isActive != true) {
+        }
+        if (cacheFlushJob?.isActive != true) {
             cacheFlushJob = scope.launch {
                 delay(3.seconds)
                 flushCache(c)
@@ -307,11 +335,15 @@ class AppServices(
     }
 
     private suspend fun flushCache(c: TdClient) {
-        val batch = cachePending.getAndUpdate { emptyMap() }
+        val batch = synchronized(cachePending) { HashMap(cachePending).also { cachePending.clear() } }
         if (batch.isEmpty()) return
         for ((k, entry) in batch) {
             runCatching { library.setCachedBytes(k, entry.first, notify = entry.second) }
         }
+        // Looking for songs to evict reads the whole cache, so it runs at most once a minute.
+        val now = clockMs()
+        if (now - lastEvict < 60_000L) return
+        lastEvict = now
         val limit = library.cacheLimit()
         val rows = library.cachedSongs().filter { !it.pinned }.sortedBy { it.last_played_at ?: 0L }
         var total = rows.sumOf { it.cached_bytes }

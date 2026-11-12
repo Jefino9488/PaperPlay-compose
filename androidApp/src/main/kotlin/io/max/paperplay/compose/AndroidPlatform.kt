@@ -34,4 +34,12 @@ class AndroidPlatform(private val context: Context) : Platform {
     override fun createPlayer(): PlayerEngine = createPlayerEngine()
     override val deviceModel: String get() = Build.MODEL
     override val appVersion: String get() = "0.1.0"
+
+    override fun canRunBackground(): Boolean = runCatching {
+        val battery = context.registerReceiver(null, android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED))
+        val charging = (battery?.getIntExtra(android.os.BatteryManager.EXTRA_PLUGGED, 0) ?: 0) != 0
+        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+        val unmetered = !cm.isActiveNetworkMetered
+        (MainActivity.foreground || charging) && unmetered
+    }.getOrDefault(true)
 }

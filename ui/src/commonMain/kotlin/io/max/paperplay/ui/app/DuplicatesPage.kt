@@ -23,6 +23,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import org.jetbrains.compose.ui.tooling.preview.Preview
 import io.max.paperplay.core.app.TaskKind
 import io.max.paperplay.core.app.TaskState
 import io.max.paperplay.core.dupes.DefaultSongRules
@@ -214,4 +215,14 @@ internal fun DuplicatesPage(backend: CoreBackend) {
             dismissButton = { TextButton(onClick = { confirm = false }) { Text("Cancel") } },
         )
     }
+}
+
+@Preview
+@Composable
+private fun DuplicatesPagePreview() {
+    SettingsRow(
+        "Supermassive Black Hole - Muse",
+        icon = Icons.Rounded.ContentCopy,
+        subtitle = "2 copies found · 320 kbps (12.5 MB)",
+    )
 }

@@ -6,7 +6,14 @@ import io.max.paperplay.core.library.Playlist
 import io.max.paperplay.core.library.Song
 import io.max.paperplay.core.library.laterStamp
 import io.max.paperplay.core.library.newUuid
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -25,16 +32,46 @@ class LibraryRepository(val repo: LibraryRepo, private val clock: () -> Long) {
     /** Counts every write; collect it to re-run a query that [watch] does not cover. */
     val changes = MutableStateFlow(0L)
 
-    /** Call after changing the database behind this class's back (e.g. a restored backup). */
+    /** Call after changing the database behind this class's back (e.g. a restored backup). Re-runs the queries at once. */
     fun invalidate() = changes.update { it + 1 }
+
+    private val bgScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val soft = Channel<Unit>(Channel.CONFLATED)
+
+    /** True while the song-info run is going; the cover workers stand down for it. */
+    val enrichRunning = MutableStateFlow(false)
+
+    init {
+        // Background writers: the first bump goes out at once, later ones merge into one per [SOFT_GAP_MS].
+        bgScope.launch {
+            for (u in soft) {
+                invalidate()
+                delay(SOFT_GAP_MS)
+            }
+        }
+    }
+
+    /** Like [invalidate] for background writers: at most one bump per couple of seconds, however many writes. */
+    fun invalidateSoon() { soft.trySend(Unit) }
 
     private fun <T> watch(query: () -> T): Flow<T> =
         changes.map { query() }.distinctUntilChanged().flowOn(Dispatchers.IO)
 
-    private fun <T> write(block: () -> T): T = block().also { invalidate() }
+    private fun <T> write(soft: Boolean = false, notify: Boolean = true, block: () -> T): T =
+        block().also { if (notify) { if (soft) invalidateSoon() else invalidate() } }
+
+    /** Runs [block] as one database transaction and signals one change (coalesced when [soft]). */
+    fun <T> batch(soft: Boolean = true, block: () -> T): T =
+        write(soft) { repo.db.transactionWithResult { block() } }
+
+    private val allShared: Flow<List<Song>> by lazy {
+        watch { songs.allSongs().executeAsList() }
+            .shareIn(bgScope, SharingStarted.WhileSubscribed(10_000, 0), replay = 1)
+    }
 
     // Reads
-    fun allSongs(): Flow<List<Song>> = watch { songs.allSongs().executeAsList() }
+    /** One query shared by every collector. */
+    fun allSongs(): Flow<List<Song>> = allShared
     fun favorites(): Flow<List<Song>> = watch { songs.favorites().executeAsList() }
     fun recents(limit: Long = 50): Flow<List<Song>> = watch {
         songs.recent(limit) { chat_id, message_id, unique_id, remote_id, title, artist, album,
@@ -58,21 +95,33 @@ class LibraryRepository(val repo: LibraryRepo, private val clock: () -> Long) {
     /** Songs where every word of [query] occurs in the title, artist, album or genre (any case). */
     fun search(query: String): Flow<List<Song>> {
         val words = query.lowercase().split(' ', '\t').filter { it.isNotEmpty() }
-        return watch { if (words.isEmpty()) emptyList() else songs.allSongs().executeAsList().filter { it.matches(words) } }
+        if (words.isEmpty()) return kotlinx.coroutines.flow.flowOf(emptyList())
+        return allShared.map { l -> l.filter { it.matches(words) } }.distinctUntilChanged().flowOn(Dispatchers.Default)
+    }
+
+    /** Playlists with song count and up to four cover links each, from one query (no per-playlist song lists). */
+    fun playlistSummaries(): Flow<List<PlaylistSummary>> = watch {
+        val rows = lists.playlistCoverRows().executeAsList().groupBy { it.playlist_id }
+        lists.livePlaylists().executeAsList().map { p ->
+            val r = rows[p.id].orEmpty()
+            PlaylistSummary(p.id, p.uuid, p.name, r.size, r.mapNotNull { it.cover_path ?: it.cover_url }.distinct().take(4))
+        }
     }
 
     fun song(chatId: Long, messageId: Long): Song? = songs.song(chatId, messageId).executeAsOneOrNull()
     /** Saves what the start of a song's file said about its sound. A shown list refreshes. */
-    fun setAudioDetails(uniqueId: String, h: AudioHeader) = write {
+    fun setAudioDetails(uniqueId: String, h: AudioHeader, notify: Boolean = true) = write(soft = true, notify = notify) {
         songs.setAudioDetails(h.sampleRate?.toLong(), h.bitDepth?.toLong(), h.codec ?: songs.songByUniqueId(uniqueId).executeAsOneOrNull()?.codec, uniqueId)
     }
 
     fun songByUniqueId(uniqueId: String): Song? = songs.songByUniqueId(uniqueId).executeAsOneOrNull()
     fun replaceSong(s: Song) = write { repo.db.enrichQueries.replaceSong(s) }
+    /** Saves many rows in one transaction with one (coalesced) change signal. */
+    fun replaceSongs(list: List<Song>) { if (list.isNotEmpty()) batch { list.forEach { repo.db.enrichQueries.replaceSong(it) } } }
     fun nextToEnrich(): Song? = songs.nextToEnrich().executeAsOneOrNull()
     fun unmatchedSongs(): List<Song> = songs.allSongs().executeAsList().filter { it.enrich_state == 2L && !it.user_edited }
     fun setCachedBytes(uniqueId: String, bytes: Long, notify: Boolean = false) {
-        if (notify) write { songs.setCachedBytes(bytes, uniqueId) } else songs.setCachedBytes(bytes, uniqueId)
+        if (notify) write(soft = true) { songs.setCachedBytes(bytes, uniqueId) } else songs.setCachedBytes(bytes, uniqueId)
     }
     fun cachedSongs(): List<Song> = songs.cachedSongs().executeAsList()
     fun cacheLimit(): Long = repo.cacheLimit()
@@ -81,8 +130,9 @@ class LibraryRepository(val repo: LibraryRepo, private val clock: () -> Long) {
     /** Songs of one album name, for sharing a cover and album info between its tracks. */
     fun albumSongs(name: String): List<Song> = songs.albumRows(name).executeAsList()
     /** Songs whose cover is only a thumbnail but have a full-size source. */
-    fun songsNeedingUpgrade(): List<Song> =
-        songs.allSongs().executeAsList().filter { io.max.paperplay.core.metadata.coverWorkFor(it) == io.max.paperplay.core.metadata.CoverWork.Upgrade }
+    fun songsNeedingUpgrade(): List<Song> = songs.songsNeedingUpgrade().executeAsList()
+    /** Ids of songs with no cover, then of songs holding only a thumbnail; light rows for the cover queue. */
+    fun coverCandidateIds(): List<String> = songs.idsNeedingCovers().executeAsList() + songs.idsNeedingUpgrade().executeAsList()
     fun updateCover(
         uniqueId: String,
         coverPath: String? = null,
@@ -108,11 +158,11 @@ class LibraryRepository(val repo: LibraryRepo, private val clock: () -> Long) {
                 uniqueId = uniqueId,
             )
         }
-        if (notify) write { block() } else block()
+        if (notify) write(soft = true) { block() } else block()
     }
     fun fillEmbeddedTags(
         uniqueId: String, title: String?, artist: String?, album: String?, year: Long?, genre: String?, coverPath: String?,
-    ) = write { songs.fillEmbeddedTags(title, artist, album, year, genre, coverPath, uniqueId) }
+    ) = write(soft = true) { songs.fillEmbeddedTags(title, artist, album, year, genre, coverPath, uniqueId) }
     fun chatList(): List<LibraryChat> = misc.chats().executeAsList()
     fun chat(id: Long): LibraryChat? = chatList().firstOrNull { it.id == id }
 
@@ -123,7 +173,7 @@ class LibraryRepository(val repo: LibraryRepo, private val clock: () -> Long) {
     }
 
     /** Stores [ms] listened to [s] today and, when [finished] is not null, counts a play (true) or skip (false). */
-    fun recordListen(s: Song, ms: Long, finished: Boolean?) = write {
+    fun recordListen(s: Song, ms: Long, finished: Boolean?, notify: Boolean = true) = write(soft = true, notify = notify) {
         val now = clock()
         songs.markPlayed(now, s.chat_id, s.message_id)
         if (finished != null) repo.countPlay(s, finished)
@@ -141,7 +191,7 @@ class LibraryRepository(val repo: LibraryRepo, private val clock: () -> Long) {
     }
 
     // Used by the scanner
-    fun upsertBotSong(s: Song): Boolean = write { repo.upsertBotSong(s) }
+    fun upsertBotSong(s: Song): Boolean = write(soft = true) { repo.upsertBotSong(s) }
     fun removePost(chatId: Long, messageId: Long) = write { repo.removePost(chatId, messageId) }
     fun removeChat(chatId: Long): Int = write { repo.removeChat(chatId) }
     fun saveTopic(chatId: Long, topicId: Long, name: String) = write { misc.saveTopic(chatId, topicId, name) }
@@ -159,6 +209,11 @@ class LibraryRepository(val repo: LibraryRepo, private val clock: () -> Long) {
         if (repo.pref("device_id") == null) repo.setPref("device_id", newUuid())
     }
 }
+
+/** A playlist row for the library page: count and a few cover links. */
+data class PlaylistSummary(val id: Long, val uuid: String, val name: String, val count: Int, val covers: List<String>)
+
+private const val SOFT_GAP_MS = 2_000L
 
 private fun Song.matches(words: List<String>): Boolean {
     val hay = "$title $artist $album ${genre.orEmpty()}".lowercase()

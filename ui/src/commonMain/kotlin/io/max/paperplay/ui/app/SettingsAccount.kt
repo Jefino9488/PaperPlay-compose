@@ -109,3 +109,23 @@ internal fun QrView(link: String) {
         }
     }
 }
+
+@org.jetbrains.compose.ui.tooling.preview.Preview
+@Composable
+private fun QrViewPhonePreview() {
+    io.max.paperplay.ui.theme.PaperPlayTheme {
+        androidx.compose.foundation.layout.Box(Modifier.size(390.dp, 400.dp), contentAlignment = androidx.compose.ui.Alignment.Center) {
+            QrView("https://t.me/token_sample")
+        }
+    }
+}
+
+@org.jetbrains.compose.ui.tooling.preview.Preview
+@Composable
+private fun QrViewDesktopPreview() {
+    io.max.paperplay.ui.theme.PaperPlayTheme {
+        androidx.compose.foundation.layout.Box(Modifier.size(1024.dp, 500.dp), contentAlignment = androidx.compose.ui.Alignment.Center) {
+            QrView("https://t.me/token_sample")
+        }
+    }
+}

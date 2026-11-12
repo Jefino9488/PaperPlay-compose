@@ -3,6 +3,7 @@ package io.max.paperplay.ui.app
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -48,4 +49,40 @@ fun MixPage(
         onRemove = { s -> rejected = rejected + s.id; onReject(s) },
         empty = "Nothing left in this mix.",
     )
+}
+
+@org.jetbrains.compose.ui.tooling.preview.Preview
+@Composable
+private fun MixPagePhonePreview() {
+    val dummyActions = ListActions(play = { _, _ -> }, shuffle = {}, setFavorite = { _, _ -> }, addToPlaylist = {}, notice = {})
+    val sampleSongs = listOf(SongUi(id = "1", title = "Starlight", artist = "Muse", durationSec = 240))
+    io.max.paperplay.ui.theme.PaperPlayTheme {
+        androidx.compose.foundation.layout.Box(Modifier.size(390.dp, 844.dp)) {
+            MixPage(
+                title = "Daily Mix 1",
+                songs = sampleSongs,
+                currentId = "1",
+                actions = dummyActions,
+                onReject = {},
+            )
+        }
+    }
+}
+
+@org.jetbrains.compose.ui.tooling.preview.Preview
+@Composable
+private fun MixPageDesktopPreview() {
+    val dummyActions = ListActions(play = { _, _ -> }, shuffle = {}, setFavorite = { _, _ -> }, addToPlaylist = {}, notice = {})
+    val sampleSongs = listOf(SongUi(id = "1", title = "Starlight", artist = "Muse", durationSec = 240))
+    io.max.paperplay.ui.theme.PaperPlayTheme {
+        androidx.compose.foundation.layout.Box(Modifier.size(1024.dp, 768.dp)) {
+            MixPage(
+                title = "Daily Mix 1",
+                songs = sampleSongs,
+                currentId = "1",
+                actions = dummyActions,
+                onReject = {},
+            )
+        }
+    }
 }

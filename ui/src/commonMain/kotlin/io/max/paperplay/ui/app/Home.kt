@@ -42,6 +42,9 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -60,7 +63,6 @@ import io.max.paperplay.ui.state.GroupUi
 import io.max.paperplay.ui.state.HomeUi
 import io.max.paperplay.ui.state.LibraryUi
 import io.max.paperplay.ui.state.Load
-import io.max.paperplay.ui.state.PlaybackUiState
 import io.max.paperplay.ui.state.ShelfKindUi
 import io.max.paperplay.ui.state.SongUi
 import io.max.paperplay.ui.theme.hsl
@@ -69,26 +71,27 @@ private val cardSize = 150.dp
 
 @Composable
 fun HomeScreen(
-    lib: LibraryUi, home: HomeUi, favorites: List<SongUi>, playback: PlaybackUiState,
-    conn: ConnectionUi, actions: ListActions, onOpen: (Detail) -> Unit, bottomPadding: Dp, modifier: Modifier = Modifier,
+    lib: LibraryUi, home: HomeUi, favorites: List<SongUi>, currentId: String?,
+    conn: ConnectionUi, scan: State<ScanUi?>, actions: ListActions, onOpen: (Detail) -> Unit, bottomPadding: Dp, modifier: Modifier = Modifier,
 ) {
     val songs = (lib.songs as? Load.Ready)?.value.orEmpty()
-    val currentId = playback.current?.id
+    // Quick tiles: favorites, up to three playlists, then generated collections to make six.
+    val tileRows = remember(favorites, lib.playlists, home.tiles, actions) {
+        buildList<Pair<GroupUi, () -> Unit>> {
+            if (favorites.isNotEmpty()) add(GroupUi("fav", "Favorites", coverUris = favorites.map { it.coverUri }) to { actions.play(favorites, 0) })
+            lib.playlists.take(3).forEach { g -> add(g to { onOpen(Detail.Playlist(g.id, g.name)) }) }
+            home.tiles.take(6 - size).forEach { c -> add(GroupUi(c.id, c.name, coverUris = listOf(c.coverUri)) to { onOpen(Detail.Songs(c.name, c.songs)) }) }
+        }.chunked(2)
+    }
     LazyColumn(modifier, contentPadding = PaddingValues(bottom = bottomPadding)) {
         item {
             val h = io.max.paperplay.ui.currentHour()
             TopBar(if (h < 12) "Good morning" else if (h < 18) "Good afternoon" else "Good evening")
         }
-        item { StatusLine(conn, songs.size) }
-        // Quick tiles: favorites, up to three playlists, then generated collections to make six.
-        val tiles = buildList<Pair<GroupUi, () -> Unit>> {
-            if (favorites.isNotEmpty()) add(GroupUi("fav", "Favorites", coverUris = favorites.map { it.coverUri }) to { actions.play(favorites, 0) })
-            lib.playlists.take(3).forEach { g -> add(g to { onOpen(Detail.Playlist(g.id, g.name)) }) }
-            home.tiles.take(6 - size).forEach { c -> add(GroupUi(c.id, c.name, coverUris = listOf(c.coverUri)) to { onOpen(Detail.Songs(c.name, c.songs)) }) }
-        }
-        if (tiles.isNotEmpty()) item {
+        item { StatusLine(conn, scan, songs.size) }
+        if (tileRows.isNotEmpty()) item {
             Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                tiles.chunked(2).forEach { pair ->
+                tileRows.forEach { pair ->
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         pair.forEach { (g, click) ->
                             Row(
@@ -147,11 +150,12 @@ fun HomeScreen(
 }
 
 @Composable
-private fun StatusLine(conn: ConnectionUi, songCount: Int) {
+private fun StatusLine(conn: ConnectionUi, scanState: State<ScanUi?>, songCount: Int) {
+    val scan = scanState.value
     val text = when {
         conn.error != null -> conn.error
         !conn.ready && conn.state.isNotEmpty() -> "Connecting to Telegram…"
-        conn.scanText != null -> conn.scanText
+        scan != null -> scan.text
         songCount == 0 && conn.ready -> "No songs yet. Add the chat that holds your music in Settings."
         else -> null
     } ?: return
@@ -162,8 +166,8 @@ private fun StatusLine(conn: ConnectionUi, songCount: Int) {
             label = { Text(text, maxLines = 1, overflow = TextOverflow.Ellipsis) },
             modifier = Modifier.fillMaxWidth(),
         )
-        if (conn.scanText != null && conn.error == null) {
-            val f = conn.scanFraction
+        if (scan != null && conn.error == null) {
+            val f = scan.fraction
             if (f != null) LinearProgressIndicator({ f.toFloat() }, Modifier.fillMaxWidth().padding(top = 6.dp))
             else LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 6.dp))
         }
@@ -298,7 +302,7 @@ private fun HomeScreenPreview() {
         lib = LibraryUi(songs = Load.Ready(previewHomeSongs)),
         home = HomeUi(),
         favorites = previewHomeSongs,
-        playback = PlaybackUiState(),
+        currentId = null, scan = remember { mutableStateOf(null) },
         conn = ConnectionUi(ready = true),
         actions = previewActions,
         onOpen = {},

@@ -33,6 +33,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
+import io.max.paperplay.ui.app.CoreBackend
 import io.max.paperplay.ui.app.UiPrefs
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.ui.tooling.preview.Preview
@@ -41,14 +42,22 @@ import org.jetbrains.compose.ui.tooling.preview.Preview
 enum class OnboardingChoice { None, Restore, Bot }
 
 /**
- * The first-launch tour. [onFinish] gets the Connect choice; Skip and Start both call it.
+ * The unified first-launch tour and setup wizard.
  * [revisit] is true when opened again from Settings, which hides the hand-off choices.
  * [setPref] stores values that belong in the library, such as keep_running.
  */
 @Composable
-fun Onboarding(prefs: UiPrefs, revisit: Boolean, setPref: (String, String) -> Unit, onFinish: (OnboardingChoice) -> Unit) {
-    var choice by remember { mutableStateOf(OnboardingChoice.None) }
-    val pages = 7
+fun Onboarding(
+    prefs: UiPrefs,
+    revisit: Boolean,
+    initialChoice: OnboardingChoice = OnboardingChoice.None,
+    restoreHooks: RestoreHooks? = null,
+    backend: CoreBackend? = null,
+    setPref: (String, String) -> Unit,
+    onFinish: (OnboardingChoice) -> Unit,
+) {
+    var choice by remember(initialChoice) { mutableStateOf(initialChoice) }
+    val pages = 8
     val pager = rememberPagerState { pages }
     val scope = rememberCoroutineScope()
     val last = pager.currentPage == pages - 1
@@ -63,9 +72,17 @@ fun Onboarding(prefs: UiPrefs, revisit: Boolean, setPref: (String, String) -> Un
                     0 -> WelcomePage()
                     1 -> HowItWorksPage()
                     2 -> LookPage(prefs)
-                    3 -> ConnectPage(choice, revisit) { choice = it; scope.launch { pager.animateScrollToPage(page + 1) } }
-                    4 -> AccountPage()
-                    5 -> if (isPhone) PermissionsPage(setPref) else DesktopNotePage()
+                    3 -> ConnectPage(choice, revisit) { chosen ->
+                        choice = chosen
+                        scope.launch { pager.animateScrollToPage(4) }
+                    }
+                    4 -> if (choice == OnboardingChoice.Restore) {
+                        RestorePage(restoreHooks, onContinue = { scope.launch { pager.animateScrollToPage(5) } })
+                    } else {
+                        BotSetupPage(backend, onSaved = { scope.launch { pager.animateScrollToPage(5) } })
+                    }
+                    5 -> AccountPage()
+                    6 -> if (isPhone) PermissionsPage(setPref) else DesktopNotePage()
                     else -> DonePage(revisit)
                 }
             }

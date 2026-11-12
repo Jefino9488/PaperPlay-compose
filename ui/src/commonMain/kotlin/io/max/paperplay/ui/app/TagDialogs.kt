@@ -243,3 +243,25 @@ private fun CoverDialog(backend: CoreBackend, song: Song, notice: (String) -> Un
         dismissButton = { TextButton(onClose, enabled = !working) { Text("Cancel") } },
     )
 }
+
+@org.jetbrains.compose.ui.tooling.preview.Preview
+@Composable
+private fun OptionLinePhonePreview() {
+    val sampleOption = MetadataOption(source = "Spotify", title = "Starlight", artist = "Muse", album = "Black Holes and Revelations", year = 2006, lengthSec = 240)
+    io.max.paperplay.ui.theme.PaperPlayTheme {
+        androidx.compose.foundation.layout.Box(Modifier.padding(16.dp)) {
+            Text(optionLine(sampleOption))
+        }
+    }
+}
+
+@org.jetbrains.compose.ui.tooling.preview.Preview
+@Composable
+private fun OptionLineDesktopPreview() {
+    val sampleOption = MetadataOption(source = "Spotify", title = "Starlight", artist = "Muse", album = "Black Holes and Revelations", year = 2006, lengthSec = 240)
+    io.max.paperplay.ui.theme.PaperPlayTheme {
+        androidx.compose.foundation.layout.Box(Modifier.padding(32.dp)) {
+            Text(optionLine(sampleOption))
+        }
+    }
+}

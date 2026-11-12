@@ -111,11 +111,13 @@ fun SongRow(
                     )
                 }
             }
-            val kbps = if (song.durationSec > 0) song.sizeBytes * 8 / song.durationSec / 1000 else 0L
-            val detail = listOfNotNull(
-                if (kbps > 0) "$kbps kbps" else null,
-                if (song.sizeBytes > 0) "${song.sizeBytes / 1_000_000} MB" else null,
-            ).joinToString(" · ")
+            val detail = remember(song.sizeBytes, song.durationSec) {
+                val kbps = if (song.durationSec > 0) song.sizeBytes * 8 / song.durationSec / 1000 else 0L
+                listOfNotNull(
+                    if (kbps > 0) "$kbps kbps" else null,
+                    if (song.sizeBytes > 0) "${song.sizeBytes / 1_000_000} MB" else null,
+                ).joinToString(" · ")
+            }
             if (detail.isNotEmpty()) {
                 Text(
                     text = detail,
@@ -182,8 +184,8 @@ fun SongMenu(song: SongUi, actions: SongActions, icon: ImageVector = Icons.Round
     )
     Box {
         IconButton({ open = true }) { AppIcon(icon, "Song options") }
-        DropdownMenu(
-            expanded = open,
+        if (open) DropdownMenu(
+            expanded = true,
             onDismissRequest = { open = false },
             modifier = io.max.paperplay.ui.app.overlayRim(RoundedCornerShape(20.dp)),
             shape = RoundedCornerShape(20.dp),

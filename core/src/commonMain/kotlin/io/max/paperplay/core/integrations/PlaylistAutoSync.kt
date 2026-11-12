@@ -5,7 +5,10 @@ import io.max.paperplay.core.account.ChatIndexApi
 import io.max.paperplay.core.account.IndexPrefs
 import io.max.paperplay.core.account.asSong
 import io.max.paperplay.core.app.LibraryRepository
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -33,37 +36,49 @@ class PlaylistAutoSync(
     private val pause: suspend (Long) -> Unit = { delay(it) },
     private val log: (String) -> Unit = {},
     private val official: (suspend (String) -> FetchedPlaylist?)? = null,
+    private val canRun: () -> Boolean = { true },
 ) {
     private val _progress = MutableStateFlow<String?>(null)
 
     /** Short text of what is going on now, or null. */
     val progress: StateFlow<String?> = _progress
 
-    private var started = false
+    private var jobs: List<Job> = emptyList()
 
     /** Starts the schedule: shortly after the call, then every few hours. Safe to call more than once. */
+    @Synchronized
     fun start() {
-        if (started) return
-        started = true
-        scope.launch {
-            pause(30_000)
-            while (true) {
-                runCatching { refreshPlaylists() }.onFailure { log("Spotify refresh: ${it.message}") }
-                runCatching { fetchFromIndex() }.onFailure { log("Fetch from index: ${it.message}") }
-                pause(SIX_HOURS)
-            }
-        }
-        scope.launch {
-            pause(45_000)
-            while (true) {
-                if (IndexPrefs.auto(library) && account.loggedIn.value) {
-                    runCatching { index.refresh() }.onFailure { log("Index refresh: ${it.message}") }
-                    if (library.pref("index_auto_add") == "true") runCatching { index.addMissingFromMainChat() }.onFailure { log("Add from index: ${it.message}") }
-                    runCatching { fetchFromIndex() }.onFailure { log("Fetch from index: ${it.message}") }
+        if (jobs.any { it.isActive }) return
+        jobs = listOf(
+            scope.launch {
+                pause(30_000)
+                while (isActive) {
+                    if (!canRun()) { pause(RETRY); continue }
+                    runCatching { refreshPlaylists() }.onFailure { if (it is CancellationException) throw it; log("Spotify refresh: ${it.message}") }
+                    runCatching { fetchFromIndex() }.onFailure { if (it is CancellationException) throw it; log("Fetch from index: ${it.message}") }
+                    pause(SIX_HOURS)
                 }
-                pause(THREE_HOURS)
-            }
-        }
+            },
+            scope.launch {
+                pause(45_000)
+                while (isActive) {
+                    if (!canRun()) { pause(RETRY); continue }
+                    if (IndexPrefs.auto(library) && account.loggedIn.value) {
+                        runCatching { index.refresh() }.onFailure { if (it is CancellationException) throw it; log("Index refresh: ${it.message}") }
+                        if (library.pref("index_auto_add") == "true") runCatching { index.addMissingFromMainChat() }.onFailure { if (it is CancellationException) throw it; log("Add from index: ${it.message}") }
+                        runCatching { fetchFromIndex() }.onFailure { if (it is CancellationException) throw it; log("Fetch from index: ${it.message}") }
+                    }
+                    pause(THREE_HOURS)
+                }
+            },
+        )
+    }
+
+    /** Ends both loops; [start] begins them again. */
+    @Synchronized
+    fun stop() {
+        jobs.forEach { it.cancel() }
+        jobs = emptyList()
     }
 
     /** Re-reads every imported Spotify playlist, so tracks added there show up as missing here. Returns how many. */
@@ -115,6 +130,7 @@ class PlaylistAutoSync(
     }
 
     private companion object {
+        const val RETRY = 15L * 60 * 1000
         const val SIX_HOURS = 6L * 60 * 60 * 1000
         const val THREE_HOURS = 3L * 60 * 60 * 1000
         const val MAX_COPIES = 50

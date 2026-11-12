@@ -55,3 +55,23 @@ internal fun BackupPasswordDialog(onSave: (password: String?) -> Unit, onDismiss
         dismissButton = { TextButton(onDismiss) { Text("Cancel") } },
     )
 }
+
+@org.jetbrains.compose.ui.tooling.preview.Preview
+@Composable
+private fun BackupPasswordDialogPhonePreview() {
+    io.max.paperplay.ui.theme.PaperPlayTheme {
+        androidx.compose.foundation.layout.Box(Modifier.padding(16.dp)) {
+            BackupPasswordDialog(onSave = {}, onDismiss = {})
+        }
+    }
+}
+
+@org.jetbrains.compose.ui.tooling.preview.Preview
+@Composable
+private fun BackupPasswordDialogDesktopPreview() {
+    io.max.paperplay.ui.theme.PaperPlayTheme {
+        androidx.compose.foundation.layout.Box(Modifier.padding(32.dp)) {
+            BackupPasswordDialog(onSave = {}, onDismiss = {})
+        }
+    }
+}

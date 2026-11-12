@@ -13,6 +13,8 @@ App and look
 [x] Desktop layout (sidebar, now playing panel, player bar)
 [x] Glass and Material styles, themes, accent from the cover colour
 [x] Material 3 Expressive and Tabler icon options
+[x] Unified onboarding, Telegram bot login, and backup restore wizard flow with Material 3 Expressive card containers
+[x] Unified Nunito variable typography, text contrast, and Material 3 Expressive shapes (12dp–36dp) across all screens
 [x] Scan chip, sticky play/shuffle, sort sheet, swipe up for queue, seek preview,
     recent searches
 

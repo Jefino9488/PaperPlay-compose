@@ -23,6 +23,7 @@ import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.IosShare
 import androidx.compose.material.icons.rounded.Link
+import org.jetbrains.compose.ui.tooling.preview.Preview
 import androidx.compose.material.icons.rounded.MusicOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -220,4 +221,19 @@ fun PlaylistsTab(
             }
         }
     }
+}
+
+@Preview
+@Composable
+private fun PlaylistsTabPreview() {
+    val samplePlaylists = listOf(GroupUi(id = "1", name = "Chill Mix", subtitle = "12 songs"))
+    PlaylistsTab(
+        playlists = samplePlaylists,
+        favorites = emptyList(),
+        recents = emptyList(),
+        bottomPadding = 0.dp,
+        onOpen = {},
+        onNewPlaylist = {},
+        onImportSpotify = {},
+    )
 }

@@ -48,6 +48,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -142,6 +143,7 @@ private fun NavItem(e: NavEntry, on: Boolean, prefs: UiPrefs, modifier: Modifier
 @Composable
 fun MiniPlayer(
     state: PlaybackUiState, onOpen: () -> Unit, onToggle: () -> Unit, onNext: () -> Unit, onPrevious: () -> Unit,
+    progress: () -> Float = { 0f },
     modifier: Modifier = Modifier,
 ) {
     val song = state.current ?: return
@@ -164,7 +166,7 @@ fun MiniPlayer(
                 IconButton(onNext) { AppIcon(Icons.Rounded.SkipNext, "Next", tint = ink) }
             }
             Box(Modifier.padding(horizontal = 8.dp).fillMaxWidth().height(2.dp).clip(RoundedCornerShape(1.dp)).background(ink.copy(alpha = 0.2f))) {
-                Box(Modifier.fillMaxWidth(state.progress.coerceIn(0f, 1f)).height(2.dp).background(ink))
+                Box(Modifier.fillMaxWidth().height(2.dp).drawBehind { drawRect(ink, size = androidx.compose.ui.geometry.Size(size.width * progress().coerceIn(0f, 1f), size.height)) })
             }
             Spacer(Modifier.height(6.dp))
         }
@@ -183,7 +185,7 @@ private fun NavBarPreview() {
 @Composable
 private fun MiniPlayerPreview() {
     val sampleSong = io.max.paperplay.ui.state.SongUi(id = "1", title = "Starlight", artist = "Muse", durationSec = 240)
-    val state = PlaybackUiState(current = sampleSong, playing = true, positionMs = 60000, durationMs = 240000)
-    MiniPlayer(state = state, onOpen = {}, onToggle = {}, onNext = {}, onPrevious = {})
+    val state = PlaybackUiState(current = sampleSong, playing = true, durationMs = 240000)
+    MiniPlayer(state = state, onOpen = {}, onToggle = {}, onNext = {}, onPrevious = {}, progress = { 0.25f })
 }
 

@@ -8,6 +8,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
@@ -23,7 +24,7 @@ import androidx.compose.ui.unit.dp
 fun interface CoverLoader {
     /** Null while loading or when the image is missing. */
     @Composable
-    fun painter(uri: String): Painter?
+    fun painter(uri: String, maxSide: Int): Painter?
 }
 
 val LocalCoverLoader = compositionLocalOf<CoverLoader?> { null }
@@ -44,7 +45,7 @@ fun CoverImage(
     LaunchedEffect(coverId, uri) {
         if (uri == null) onMissing?.invoke(coverId)
     }
-    val painter = if (uri != null && loader != null) loader.painter(uri) else null
+    val painter = if (uri != null && loader != null) loader.painter(uri, if (size <= 96.dp) 160 else 384) else null
     val shape = io.max.paperplay.ui.app.appShape(radius)
     Box(modifier.size(size).clip(shape)) {
         if (painter != null) {
@@ -58,7 +59,7 @@ fun CoverImage(
 /** Stable 2 by 2 tiles of related hues, picked from a hash of [key]. */
 @Composable
 fun CoverMosaic(key: String, modifier: Modifier = Modifier) {
-    val tiles = mosaicColors(key)
+    val tiles = remember(key) { mosaicColors(key) }
     Canvas(modifier) {
         val w = size.width / 2
         val h = size.height / 2

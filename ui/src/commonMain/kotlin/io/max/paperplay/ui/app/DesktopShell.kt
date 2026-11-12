@@ -62,6 +62,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -69,6 +70,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
@@ -173,8 +175,7 @@ fun PlayerBar(
                 }
             }
             Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(formatDuration(state.positionMs / 1000), style = muted)
-                ThinSeek(state.progress, backend::seekTo, Modifier.weight(1f).padding(horizontal = 10.dp), enabled = song != null)
+                ElapsedSeek(backend, state.durationMs, muted, Modifier.weight(1f), enabled = song != null)
                 Text(formatDuration(state.durationMs / 1000), style = muted)
             }
         }
@@ -185,7 +186,7 @@ fun PlayerBar(
             var showSleep by remember { mutableStateOf(false) }
             IconButton({ showLyrics = true }, enabled = song != null) { AppIcon(Icons.Outlined.Lyrics, "Lyrics") }
             IconButton({ showSleep = true }) { AppIcon(Icons.Outlined.Bedtime, "Sleep timer") }
-            if (showLyrics) song?.let { LyricsDialog(it.id, it.title, state.positionMs, backend) { showLyrics = false } }
+            if (showLyrics) song?.let { LyricsDialog(it.id, it.title, backend) { showLyrics = false } }
             if (showSleep) SleepTimerDialog(backend) { showSleep = false }
             IconButton({ backend.setVolume(if (volume > 0f) 0f else 1f) }) { AppIcon(if (volume > 0f) Icons.Rounded.VolumeUp else Icons.Rounded.VolumeOff, "Mute") }
             Slider(
@@ -197,9 +198,17 @@ fun PlayerBar(
     }
 }
 
+/** Elapsed time and the thin seek bar; the only part of the player bar that follows the position. */
+@Composable
+private fun ElapsedSeek(backend: CoreBackend, durationMs: Long, style: androidx.compose.ui.text.TextStyle, modifier: Modifier, enabled: Boolean) {
+    val pos = backend.position.collectAsState()
+    Text(formatDuration(pos.value.positionMs / 1000), style = style)
+    ThinSeek({ pos.value.progress(durationMs) }, backend::seekTo, modifier.padding(horizontal = 10.dp), enabled = enabled)
+}
+
 /** A thin seek bar: tap or drag; the seek is sent when the drag ends. */
 @Composable
-fun ThinSeek(progress: Float, onSeek: (Float) -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
+fun ThinSeek(progress: () -> Float, onSeek: (Float) -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
     var dragging by remember { mutableStateOf<Float?>(null) }
     val scheme = MaterialTheme.colorScheme
     BoxWithConstraints(modifier.height(20.dp)) {
@@ -215,14 +224,15 @@ fun ThinSeek(progress: Float, onSeek: (Float) -> Unit, modifier: Modifier = Modi
             contentAlignment = Alignment.CenterStart,
         ) {
             Box(Modifier.fillMaxWidth().height(4.dp).clip(CircleShape).background(scheme.onSurface.copy(alpha = 0.2f)))
-            Box(Modifier.fillMaxWidth((dragging ?: progress).coerceIn(0f, 1f)).height(4.dp).clip(CircleShape).background(scheme.onSurface))
+            val fill = scheme.onSurface
+            Box(Modifier.fillMaxWidth().height(4.dp).clip(CircleShape).drawBehind { drawRect(fill, size = androidx.compose.ui.geometry.Size(size.width * (dragging ?: progress()).coerceIn(0f, 1f), size.height)) })
         }
     }
 }
 
 /** What the app is doing right now; the full task list comes with the tasks work. */
 @Composable
-fun TasksPage(conn: ConnectionUi, modifier: Modifier = Modifier, onBack: (() -> Unit)? = null) {
+fun TasksPage(scan: ScanUi?, modifier: Modifier = Modifier, onBack: (() -> Unit)? = null) {
     Column(modifier) {
         if (onBack != null) {
             BackTopBar("Tasks", onBack)
@@ -231,7 +241,7 @@ fun TasksPage(conn: ConnectionUi, modifier: Modifier = Modifier, onBack: (() -> 
         }
         Row(Modifier.padding(horizontal = 20.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             AppIcon(Icons.Rounded.TaskAlt, null)
-            Text(conn.scanText ?: "Nothing running", Modifier.padding(start = 12.dp), style = MaterialTheme.typography.bodyLarge)
+            Text(scan?.text ?: "Nothing running", Modifier.padding(start = 12.dp), style = MaterialTheme.typography.bodyLarge)
         }
     }
 }
@@ -306,11 +316,11 @@ private fun SidebarPreview() {
 @Preview
 @Composable
 private fun ThinSeekPreview() {
-    ThinSeek(progress = 0.4f, onSeek = {}, modifier = Modifier.width(320.dp))
+    ThinSeek(progress = { 0.4f }, onSeek = {}, modifier = Modifier.width(320.dp))
 }
 
 @Preview
 @Composable
 private fun TasksPagePreview() {
-    TasksPage(ConnectionUi(ready = true, scanText = "Reading channel 3 of 5"))
+    TasksPage(ScanUi("Reading channel 3 of 5", null))
 }

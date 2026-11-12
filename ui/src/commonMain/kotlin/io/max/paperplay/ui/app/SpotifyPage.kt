@@ -177,3 +177,23 @@ private fun SpotifyAccountSection(backend: CoreBackend) {
         message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
     }
 }
+
+@org.jetbrains.compose.ui.tooling.preview.Preview
+@Composable
+private fun SpotifySectionPhonePreview() {
+    io.max.paperplay.ui.theme.PaperPlayTheme {
+        androidx.compose.foundation.layout.Box(Modifier.padding(16.dp)) {
+            SectionLabel("Spotify account")
+        }
+    }
+}
+
+@org.jetbrains.compose.ui.tooling.preview.Preview
+@Composable
+private fun SpotifySectionDesktopPreview() {
+    io.max.paperplay.ui.theme.PaperPlayTheme {
+        androidx.compose.foundation.layout.Box(Modifier.padding(32.dp)) {
+            SectionLabel("Spotify account")
+        }
+    }
+}

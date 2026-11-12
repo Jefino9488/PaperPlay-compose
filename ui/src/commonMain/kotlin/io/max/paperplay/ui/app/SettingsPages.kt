@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.Button
@@ -122,4 +123,24 @@ private fun clock(ms: Long): String {
     val s = (ms / 1000).mod(86_400L)
     fun two(n: Long) = n.toString().padStart(2, '0')
     return "${two(s / 3600)}:${two(s / 60 % 60)}:${two(s % 60)}"
+}
+
+@org.jetbrains.compose.ui.tooling.preview.Preview
+@Composable
+private fun ConnectionPagePhonePreview() {
+    io.max.paperplay.ui.theme.PaperPlayTheme {
+        androidx.compose.foundation.layout.Box(Modifier.size(390.dp, 300.dp)) {
+            SettingsRow("Telegram", icon = Icons.Rounded.Send, subtitle = "Connected as your bot")
+        }
+    }
+}
+
+@org.jetbrains.compose.ui.tooling.preview.Preview
+@Composable
+private fun ConnectionPageDesktopPreview() {
+    io.max.paperplay.ui.theme.PaperPlayTheme {
+        androidx.compose.foundation.layout.Box(Modifier.size(1024.dp, 300.dp)) {
+            SettingsRow("Telegram", icon = Icons.Rounded.Send, subtitle = "Connected as your bot")
+        }
+    }
 }

@@ -25,14 +25,14 @@ class AppEnv(
     val open: kotlinx.coroutines.flow.MutableStateFlow<String?> = kotlinx.coroutines.flow.MutableStateFlow(null),
     /** Starts or stops the background keep-alive notification; nothing on desktop. */
     val setKeepRunning: (Boolean) -> Unit = {},
-    /** Opens an image picker and calls back with a copied file path, or null if cancelled. Null where unsupported. */
+    /** Opens an image picker and calls back with a copied file path, or null if canceled. Null where unsupported. */
     val pickPhoto: ((onPicked: (String?) -> Unit) -> Unit)? = null,
     /** The error text of the last crash, if one was saved; null otherwise. */
     val lastCrash: () -> String? = { null },
     val clearCrash: () -> Unit = {},
     /** Opens a multi-file audio picker; calls back with file paths and whether they are temporary copies. Null where unsupported. */
     val pickAudio: ((onPicked: (List<String>, Boolean) -> Unit) -> Unit)? = null,
-    /** Opens an image picker and calls back with the image bytes, or null if cancelled. Null where unsupported. */
+    /** Opens an image picker and calls back with the image bytes, or null if canceled. Null where unsupported. */
     val pickImage: ((onPicked: (ByteArray?) -> Unit) -> Unit)? = null,
     /** Opens Spotify's login page and returns the callback on [authRedirectUri]. Null where unsupported. */
     val authRedirect: io.max.paperplay.core.integrations.AuthRedirect? = null,
@@ -122,14 +122,4 @@ private fun Main(env: AppEnv, pending: MutableMap<String, String>, onRestore: ()
     }
 }
 
-@org.jetbrains.compose.ui.tooling.preview.Preview
-@Composable
-private fun AppPreview() {
-    val dummyRestore = RestoreHooks(pickBackup = {}, restore = { _, _ -> kotlinx.coroutines.flow.emptyFlow() })
-    val dummyEnv = AppEnv(
-        restore = dummyRestore,
-        libraryExists = { false },
-        createServices = { error("Not used in preview") },
-    )
-    App(env = dummyEnv)
-}
+

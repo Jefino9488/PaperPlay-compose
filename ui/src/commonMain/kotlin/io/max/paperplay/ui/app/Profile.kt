@@ -77,6 +77,7 @@ fun ProfileScreen(
     onLibraryTab: (Int) -> Unit,
     bottomPadding: Dp,
     modifier: Modifier = Modifier,
+    scan: androidx.compose.runtime.State<ScanUi?>? = null,
 ) {
     LazyColumn(modifier, contentPadding = PaddingValues(bottom = bottomPadding)) {
         item {
@@ -114,7 +115,7 @@ fun ProfileScreen(
                         onSettings("channels")
                     }
                     NavRow("Chats and channels", icon = Icons.Rounded.Forum, subtitle = "Index songs in your own chats") { onSettings("index") }
-                    NavRow("Tasks", icon = Icons.Rounded.TaskAlt, subtitle = conn.scanText ?: "Nothing running", onClick = onTasks)
+                    NavRow("Tasks", icon = Icons.Rounded.TaskAlt, subtitle = scan?.value?.text ?: "Nothing running", onClick = onTasks)
                     NavRow("Listening", icon = Icons.Rounded.BarChart, subtitle = "Time listened, top songs and artists") {
                         onSettings("stats")
                     }

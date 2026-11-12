@@ -77,6 +77,9 @@ SELECT * FROM songs WHERE pinned = 1 AND cached_bytes < size;
 pendingToEnrich:
 SELECT * FROM songs WHERE enrich_state = 0 LIMIT 100 OFFSET :offset;
 
+countPendingToEnrich:
+SELECT COUNT(*) FROM songs WHERE enrich_state = 0;
+
 nextToEnrich:
 SELECT * FROM songs WHERE enrich_state = 0 LIMIT 1;
 
@@ -115,6 +118,17 @@ UPDATE songs SET cached_bytes = :bytes WHERE unique_id = :uniqueId;
 
 songsNeedingCovers:
 SELECT * FROM songs WHERE cover_path IS NULL ORDER BY date DESC;
+
+songsNeedingUpgrade:
+SELECT * FROM songs WHERE COALESCE(cover_path, '') <> '' AND (COALESCE(release_id, '') <> '' OR COALESCE(cover_url, '') <> '')
+  AND cover_hi_res = 0 AND cover_at = 0 AND user_edited = 0;
+
+idsNeedingCovers:
+SELECT unique_id FROM songs WHERE cover_path IS NULL ORDER BY date DESC;
+
+idsNeedingUpgrade:
+SELECT unique_id FROM songs WHERE cover_path IS NOT NULL AND (release_id IS NOT NULL OR cover_url IS NOT NULL)
+  AND cover_hi_res = 0 AND cover_at = 0 AND user_edited = 0;
 
 updateSongCover:
 UPDATE songs

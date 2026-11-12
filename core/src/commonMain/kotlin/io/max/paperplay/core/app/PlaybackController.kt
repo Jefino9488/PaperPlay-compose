@@ -6,6 +6,8 @@ import io.max.paperplay.player.PlayerEngine
 import io.max.paperplay.player.PlayerState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
@@ -51,6 +53,7 @@ class PlaybackController(
     private val meta = MutableStateFlow(Meta(emptyList(), false, Repeat.OFF, null))
     private var original: List<Song> = emptyList()
     private var job: Job? = null
+    private var neighborJob: Job? = null
     private val gate = Mutex()
 
     // Listen counting for the song that is currently playing.
@@ -58,19 +61,25 @@ class PlaybackController(
     private var listenedMs = 0L
     private var prefetchedFor: String? = null
 
-    private val timing = combine(engine.positionMs, engine.durationMs, engine.bufferedMs) { pos, dur, buf ->
-        Triple(pos, dur, buf)
-    }
-
-    val nowPlaying: StateFlow<NowPlaying> = combine(
-        engine.state, timing, engine.currentIndex, meta,
-    ) { state, (pos, dur, buf), idx, m ->
+    /** Everything in [NowPlaying] except the ticking position and buffer; does not change on position ticks. */
+    val nowPlayingStatic: StateFlow<NowPlaying> = combine(
+        engine.state, engine.durationMs, engine.currentIndex, meta,
+    ) { state, dur, idx, m ->
         val song = m.queue.getOrNull(idx)
         NowPlaying(
-            song, pos, if (dur > 0) dur else (song?.duration_sec ?: 0) * 1000, state == PlayerState.Playing,
-            idx, m.queue, m.shuffle, m.repeat, m.error, buf,
+            song, 0, if (dur > 0) dur else (song?.duration_sec ?: 0) * 1000, state == PlayerState.Playing,
+            idx, m.queue, m.shuffle, m.repeat, m.error, 0,
         )
     }.stateIn(scope, SharingStarted.Eagerly, NowPlaying())
+
+    /** Position and buffered ms, for views that tick. */
+    val positionMs: StateFlow<Long> get() = engine.positionMs
+    val bufferedMs: StateFlow<Long> get() = engine.bufferedMs
+
+    val nowPlaying: StateFlow<NowPlaying> = combine(
+        nowPlayingStatic, engine.positionMs, engine.bufferedMs,
+    ) { base, pos, buf -> base.copy(positionMs = pos, bufferedMs = buf) }
+        .stateIn(scope, SharingStarted.Eagerly, NowPlaying())
 
     init {
         scope.launch {
@@ -81,8 +90,21 @@ class PlaybackController(
                     listening = song
                 }
                 prefetchedFor = null
-                val active = engine.state.value == PlayerState.Playing || engine.state.value == PlayerState.Loading
-                runCatching { resolver.window(song, meta.value.queue.getOrNull(idx + 1), playing = active) }
+                val q = meta.value.queue
+                val next = q.getOrNull(idx + 1)
+                val prev = q.getOrNull(idx - 1)
+                neighborJob?.cancel()
+                neighborJob = launch {
+                    val active = engine.state.value == PlayerState.Playing || engine.state.value == PlayerState.Loading
+                    runCatching { resolver.window(song, next, playing = active, previous = prev) }
+                    if (active) {
+                        if (next != null) launch { runCatching { resolver.prefetch(next) } }
+                        if (prev != null) {
+                            delay(1_500)
+                            runCatching { resolver.prefetch(prev) }
+                        }
+                    }
+                }
                 if (song != null) launch { learnAudioDetails(song) }
             }
         }
@@ -122,11 +144,12 @@ class PlaybackController(
      */
     private suspend fun learnAudioDetails(song: Song) {
         if (repo.songByUniqueId(song.unique_id)?.sample_rate != null) return
-        repeat(15) {
-            delay(2_000)
+        repeat(6) {
+            delay(4_000)
             if (engine.currentIndex.value < 0 || meta.value.queue.getOrNull(engine.currentIndex.value)?.unique_id != song.unique_id) return
             val head = runCatching { resolver.headOf(song) }.getOrNull() ?: return@repeat
             val h = parseAudioHeader(head)
+            // TODO: use the non-notifying (notify=false) variant once LibraryRepository has it.
             if (h != null) repo.setAudioDetails(song.unique_id, h)
             return
         }
@@ -152,7 +175,9 @@ class PlaybackController(
         if (songs.isEmpty()) return@command
         val start = startIndex.coerceIn(songs.indices)
         original = songs
-        val order = if (meta.value.shuffle) listOf(songs[start]) + (songs - songs[start]).shuffled() else songs
+        val order = if (meta.value.shuffle) {
+            listOf(songs[start]) + songs.toMutableList().also { it.removeAt(start) }.shuffled()
+        } else songs
         apply(order, if (meta.value.shuffle) 0 else start, 0)
     }
 
@@ -183,7 +208,12 @@ class PlaybackController(
             meta.update { Meta(it.queue, on, it.repeat, it.error) }
             return@command
         }
-        val order = if (on) listOf(song) + (original - song).shuffled() else original
+        val order = if (on) {
+            val rest = original.toMutableList()
+            val at = rest.indexOfFirst { it.unique_id == song.unique_id }
+            if (at >= 0) rest.removeAt(at)
+            listOf(song) + rest.shuffled()
+        } else original
         apply(order, order.indexOfFirst { it.unique_id == song.unique_id }, engine.positionMs.value, shuffle = on)
     }
 
@@ -217,19 +247,20 @@ class PlaybackController(
     }
 
     private suspend fun apply(order: List<Song>, index: Int, seekMs: Long, shuffle: Boolean = meta.value.shuffle) {
-        var error: String? = null
-        try {
-            resolver.warm(order[index])
-        } catch (e: TdError) {
-            error = e.message
-        }
-        gate.withLock {
-            // A newer command arrived while the file was looked up: it wins.
-            currentCoroutineContext().ensureActive()
-            resolver.retain(order)
-            meta.value = Meta(order, shuffle, meta.value.repeat, error)
-            engine.setQueue(order.map(resolver::resolve), index)
-            if (seekMs > 0) engine.seek(seekMs)
+        val song = order[index]
+        coroutineScope {
+            // The file lookup runs while the queue is handed to the engine; its error text is surfaced afterwards.
+            val warm = async { try { resolver.warm(song); null } catch (e: TdError) { e.message } }
+            gate.withLock {
+                // A newer command arrived: it wins.
+                currentCoroutineContext().ensureActive()
+                resolver.retain(order)
+                meta.value = Meta(order, shuffle, meta.value.repeat, null)
+                engine.setQueue(order.map(resolver::resolve), index)
+                if (seekMs > 0) engine.seek(seekMs)
+            }
+            scope.launch { runCatching { resolver.prefetch(song) } }
+            warm.await()?.let { err -> meta.update { Meta(it.queue, it.shuffle, it.repeat, err) } }
         }
     }
 
