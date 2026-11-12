@@ -147,39 +147,80 @@ internal fun MissingInfoPage(backend: CoreBackend) {
         items(shown, key = { it.first.unique_id }) { (s, missing) ->
             val picked = s.unique_id in selection.ids
             val ui = remember(s) { s.toUi() }
-            Row(
-                Modifier.fillMaxWidth()
-                    .background(if (picked) scheme.secondaryContainer else androidx.compose.ui.graphics.Color.Transparent)
-                    .combinedClickable(
-                        onClick = { if (selection.ids.isNotEmpty()) selection = selection.toggle(s.unique_id) },
-                        onLongClick = { selection = selection.toggle(s.unique_id) },
-                    )
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                if (picked) Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
-                    AppIcon(Icons.Rounded.CheckCircle, "Selected", Modifier.size(28.dp), tint = scheme.primary)
-                } else CoverImage(ui.coverUri, ui.album.ifBlank { ui.title.ifBlank { ui.id } }, size = 44.dp, radius = 8.dp, coverId = ui.id)
-                Column(Modifier.weight(1f).padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(s.title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                    Text(s.artist, style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        for (m in Missing.entries) if (m in missing) {
-                            Text(
-                                m.label, style = MaterialTheme.typography.labelSmall,
-                                color = if (m.todo) scheme.onPrimaryContainer else scheme.onSurfaceVariant,
-                                modifier = Modifier.clip(RoundedCornerShape(8.dp))
-                                    .background(if (m.todo) scheme.primaryContainer else scheme.surfaceContainerHighest)
-                                    .padding(horizontal = 8.dp, vertical = 2.dp),
-                            )
-                        }
-                    }
-                }
-                listActions?.let { SongMenu(ui, it.rowActions()) }
-            }
+            MissingSongRow(
+                ui, s.title, s.artist, missing, picked,
+                onClick = { if (selection.ids.isNotEmpty()) selection = selection.toggle(s.unique_id) },
+                onLongClick = { selection = selection.toggle(s.unique_id) },
+                menu = listActions?.let { la -> @Composable { SongMenu(ui, la.rowActions()) } },
+            )
         }
     }
 }
+
+@OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
+@Composable
+internal fun MissingSongRow(
+    ui: io.max.paperplay.ui.state.SongUi,
+    title: String,
+    artist: String,
+    missing: Set<Missing>,
+    picked: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    menu: (@Composable () -> Unit)?,
+) {
+    val scheme = MaterialTheme.colorScheme
+    Row(
+        Modifier.fillMaxWidth()
+            .background(if (picked) scheme.secondaryContainer else androidx.compose.ui.graphics.Color.Transparent)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (picked) Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
+            AppIcon(Icons.Rounded.CheckCircle, "Selected", Modifier.size(28.dp), tint = scheme.primary)
+        } else CoverImage(ui.coverUri, ui.album.ifBlank { ui.title.ifBlank { ui.id } }, size = 44.dp, radius = 8.dp, coverId = ui.id)
+        Column(Modifier.weight(1f).padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+            Text(artist, style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                for (m in Missing.entries) if (m in missing) {
+                    Text(
+                        m.label, style = MaterialTheme.typography.labelSmall,
+                        color = if (m.todo) scheme.onPrimaryContainer else scheme.onSurfaceVariant,
+                        modifier = Modifier.clip(RoundedCornerShape(8.dp))
+                            .background(if (m.todo) scheme.primaryContainer else scheme.surfaceContainerHighest)
+                            .padding(horizontal = 8.dp, vertical = 2.dp),
+                    )
+                }
+            }
+        }
+        menu?.invoke()
+    }
+}
+
+@org.jetbrains.compose.ui.tooling.preview.Preview
+@Composable
+private fun MissingSongRowPhonePreview() {
+    io.max.paperplay.ui.theme.PaperPlayTheme {
+        Column(Modifier.size(390.dp, 200.dp)) {
+            MissingSongRow(previewUi, previewUi.title, previewUi.artist, setOf(Missing.Waiting, Missing.NoCover, Missing.NoYear), false, {}, {}, null)
+            MissingSongRow(previewUi, previewUi.title, previewUi.artist, setOf(Missing.NoGenre), true, {}, {}, null)
+        }
+    }
+}
+
+@org.jetbrains.compose.ui.tooling.preview.Preview
+@Composable
+private fun MissingSongRowDesktopPreview() {
+    io.max.paperplay.ui.theme.PaperPlayTheme {
+        Column(Modifier.size(1024.dp, 200.dp)) {
+            MissingSongRow(previewUi, previewUi.title, previewUi.artist, setOf(Missing.NoMatch, Missing.NoAlbum), false, {}, {}, null)
+        }
+    }
+}
+
+private val previewUi = io.max.paperplay.ui.state.SongUi(id = "1", title = "Sample song", artist = "Sample artist")
 
 @org.jetbrains.compose.ui.tooling.preview.Preview
 @Composable

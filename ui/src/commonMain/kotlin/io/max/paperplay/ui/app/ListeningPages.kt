@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.Button
@@ -45,14 +46,19 @@ private fun hz(f: Int) = if (f >= 1000) "${f / 1000.0} kHz".replace(".0 ", " ") 
 internal fun EqualizerPage(backend: CoreBackend) {
     val on by backend.eqOn.collectAsState()
     val gains by backend.eqGains.collectAsState()
-    SwitchRow("Equalizer", on, { backend.setEqualizer(on = it) }, Icons.Rounded.Equalizer, "Applies to this device only")
+    EqualizerContent(on, gains, { backend.setEqualizer(on = it) }, { backend.setEqualizer(on = true, gains = it) })
+}
+
+@Composable
+internal fun EqualizerContent(on: Boolean, gains: List<Float>, onToggle: (Boolean) -> Unit, onGains: (List<Float>) -> Unit) {
+    SwitchRow("Equalizer", on, onToggle, Icons.Rounded.Equalizer, "Applies to this device only")
     SectionLabel("Presets")
-    ChoiceRow(eqPresets.keys.toList(), eqPresets.entries.firstOrNull { e -> e.value.zip(gains).all { (a, b) -> kotlin.math.abs(a - b) < 0.05f } }?.key ?: "", { it }, { backend.setEqualizer(on = true, gains = eqPresets.getValue(it)) })
+    ChoiceRow(eqPresets.keys.toList(), eqPresets.entries.firstOrNull { e -> e.value.zip(gains).all { (a, b) -> kotlin.math.abs(a - b) < 0.05f } }?.key ?: "", { it }, { onGains(eqPresets.getValue(it)) })
     SectionLabel("Bands")
     var drag by remember(gains) { mutableStateOf(gains) }
     EQ_BANDS_HZ.forEachIndexed { i, f ->
         SliderRow("${hz(f)}: ${db(drag[i])} dB", drag[i], -12f..12f, { v -> drag = drag.toMutableList().also { it[i] = v } },
-            onDone = { backend.setEqualizer(on = true, gains = drag) })
+            onDone = { onGains(drag) })
     }
     Text("The system equalizer on a phone has few bands, so each takes the setting of the nearest one here.", Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -62,6 +68,11 @@ internal fun EqualizerPage(backend: CoreBackend) {
 @Composable
 internal fun ListenBrainzPage(backend: CoreBackend) {
     val user by backend.lbUser.collectAsState()
+    ListenBrainzContent(user, backend::disconnectListenBrainz, backend::connectListenBrainz)
+}
+
+@Composable
+internal fun ListenBrainzContent(user: String?, onDisconnect: () -> Unit, onConnect: suspend (String) -> String?) {
     val scope = rememberCoroutineScope()
     var token by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
@@ -70,17 +81,49 @@ internal fun ListenBrainzPage(backend: CoreBackend) {
         if (user != null) {
             Text("Sending what you listen to as $user.", style = MaterialTheme.typography.titleMedium)
             Text("A song counts after half of it, or four minutes, whichever comes first.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            OutlinedButton(backend::disconnectListenBrainz) { Text("Disconnect") }
+            OutlinedButton(onDisconnect) { Text("Disconnect") }
         } else {
             Text(
                 "Paste your user token from listenbrainz.org/settings. Titles and artists of songs you finish are sent to ListenBrainz.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             OutlinedTextField(token, { token = it }, Modifier.fillMaxWidth(), label = { Text("User token") }, singleLine = true, visualTransformation = PasswordVisualTransformation())
-            Button({ busy = true; problem = null; scope.launch { problem = backend.connectListenBrainz(token); busy = false; if (problem == null) token = "" } }, enabled = token.isNotBlank() && !busy) {
+            Button({ busy = true; problem = null; scope.launch { problem = onConnect(token); busy = false; if (problem == null) token = "" } }, enabled = token.isNotBlank() && !busy) {
                 Text(if (busy) "Checking" else "Connect")
             }
             problem?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         }
+    }
+}
+
+@org.jetbrains.compose.ui.tooling.preview.Preview
+@Composable
+private fun EqualizerPhonePreview() {
+    io.max.paperplay.ui.theme.PaperPlayTheme {
+        Column(Modifier.size(390.dp, 800.dp)) { EqualizerContent(true, listOf(6f, 4f, 0f, 0f, 0f), {}, {}) }
+    }
+}
+
+@org.jetbrains.compose.ui.tooling.preview.Preview
+@Composable
+private fun EqualizerDesktopPreview() {
+    io.max.paperplay.ui.theme.PaperPlayTheme {
+        Column(Modifier.size(1024.dp, 800.dp)) { EqualizerContent(true, listOf(6f, 4f, 0f, 0f, 0f), {}, {}) }
+    }
+}
+
+@org.jetbrains.compose.ui.tooling.preview.Preview
+@Composable
+private fun ListenBrainzPhonePreview() {
+    io.max.paperplay.ui.theme.PaperPlayTheme {
+        Column(Modifier.size(390.dp, 400.dp)) { ListenBrainzContent(null, {}, { null }) }
+    }
+}
+
+@org.jetbrains.compose.ui.tooling.preview.Preview
+@Composable
+private fun ListenBrainzDesktopPreview() {
+    io.max.paperplay.ui.theme.PaperPlayTheme {
+        Column(Modifier.size(1024.dp, 400.dp)) { ListenBrainzContent("maxcodl", {}, { null }) }
     }
 }

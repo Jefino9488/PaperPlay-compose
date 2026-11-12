@@ -38,6 +38,11 @@ internal fun StatsPage(backend: CoreBackend) {
         Text("Reading", Modifier.padding(20.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
         return
     }
+    StatsBody(songs, days)
+}
+
+@Composable
+internal fun StatsBody(songs: List<ListenTotal>, days: Map<String, Long>) {
     SettingsRow(time(days.values.sum()), icon = Icons.Rounded.BarChart, subtitle = "${days.size} days with music")
     if (songs.isEmpty()) {
         Text("Nothing yet. Play some songs.", Modifier.padding(20.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -51,6 +56,23 @@ internal fun StatsPage(backend: CoreBackend) {
     for (s in songs.take(20)) {
         val plays = if (s.plays > 0) " · ${s.plays} plays" else ""
         Column { SettingsRow(s.title ?: "Unknown song", subtitle = "${s.artist.orEmpty()}$plays", trailing = { Text(time(s.ms)) }) }
+    }
+}
+
+@org.jetbrains.compose.ui.tooling.preview.Preview
+@Composable
+private fun StatsPagePreview() {
+    io.max.paperplay.ui.theme.PaperPlayTheme {
+        Column {
+            StatsBody(
+                listOf(
+                    ListenTotal("a", 5_400_000, 12, "Uprising", "Muse"),
+                    ListenTotal("b", 3_600_000, 8, "Starlight", "Muse"),
+                    ListenTotal("c", 1_800_000, 0, "Intro", "The xx"),
+                ),
+                mapOf("2026-11-10" to 7_200_000L, "2026-11-11" to 3_600_000L),
+            )
+        }
     }
 }
 

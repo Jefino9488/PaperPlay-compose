@@ -37,6 +37,25 @@ import kotlinx.coroutines.launch
 internal fun AccountPage(backend: CoreBackend, onLogOut: () -> Unit) {
     val account = backend.account
     val step by account.step.collectAsState()
+    AccountContent(
+        step, onLogOut,
+        onBegin = { account.begin() }, onBeginQr = { account.beginQr() },
+        onPhone = { account.phone(it) }, onCode = { account.code(it) }, onPassword = { account.password(it) },
+        onRestore = { runCatching { backend.services.indexCloud.restore() }.getOrDefault(false) },
+    )
+}
+
+@Composable
+internal fun AccountContent(
+    step: LoginStep,
+    onLogOut: () -> Unit,
+    onBegin: suspend () -> Unit,
+    onBeginQr: suspend () -> Unit,
+    onPhone: suspend (String) -> Unit,
+    onCode: suspend (String) -> Unit,
+    onPassword: suspend (String) -> Unit,
+    onRestore: suspend () -> Boolean,
+) {
     val scope = rememberCoroutineScope()
     var input by remember(step) { mutableStateOf("") }
     var restored by remember { mutableStateOf<String?>(null) }
@@ -48,36 +67,36 @@ internal fun AccountPage(backend: CoreBackend, onLogOut: () -> Unit) {
                     "Log in with your own Telegram account to read your chats and channels, find songs in them and copy songs into your main chat. Nothing is posted for you except those copies.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Button({ scope.launch { account.begin() } }) { Text("Log in with phone number") }
-                OutlinedButton({ scope.launch { account.beginQr() } }) { Text("Log in with QR code") }
+                Button({ scope.launch { onBegin() } }) { Text("Log in with phone number") }
+                OutlinedButton({ scope.launch { onBeginQr() } }) { Text("Log in with QR code") }
             }
             LoginStep.Starting -> Text("Starting", color = MaterialTheme.colorScheme.onSurfaceVariant)
             LoginStep.Phone -> {
                 Text("Phone number with country code, like +91 98765 43210.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 OutlinedTextField(input, { input = it }, Modifier.fillMaxWidth(), label = { Text("Phone number") }, singleLine = true)
-                Button({ scope.launch { account.phone(input.trim()) } }, enabled = input.isNotBlank()) { Text("Send code") }
-                OutlinedButton({ scope.launch { account.beginQr() } }) { Text("Use a QR code instead") }
+                Button({ scope.launch { onPhone(input.trim()) } }, enabled = input.isNotBlank()) { Text("Send code") }
+                OutlinedButton({ scope.launch { onBeginQr() } }) { Text("Use a QR code instead") }
             }
             is LoginStep.Qr -> {
                 Text("On a phone where you are logged in to Telegram: Settings, Devices, Link Desktop Device, then scan this code.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 QrView(s.link)
                 SelectionContainer { Text(s.link, style = MaterialTheme.typography.bodySmall) }
-                OutlinedButton({ scope.launch { account.begin() } }) { Text("Use a phone number instead") }
+                OutlinedButton({ scope.launch { onBegin() } }) { Text("Use a phone number instead") }
             }
             LoginStep.Code -> {
                 Text("Telegram sent a code to your other devices or by SMS.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 OutlinedTextField(input, { input = it }, Modifier.fillMaxWidth(), label = { Text("Code") }, singleLine = true, visualTransformation = PasswordVisualTransformation())
-                Button({ scope.launch { account.code(input.trim()) } }, enabled = input.isNotBlank()) { Text("Confirm") }
+                Button({ scope.launch { onCode(input.trim()) } }, enabled = input.isNotBlank()) { Text("Confirm") }
             }
             LoginStep.Password -> {
                 Text("Your account has a two-step password.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 OutlinedTextField(input, { input = it }, Modifier.fillMaxWidth(), label = { Text("Password") }, singleLine = true, visualTransformation = PasswordVisualTransformation())
-                Button({ scope.launch { account.password(input) } }, enabled = input.isNotEmpty()) { Text("Confirm") }
+                Button({ scope.launch { onPassword(input) } }, enabled = input.isNotEmpty()) { Text("Confirm") }
             }
             LoginStep.Ready -> {
                 // A first login picks up the index saved on Telegram, so it need not be read again.
                 LaunchedEffect(Unit) {
-                    restored = if (runCatching { backend.services.indexCloud.restore() }.getOrDefault(false)) "Your saved index was restored from Telegram." else null
+                    restored = if (onRestore()) "Your saved index was restored from Telegram." else null
                 }
                 SettingsRow("Logged in", icon = Icons.Rounded.Person, subtitle = "Your chats and channels are available")
                 restored?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant) }
@@ -85,7 +104,7 @@ internal fun AccountPage(backend: CoreBackend, onLogOut: () -> Unit) {
             }
             is LoginStep.Failed -> {
                 Text(s.message, color = MaterialTheme.colorScheme.error)
-                Button({ scope.launch { account.begin() } }) { Text("Try again") }
+                Button({ scope.launch { onBegin() } }) { Text("Try again") }
             }
         }
     }
@@ -127,5 +146,21 @@ private fun QrViewDesktopPreview() {
         androidx.compose.foundation.layout.Box(Modifier.size(1024.dp, 500.dp), contentAlignment = androidx.compose.ui.Alignment.Center) {
             QrView("https://t.me/token_sample")
         }
+    }
+}
+
+@org.jetbrains.compose.ui.tooling.preview.Preview
+@Composable
+private fun AccountPhonePreview() {
+    io.max.paperplay.ui.theme.PaperPlayTheme {
+        Column(Modifier.size(390.dp, 500.dp)) { AccountContent(LoginStep.LoggedOut, {}, {}, {}, {}, {}, {}, { false }) }
+    }
+}
+
+@org.jetbrains.compose.ui.tooling.preview.Preview
+@Composable
+private fun AccountDesktopPreview() {
+    io.max.paperplay.ui.theme.PaperPlayTheme {
+        Column(Modifier.size(1024.dp, 500.dp)) { AccountContent(LoginStep.Phone, {}, {}, {}, {}, {}, {}, { false }) }
     }
 }
