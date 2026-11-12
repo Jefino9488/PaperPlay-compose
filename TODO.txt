@@ -1,5 +1,5 @@
 PaperPlay Compose - what's done and what's left
-Updated 12 Nov 2026, night
+Updated 12 Nov 2026, late night
 
 Marks: [x] done and builds, [~] half done, [ ] not done.
 Heads up: "done" means it compiles and I wrote it. The phone release build with
@@ -22,6 +22,15 @@ App and look
     top bars with blur and tint, desktop glass is blur, tint and gradient only
 [x] Dark Windows title bar that follows the app colours (needs a PC rebuild to see)
 [x] Windows icon with all sizes (needs a PC rebuild and an icon cache refresh)
+[x] Android Studio previews with fake data: PreviewSupport.kt, full player, queue,
+    now playing panel, lyrics and sleep dialogs, search, settings list, desktop
+    player bar (1280, 900 dark, idle), plus many small pieces (not checked in the IDE by me)
+[x] Phone Back returns to the previous tab, album, Profile page or Settings page
+    (history stack in Shell.kt), not always Home (needs a phone check)
+[x] Desktop player bar: Fullscreen icon, smaller volume thumb
+[ ] Previews for pages that still take CoreBackend: bots, sort, uploads, Spotify,
+    tag dialogs, index, detail, setup, main shell (split into stateless content or a small interface)
+[ ] Desktop Back (mouse back button) does not use the history stack
 
 Playback
 [x] Android (Media3) and desktop (bundled libvlc, no VLC install needed)
