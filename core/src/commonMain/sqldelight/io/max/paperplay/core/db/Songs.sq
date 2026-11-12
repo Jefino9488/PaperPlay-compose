@@ -154,3 +154,13 @@ SELECT * FROM songs WHERE artist = :artist ORDER BY album, title;
 
 markPlayed:
 UPDATE songs SET last_played_at = :at WHERE chat_id = :chatId AND message_id = :messageId;
+
+fillEmbeddedTags:
+UPDATE songs
+SET title = COALESCE(:title, title),
+    artist = COALESCE(:artist, artist),
+    album = COALESCE(:album, album),
+    year = COALESCE(year, :year),
+    genre = COALESCE(NULLIF(genre, ''), :genre),
+    cover_path = COALESCE(cover_path, :coverPath)
+WHERE unique_id = :uniqueId;

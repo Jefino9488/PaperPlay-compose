@@ -141,15 +141,6 @@ fun coverWorkFor(s: Song): CoverWork {
     return CoverWork.None
 }
 
-/** What a song's own file says about it. */
-class EmbeddedTags(
-    val title: String? = null,
-    val artist: String? = null,
-    val album: String? = null,
-    val year: Int? = null,
-    val genre: String? = null,
-)
-
 /**
  * What a file's own tags add to what's known. Only gaps are filled: an online match keeps what it
  * found, and a person's edits are never touched. Null when nothing's new.
