@@ -72,6 +72,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
@@ -109,6 +111,11 @@ fun Sidebar(
     onPage: (String) -> Unit, onPlaylist: (GroupUi) -> Unit, onNewPlaylist: () -> Unit, modifier: Modifier = Modifier,
 ) {
     val scheme = MaterialTheme.colorScheme
+    // The Windows title bar follows the app colours instead of staying light.
+    val windowTheme = io.max.paperplay.ui.LocalAppEnv.current?.windowTheme
+    androidx.compose.runtime.LaunchedEffect(scheme.background, windowTheme) {
+        windowTheme?.invoke(scheme.background.luminance() < 0.5f, scheme.background.toArgb(), scheme.onSurface.toArgb())
+    }
     @Composable
     fun item(id: String, label: String, icon: @Composable () -> Unit, selected: Boolean, onClick: () -> Unit) {
         Row(
@@ -169,7 +176,6 @@ fun PlayerBar(
                     colors = IconButtonDefaults.filledIconButtonColors(containerColor = scheme.onSurface, contentColor = scheme.surface),
                 ) { AppIcon(if (state.playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (state.playing) "Pause" else "Play") }
                 IconButton(backend::next) { AppIcon(Icons.Rounded.SkipNext, "Next") }
-                IconButton(backend::toggleShuffle) { AppIcon(Icons.Rounded.Shuffle, "Shuffle", tint = if (state.shuffle) scheme.primary else scheme.onSurface) }
                 IconButton(backend::cycleRepeat) {
                     AppIcon(if (state.repeat == RepeatUi.One) Icons.Rounded.RepeatOne else Icons.Rounded.Repeat, "Repeat", tint = if (state.repeat != RepeatUi.Off) scheme.primary else scheme.onSurface)
                 }

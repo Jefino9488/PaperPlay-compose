@@ -1,9 +1,10 @@
 PaperPlay Compose - what's done and what's left
-Updated 12 Nov 2026
+Updated 12 Nov 2026, afternoon
 
 Marks: [x] done and builds, [~] half done, [ ] not done.
-Heads up: almost nothing here has been tried on the phone yet. "Done" means it
-compiles and I wrote it, not that I've seen it work.
+Heads up: "done" means it compiles and I wrote it. The phone release build with
+the speed fixes feels way better, but most features below haven't been checked
+one by one on the phone yet.
 
 
 WHAT WORKS NOW
@@ -17,6 +18,10 @@ App and look
 [x] Unified Nunito variable typography, text contrast, and Material 3 Expressive shapes (12dp–36dp) across all screens
 [x] Scan chip, sticky play/shuffle, sort sheet, swipe up for queue, seek preview,
     recent searches
+[x] Style, Appearance, Navigation bar and Glass pages wired: glass on cards and
+    top bars with blur and tint, desktop glass is blur, tint and gradient only
+[x] Dark Windows title bar that follows the app colours (needs a PC rebuild to see)
+[x] Windows icon with all sizes (needs a PC rebuild and an icon cache refresh)
 
 Playback
 [x] Android (Media3) and desktop (bundled libvlc, no VLC install needed)
@@ -37,6 +42,8 @@ Telegram and library
     bot, Bot API or own account
 [x] Sort General: topic suggestions and moving songs between topics
 [x] Uploads hub: queue, retry, rate limit, share to PaperPlay on Android
+[x] Save backup in the Flutter format with an optional password (Settings >
+    Storage and backup), restore from file, round trip test passes
 
 Playlists and Spotify
 [x] Import a public Spotify playlist link, match review
@@ -58,6 +65,19 @@ Metadata, covers, lyrics
 [x] Cover colours, daily mixes, genre tiles, weather mixes
 [x] Listening stats, ListenBrainz, mood code in core
 
+Speed and battery (12 Nov, big win on the phone)
+[x] Library reloads are batched to about one every 2 seconds, one shared song list
+[x] Fewer background workers (metadata 2, covers 1, lyrics 2), batched writes
+[x] Full rescan of every chat resumes instead of restarting, runs in the foreground
+    or while charging
+[x] Keep-running service is off by default and stops when nothing is running
+[x] Position updates no longer redraw the whole screen, scan progress split out
+[x] Chats and channels page uses lazy lists, covers use a real cache and
+    smaller thumbnails, theme and shapes are remembered
+[x] Songs start faster: lookup runs next to queue setup, next and previous are
+    prefetched, stream reads use the known downloaded size
+[x] Smaller release APK: 35 MB down to 15.7 MB
+
 Other
 [x] Task centre page (running tasks, history, clear)
 [x] Home mixes cached so Home opens faster
@@ -68,6 +88,13 @@ Other
 
 HALF DONE, FINISH THESE
 -----------------------
+[~] Small TDLib: built (14.4 MB raw, about 7.8 MB in the APK, same exports as the
+    current one) but not swapped in or tested. Would give an APK of about 10.8 MB
+[~] Desktop opens slowly (over 2 minutes): VLC plugin cache is never saved, services
+    are built on the window thread, player starts at launch (partly fixed)
+[~] Detail screen still redraws on every library change (Screens.kt)
+[~] Seek bar still redraws four times a second while playing
+[~] No baseline profile yet (would make the release build smoother on first use)
 [~] Mood scan: code written, but nothing starts it yet
 [~] Mixes: MixPage is written but Home still opens a mix as a normal list
 [~] "Doesn't fit" votes: not passed into the daily mixes, no vote screens
@@ -101,7 +128,6 @@ Fix first
 [ ] Songs missing: 2753 in the app vs about 3269 posts in Telegram
 [ ] Check everything above on the phone: login, QR, indexing, copying, refresh,
     cloud restore, uploads, lyrics run, duplicates delete
-[ ] Install the release APK (built, not installed)
 
 Playback
 [ ] Playback speed
@@ -115,7 +141,6 @@ Library
 [ ] Auto filing (new songs go to the right topic by themselves)
 [ ] Extra bots and the bot pool
 [ ] Rate limit recording
-[ ] Backup writer (save the library to a file)
 [ ] Delete from Telegram from the song menu
 [ ] Neighbours view in Discover
 [ ] Export list screen (missing songs to text / M3U, Spotify and Apple links)
@@ -138,34 +163,37 @@ Desktop
 
 Ideas I haven't built yet
 [ ] Album pages that fill themselves from all the sources
-[ ] Album-wide cover and info shared across every track of the album
-[ ] Hi-res cover upgrade queue
 [ ] Show lyrics run and metadata run progress on the Home scan chip
 [ ] Pick lyrics source order in Settings
 [ ] Lyrics from the audio file itself (embedded lyrics tag)
 [ ] Per-song "wrong lyrics" button that tries the next source
+[ ] GitHub builds TDLib and the app downloads it, in-app update from Releases
+    (skipped for now because the bot needs TDLib too)
+[ ] Parts in Rust (tags, cover resize, mix scoring, search), only if a profile
+    shows they are slow
 
 
 TESTS
 -----
-[x] Kotlin tests: backup, database, TDLib client, audio info, index, selection,
+[x] Kotlin tests: backup (writer round trip too), database, TDLib client, audio info, index, selection,
     auto sync, QR, user session, playback controller, streaming, scanner, covers
 [ ] Dart tests with no Kotlin version yet: album_art, cover, cover_colors,
     duplicates_view, equalizer, glass_style, home_mix, later_stamp,
     listen_recorder, listen_stats, listenbrainz, logic, loudness, main_chat,
     migration, missing_export, mood, neighbours, playlist_import, setup,
     spotify, sync, taste, td_compat, topic_sort, upload
-[ ] No tests written for anything added in the last two days
+[ ] No tests written for most of what was added in the last two days
 
 
 ORDER I'D DO IT IN
 ------------------
-1. Put the new build on the phone and go through the device checks
-2. Fix the crash and the missing songs
-3. Finish the half done list (mood, mixes, task stop buttons, upload queue)
-4. Auto filing, export list, backup writer
-5. Offline pinning, cache manager, quality badges
-6. Queue editing, speed, loudness
-7. LAN sync and devices
-8. Desktop tray and shortcuts, then macOS and Linux
-9. Port the Dart tests as each thing lands
+1. Fix the slow desktop start and rebuild the PC app (icon, title bar)
+2. Swap in the small TDLib and test bot login, scan and playback on the phone
+3. Go through the device checks and the crash and missing songs
+4. Finish the half done list (mood, mixes, task stop buttons, upload queue)
+5. Auto filing, export list
+6. Offline pinning, cache manager, quality badges
+7. Queue editing, speed, loudness
+8. LAN sync and devices
+9. Desktop tray and shortcuts, then macOS and Linux
+10. Port the Dart tests as each thing lands

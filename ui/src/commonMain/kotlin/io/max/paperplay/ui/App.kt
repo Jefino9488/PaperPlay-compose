@@ -45,6 +45,8 @@ class AppEnv(
     val showTour: kotlinx.coroutines.flow.MutableStateFlow<Boolean> = kotlinx.coroutines.flow.MutableStateFlow(false),
     /** Asks for the notification permission; null where not needed. */
     val requestNotifications: (() -> Unit)? = null,
+    /** Desktop: tints the window title bar. Called with (dark, background ARGB, text ARGB). */
+    val windowTheme: ((Boolean, Int, Int) -> Unit)? = null,
 )
 
 val LocalAppEnv = androidx.compose.runtime.staticCompositionLocalOf<AppEnv?> { null }

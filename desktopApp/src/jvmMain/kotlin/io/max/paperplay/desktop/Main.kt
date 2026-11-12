@@ -52,6 +52,7 @@ fun main() {
     application {
         val dir = File(System.getenv("APPDATA") ?: System.getProperty("user.home"), "PaperPlay")
         val target = desktopRestoreTarget(dir)
+        var titleBarWindow: java.awt.Window? = null
         val env = AppEnv(
             restore = RestoreHooks(
                 pickBackup = { onPicked ->
@@ -87,8 +88,10 @@ fun main() {
             authRedirectUri = SPOTIFY_REDIRECT,
             onboarded = { File(dir, "onboarded").exists() },
             setOnboarded = { runCatching { dir.mkdirs(); File(dir, "onboarded").writeText("1") } },
+            windowTheme = { dark, bg, text -> WindowsTitleBar.apply(titleBarWindow, dark, bg, text) },
         )
         Window(onCloseRequest = ::exitApplication, title = "Paper Play", state = rememberWindowState(width = 1320.dp, height = 840.dp), icon = androidx.compose.ui.res.painterResource("icon.png")) {
+            titleBarWindow = window
             App(env)
         }
     }

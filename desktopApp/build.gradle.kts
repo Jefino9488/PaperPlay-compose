@@ -17,6 +17,7 @@ kotlin {
             implementation(project(":player"))
             implementation(compose.desktop.currentOs)
             implementation(libs.coroutines.swing)
+            implementation(libs.jna)
         }
     }
 }
