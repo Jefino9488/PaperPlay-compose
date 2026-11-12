@@ -59,6 +59,8 @@ class Uploader(
     private val pref: (String) -> String?,
     /** (file name, size) of every song already in the library. */
     private val knownSongs: () -> Set<Pair<String, Long>>,
+    /** Extra bots that share the sending; null sends everything with [client]. */
+    private val pool: io.max.paperplay.core.telegram.BotPool? = null,
 ) {
     private val _jobs = MutableStateFlow<List<UploadJob>>(emptyList())
     val jobs: StateFlow<List<UploadJob>> = _jobs
@@ -164,9 +166,14 @@ class Uploader(
     private fun nowMs() = Clock.System.now().toEpochMilliseconds()
 
     private suspend fun send(job: UploadJob) {
+        var botId = 0L
         try {
-            val c = client() ?: throw TdError(0, "The bot is not connected.")
+            val picked = pool?.pick()
+            val c = picked?.client ?: client() ?: throw TdError(0, "The bot is not connected.")
+            botId = picked?.id ?: 0L
+            if (botId != 0L) runCatching { c.call(request("getChat") { put("chat_id", job.chatId) }) }
             sendOne(c, job)
+            pool?.recordSent(botId)
             update(job.id) { it.copy(status = UploadStatus.Done, progress = 1f, error = null) }
             if (job.temporary) deleteFile(job.path)
         } catch (e: CancellationException) {
@@ -174,6 +181,7 @@ class Uploader(
         } catch (e: Throwable) {
             val attempts = job.attempts + 1
             val td = e as? TdError
+            td?.retryAfter?.let { pool?.recordFlood(botId, it) }
             val retryable = attempts < MAX_ATTEMPTS && (td == null || td.code == 429 || td.code == 408 || td.code == 0 || td.code >= 500)
             if (retryable) {
                 update(job.id) { it.copy(status = UploadStatus.Queued, attempts = attempts, error = e.message, progress = 0f) }

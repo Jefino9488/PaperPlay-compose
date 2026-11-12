@@ -43,12 +43,12 @@ import kotlin.math.sin
 
 /**
  * Seek bar in the Material 3 Expressive style: the played part is a moving wave while audio plays
- * and flattens when paused. [value] and [buffered] are 0 to 1; [onSeek] fires when the finger lifts.
+ * and flattens when paused. [progress] and [buffered] return 0 to 1 and are read while drawing; [onSeek] fires when the finger lifts.
  */
 @Composable
 fun WavySeek(
-    value: Float,
-    buffered: Float,
+    progress: () -> Float,
+    buffered: () -> Float,
     playing: Boolean,
     onSeek: (Float) -> Unit,
     modifier: Modifier = Modifier,
@@ -80,7 +80,6 @@ fun WavySeek(
     val active = MaterialTheme.colorScheme.primary
     val track = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.16f)
     val bufferedColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.34f)
-    val shown = (dragging ?: value).coerceIn(0f, 1f)
 
     BoxWithConstraints(modifier.fillMaxWidth().height(52.dp)) {
         Canvas(
@@ -113,25 +112,27 @@ fun WavySeek(
         val wavelength = 34.dp.toPx()
         val gap = 6.dp.toPx()
         val mid = 20.dp.toPx()
+        val shown = (dragging ?: progress()).coerceIn(0f, 1f)
         val x = shown * size.width
         val line = Stroke(stroke, cap = StrokeCap.Round)
 
         val trackStart = min(x + gap, size.width)
         if (trackStart < size.width) {
             drawLine(track, Offset(trackStart, mid), Offset(size.width, mid), stroke, StrokeCap.Round)
-            val bufferedEnd = buffered.coerceIn(0f, 1f) * size.width
+            val bufferedEnd = buffered().coerceIn(0f, 1f) * size.width
             if (bufferedEnd > trackStart) {
                 drawLine(bufferedColor, Offset(trackStart, mid), Offset(bufferedEnd, mid), stroke, StrokeCap.Round)
             }
         }
         val path = Path().apply {
             moveTo(0f, mid)
-            var px = 2f
+            val step = 4.dp.toPx()
+            var px = step
             while (px <= x) {
                 // Tapers to flat at the thumb, so the wave meets it cleanly.
                 val taper = min(1f, (x - px) / 12.dp.toPx())
                 lineTo(px, mid + sin((px / wavelength - phase) * 2 * PI.toFloat()) * amplitude * taper)
-                px += 2f
+                px += step
             }
             lineTo(x, mid)
         }
@@ -149,7 +150,7 @@ fun WavySeek(
                 style = TextStyle(fontSize = 12.sp),
                 modifier = Modifier
                     .align(Alignment.TopStart)
-                    .offset(x = (maxWidth * shown - 16.dp).coerceIn(0.dp, maxWidth - 32.dp), y = 32.dp),
+                    .offset(x = (maxWidth * (dragging ?: 0f) - 16.dp).coerceIn(0.dp, maxWidth - 32.dp), y = 32.dp),
             )
         }
     }
@@ -158,11 +159,11 @@ fun WavySeek(
 @Preview
 @Composable
 private fun WavySeekPlayingPreview() {
-    WavySeek(value = 0.4f, buffered = 0.7f, playing = true, onSeek = {}, label = "1:45")
+    WavySeek(progress = { 0.4f }, buffered = { 0.7f }, playing = true, onSeek = {}, label = "1:45")
 }
 
 @Preview
 @Composable
 private fun WavySeekPausedPreview() {
-    WavySeek(value = 0.6f, buffered = 0.85f, playing = false, onSeek = {}, label = "2:30")
+    WavySeek(progress = { 0.6f }, buffered = { 0.85f }, playing = false, onSeek = {}, label = "2:30")
 }

@@ -51,6 +51,9 @@ import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
 import androidx.compose.material.icons.rounded.TaskAlt
 import androidx.compose.material.icons.rounded.Upload
+import androidx.compose.material.icons.rounded.Rule
+import androidx.compose.material.icons.rounded.ContentCopy
+import androidx.compose.material.icons.rounded.DriveFileMove
 import androidx.compose.material.icons.rounded.ViewSidebar
 import androidx.compose.material.icons.rounded.VolumeOff
 import androidx.compose.material.icons.rounded.VolumeUp
@@ -101,6 +104,12 @@ internal val libraryPages = listOf(
     SidePage("recent", "Recently played", Icons.Rounded.History),
 )
 
+/** Library tools that open as a settings page. */
+internal val toolPages = listOf(
+    SidePage("sort", "Sort General", Icons.Rounded.DriveFileMove), SidePage("dupes", "Duplicates", Icons.Rounded.ContentCopy),
+    SidePage("missing", "Song info left", Icons.Rounded.Rule),
+)
+
 /** The desktop card: rounded, a shade above the page background. */
 @Composable
 fun Modifier.deskCard(): Modifier = partSurface(LookGroup.Cards, MaterialTheme.colorScheme.surfaceContainerLow, RoundedCornerShape(16.dp))
@@ -139,6 +148,8 @@ fun Sidebar(
         items(mainPages, key = { it.id }) { p -> item(p.id, p.label, { AppIcon(p.icon, null, Modifier.size(22.dp)) }, page == p.id && playlistId == null) { onPage(p.id) } }
         item { label("Your library") }
         items(libraryPages, key = { it.id }) { p -> item(p.id, p.label, { AppIcon(p.icon, null, Modifier.size(22.dp)) }, page == p.id && playlistId == null) { onPage(p.id) } }
+        item { label("Tools") }
+        items(toolPages, key = { it.id }) { p -> item(p.id, p.label, { AppIcon(p.icon, null, Modifier.size(22.dp)) }, false) { onPage(p.id) } }
         item { label("Playlists") { IconButton(onNewPlaylist, Modifier.size(32.dp)) { AppIcon(Icons.Rounded.Add, "New playlist", Modifier.size(20.dp)) } } }
         items(playlists, key = { it.id }) { g -> item(g.id, g.name, { CoverGrid(g.coverUris, g.id, 28.dp, 6.dp) }, playlistId == g.id) { onPlaylist(g) } }
         item { Spacer(Modifier.height(8.dp)) }

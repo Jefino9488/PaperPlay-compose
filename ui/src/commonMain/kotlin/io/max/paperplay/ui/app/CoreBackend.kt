@@ -210,7 +210,7 @@ class CoreBackend(val services: AppServices) {
     }
 
     fun playNext(song: SongUi) {
-        byId[song.id]?.let { player.playNext(it) }
+        byId[song.id]?.let { s -> withPlayer { it.playNext(s) } }
     }
 
     /** Lyrics for a song: the saved ones, else looked up on LRCLIB (unless lookups are off) and saved. Null when none. */
@@ -372,7 +372,7 @@ class CoreBackend(val services: AppServices) {
         sleepAt.value = end
         sleepJob = scope.launch {
             kotlinx.coroutines.delay(minutes * 60_000L)
-            player.pause()
+            if (playerStarted.value) player.pause()
             sleepAt.value = null
         }
     }
@@ -432,7 +432,7 @@ class CoreBackend(val services: AppServices) {
         eqGains.value = gains
         repo.setPref("eq_on", "$on")
         repo.setPref("eq_gains", gains.joinToString(",", "[", "]"))
-        player.setEqualizer(if (on) gains else null)
+        if (playerStarted.value) player.setEqualizer(if (on) gains else null)
     }
 
     // ListenBrainz: the token lives in the secret store, never in a plain preference.
@@ -582,7 +582,20 @@ class CoreBackend(val services: AppServices) {
     /** Output volume, 0 to 1; kept here since the engines do not report it. */
     val volume = kotlinx.coroutines.flow.MutableStateFlow(repo.pref("player_volume")?.toFloatOrNull()?.coerceIn(0f, 1f) ?: 1f)
 
-    private val player by lazy {
+    /** False until something plays; the audio stack is not created before that. */
+    private val playerStarted = MutableStateFlow(false)
+
+    private val player: io.max.paperplay.core.app.PlaybackController get() {
+        playerStarted.value = true
+        return playerLazy.value
+    }
+
+    /** Runs [block] on the player; the first call creates it off the calling thread. */
+    private fun withPlayer(block: (io.max.paperplay.core.app.PlaybackController) -> Unit) {
+        if (playerLazy.isInitialized()) block(player) else scope.launch(Dispatchers.Default) { block(player) }
+    }
+
+    private val playerLazy = lazy {
         services.playback.also { p ->
             if (eqOn.value) p.setEqualizer(eqGains.value)
             if (volume.value != 1f) p.setVolume(volume.value)
@@ -599,7 +612,9 @@ class CoreBackend(val services: AppServices) {
         }
     }
 
-    private val nowPlayingFlow: Flow<NowPlaying> = flow { emitAll(player.nowPlaying) }
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    private val nowPlayingFlow: Flow<NowPlaying> = playerStarted
+        .transformLatest { started -> if (started) emitAll(playerLazy.value.nowPlaying) }
         .flowOn(Dispatchers.Default)
 
     /** Everything about playback except the position: it changes on a song, queue or button, not every tick. */
@@ -692,13 +707,13 @@ class CoreBackend(val services: AppServices) {
         val list = songs.mapNotNull { byId[it.id] }
         if (list.isEmpty()) return
         val start = list.indexOfFirst { it.unique_id == songs.getOrNull(index)?.id }.coerceAtLeast(0)
-        player.setQueue(list, start)
+        withPlayer { it.setQueue(list, start) }
     }
 
     fun shuffleAll(songs: List<SongUi>) {
         val list = songs.mapNotNull { byId[it.id] }.shuffled()
         if (list.isEmpty()) return
-        player.setQueue(list, 0)
+        withPlayer { it.setQueue(list, 0) }
     }
 
     fun togglePlay() = if (playbackMeta.value.playing) player.pause() else player.play()
@@ -707,7 +722,7 @@ class CoreBackend(val services: AppServices) {
     fun seekTo(fraction: Float) = player.seek((fraction * playbackMeta.value.durationMs).toLong())
     fun setVolume(v: Float) {
         volume.value = v.coerceIn(0f, 1f)
-        player.setVolume(volume.value)
+        if (playerStarted.value) player.setVolume(volume.value)
         repo.setPref("player_volume", volume.value.toString())
     }
 

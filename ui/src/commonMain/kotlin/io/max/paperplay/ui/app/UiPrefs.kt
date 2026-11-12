@@ -113,6 +113,8 @@ class UiPrefs(private val read: (String) -> String?, private val write: (String,
 
     fun look(g: LookGroup): Look = looks[g] ?: Look.Material
 
+    fun flag(key: String, default: Boolean): Boolean = read(key)?.let { it == "true" } ?: default
+    fun putFlag(key: String, on: Boolean) = write(key, "$on")
     fun putProfileName(name: String) { profileName = name; write("profile_name", name) }
     fun putProfilePhoto(path: String?) { profilePhoto = path; write("profile_photo", path.orEmpty()) }
     fun putIconSet(set: IconSet) { iconSet = set; write("icon_set", set.name.lowercase()) }

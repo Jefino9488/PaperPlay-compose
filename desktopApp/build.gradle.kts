@@ -61,6 +61,27 @@ val stagePackagingResources = tasks.register<Copy>("stagePackagingResources") {
     val tdlib = file(System.getenv("PAPERPLAY_TDLIB") ?: "D:/Git forks/Teleplayer/windows/third_party/tdlib")
     if (tdlib.exists()) from(tdlib) { into("native"); include("*.dll") }
 }
+// libvlc 3 rescans every plugin at start unless plugins/plugins.dat exists. vlc-cache-gen.exe (from a local VLC install)
+// builds it against the trimmed folder. Without VLC installed the step is skipped and the app scans (and, once the
+// player is released, caches) at runtime instead.
+stagePackagingResources.configure {
+    doLast {
+        val vlcDir = packagingResources.get().dir("windows/vlc").asFile
+        if (!File(vlcDir, "plugins").isDirectory) return@doLast
+        val gen = listOfNotNull(System.getenv("PAPERPLAY_VLC"), "C:/Program Files/VideoLAN/VLC", "C:/Program Files (x86)/VideoLAN/VLC")
+            .map { File(it, "vlc-cache-gen.exe") }.firstOrNull { it.exists() }
+        if (gen == null) { logger.warn("vlc-cache-gen.exe not found; plugins.dat not generated"); return@doLast }
+        // The tool loads each plugin, which needs libvlccore.dll beside it, so run a copy from the staged folder.
+        val local = File(vlcDir, "vlc-cache-gen.exe")
+        gen.copyTo(local, overwrite = true)
+        try {
+            val proc = ProcessBuilder(local.path, File(vlcDir, "plugins").path).directory(vlcDir).redirectErrorStream(true).start()
+            proc.inputStream.readBytes()
+            proc.waitFor()
+            if (!File(vlcDir, "plugins/plugins.dat").exists()) logger.warn("vlc-cache-gen ran but wrote no plugins.dat")
+        } finally { local.delete() }
+    }
+}
 tasks.matching { it.name == "prepareAppResources" }.configureEach { dependsOn(stagePackagingResources) }
 
 // libvlc is shipped through appResourcesRootDir; keeping a second copy inside the app jar doubled it.

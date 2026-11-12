@@ -247,7 +247,7 @@ private fun Progress(song: SongUi, state: PlaybackUiState, backend: CoreBackend)
     val total = if (state.durationMs > 0) state.durationMs else song.durationSec * 1000L
     val pos by backend.position.collectAsState()
     WavySeek(
-        value = pos.progress(state.durationMs), buffered = pos.bufferedProgress(state.durationMs), playing = state.playing,
+        progress = { pos.progress(state.durationMs) }, buffered = { pos.bufferedProgress(state.durationMs) }, playing = state.playing,
         onSeek = backend::seekTo,
         modifier = Modifier.fillMaxWidth(),
         label = formatDuration(pos.positionMs / 1000),
@@ -294,8 +294,12 @@ private fun SongInfoDialog(song: SongUi, onDismiss: () -> Unit) {
 /** The queue; tap to play. Reorder and swipe-to-remove come with the queue work in the player engine. */
 @Composable
 private fun QueueList(state: PlaybackUiState, backend: CoreBackend, modifier: Modifier = Modifier) {
+    val keys = remember(state.queue) {
+        val seen = HashMap<String, Int>()
+        state.queue.map { s -> val n = seen.merge(s.id, 1, Int::plus)!!; "${s.id}#$n" }
+    }
     LazyColumn(modifier) {
-        itemsIndexed(state.queue, key = { i, s -> "${s.id}#$i" }) { i, s ->
+        itemsIndexed(state.queue, key = { i, _ -> keys[i] }) { i, s ->
             val on = i == state.queueIndex
             Row(
                 Modifier.fillMaxWidth().background(if (on) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f) else Color.Transparent)

@@ -58,10 +58,26 @@ object VlcLoader {
         // VLC_PLUGIN_PATH. We pass --plugin-path here (safe for VLC 3.x) and
         // also set the system property as a forward-compatibility hint for
         // vlcj's own NativeDiscovery mechanism.
-        val plugins = File(dir, "plugins")
+        var plugins = File(dir, "plugins")
         if (!plugins.isDirectory) return emptyList()
+        plugins = writablePlugins(plugins)
         System.setProperty("VLC_PLUGIN_PATH", plugins.absolutePath)
         return listOf("--plugin-path=${plugins.absolutePath}")
+    }
+
+    /**
+     * libvlc keeps its plugin cache (plugins.dat) inside the plugin folder. A build-time cache needs no writing; without
+     * one, a read-only folder (Program Files) would rescan every plugin at each start, so a copy in the app data folder
+     * is used instead.
+     */
+    private fun writablePlugins(plugins: File): File {
+        if (File(plugins, "plugins.dat").exists() || plugins.canWrite()) return plugins
+        return runCatching {
+            val base = System.getenv("APPDATA") ?: System.getProperty("user.home")
+            val copy = File(base, "PaperPlay/vlc-plugins")
+            if (!File(copy, "plugins.dat").exists()) plugins.copyRecursively(copy, overwrite = true)
+            if (copy.canWrite()) copy else plugins
+        }.getOrDefault(plugins)
     }
 
     // ----- discovery --------------------------------------------------------

@@ -1,6 +1,18 @@
 package io.max.paperplay.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.produceState
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.LaunchedEffect
@@ -47,6 +59,8 @@ class AppEnv(
     val requestNotifications: (() -> Unit)? = null,
     /** Desktop: tints the window title bar. Called with (dark, background ARGB, text ARGB). */
     val windowTheme: ((Boolean, Int, Int) -> Unit)? = null,
+    /** Startup timing marks (desktop writes them to startup.log). */
+    val mark: (String) -> Unit = {},
 )
 
 val LocalAppEnv = androidx.compose.runtime.staticCompositionLocalOf<AppEnv?> { null }
@@ -90,12 +104,24 @@ fun App(env: AppEnv) {
 
 @Composable
 private fun Main(env: AppEnv, pending: MutableMap<String, String>, onRestore: () -> Unit) {
-    val backend = remember {
-        CoreBackend(env.createServices()).also { b ->
-            pending.forEach { (k, v) -> b.setPref(k, v) }
-            pending.clear()
+    // The database, services and backend are built off the UI thread; a blank themed screen shows meanwhile.
+    val built by produceState<CoreBackend?>(null) {
+        value = withContext(Dispatchers.Default) {
+            CoreBackend(env.createServices()).also { b ->
+                pending.forEach { (k, v) -> b.setPref(k, v) }
+                pending.clear()
+            }
         }
+        env.mark("services ready")
     }
+    val backend = built
+    if (backend == null) {
+        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator(Modifier.size(28.dp), strokeWidth = 3.dp)
+        }
+        return
+    }
+    LaunchedEffect(Unit) { env.mark("first composition of main shell") }
     val tour by env.showTour.collectAsState()
     val hasCredentials by backend.hasCredentials.collectAsState()
     LaunchedEffect(hasCredentials) {

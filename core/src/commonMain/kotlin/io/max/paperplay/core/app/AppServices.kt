@@ -49,9 +49,33 @@ class AppServices(
 
     /** Sends audio files to a chat or topic as the bot. */
     val uploader: Uploader by lazy {
-        Uploader(scope, { client }, library::pref) {
+        Uploader(scope, { client }, library::pref, {
             library.repo.db.songsQueries.allSongs().executeAsList().mapTo(HashSet()) { it.file_name to it.size }
-        }
+        }, botPool)
+    }
+
+    /** The main bot plus extra bots that share uploads. Each extra bot has its own TDLib session. */
+    val botPool: io.max.paperplay.core.telegram.BotPool by lazy {
+        io.max.paperplay.core.telegram.BotPool(
+            scope, platform.secrets, io.max.paperplay.core.dupes.defaultHttpPoster(),
+            { platform.secrets.get(Keys.BOT_TOKEN) }, { client },
+            open = { id, token ->
+                val apiId = platform.settings.get(Keys.API_ID)?.toIntOrNull()
+                val apiHash = platform.settings.get(Keys.API_HASH)
+                val key = platform.secrets.get(Keys.TD_KEY)
+                if (apiId == null || apiHash.isNullOrEmpty() || key == null) null
+                else {
+                    val rt = runtime ?: TdRuntime(platform.native, scope, platform.receiveDispatcher).also { runtime = it }
+                    TdClient(
+                        rt,
+                        TdConfig(
+                            apiId, apiHash, token, "${platform.dataDir}/td_extra_$id", "${platform.dataDir}/td_extra_files_$id", key,
+                            deviceModel = platform.deviceModel, appVersion = platform.appVersion,
+                        ),
+                    )
+                }
+            },
+        )
     }
 
     /** The owner's own account (login, chats, copying). The real one replaces the stand-in. */
@@ -133,7 +157,17 @@ class AppServices(
     }
 
     /** Created on first use, so a screen that never plays does not load the audio stack. */
-    val playback: PlaybackController by lazy { PlaybackController(platform.createPlayer(), resolver, library, scope) }
+    private val playbackLazy = lazy { PlaybackController(platform.createPlayer(), resolver, library, scope) }
+    val playback: PlaybackController get() = playbackLazy.value
+
+    /** True once the player has been created. */
+    val playbackStarted: Boolean get() = playbackLazy.isInitialized()
+
+    /** Releases the player if one was created; the desktop engine writes its plugin cache on release. */
+    fun releasePlayback() {
+        if (!playbackLazy.isInitialized()) return
+        runCatching { kotlinx.coroutines.runBlocking { kotlinx.coroutines.withTimeoutOrNull(4_000) { playback.release() } } }
+    }
 
     @Volatile private var client: TdClient? = null
     private var runtime: TdRuntime? = null
@@ -203,6 +237,7 @@ class AppServices(
                 c.start()
                 c.ready()
                 playlistSync.start()
+                botPool.load()
                 // Songs read through the account need its client running before they are played.
                 launch {
                     if (!account.loggedIn.value) return@launch

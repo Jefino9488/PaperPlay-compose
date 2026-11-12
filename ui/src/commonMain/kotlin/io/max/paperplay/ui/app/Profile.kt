@@ -2,7 +2,12 @@
 
 import io.max.paperplay.ui.components.AppIcon
 
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
+import androidx.compose.material.icons.rounded.DriveFileMove
+import androidx.compose.material.icons.rounded.Upload
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -103,40 +108,29 @@ fun ProfileScreen(
             }
         }
         item {
-            var open by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(true) }
-            Column(Modifier.padding(horizontal = 16.dp).fillMaxWidth().partSurface(LookGroup.Cards, MaterialTheme.colorScheme.surfaceContainerLow, RoundedCornerShape(28.dp))) {
-                Row(Modifier.fillMaxWidth().clickable { open = !open }.padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
-                    AppIcon(Icons.Rounded.LibraryMusic, null, Modifier.padding(end = 16.dp))
-                    Text("Library", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
-                    AppIcon(if (open) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore, null)
+            ProfileSection("library", "Library", Icons.Rounded.LibraryMusic, prefs, defaultOpen = true) {
+                NavRow(if (conn.chats.size == 1) "1 channel" else "${conn.chats.size} channels", icon = Icons.Rounded.Forum, subtitle = mainChatTitle?.let { "Main chat: $it" } ?: "No chat added yet") {
+                    onSettings("channels")
                 }
-                if (open) {
-                    NavRow(if (conn.chats.size == 1) "1 channel" else "${conn.chats.size} channels", icon = Icons.Rounded.Forum, subtitle = mainChatTitle?.let { "Main chat: $it" } ?: "No chat added yet") {
-                        onSettings("channels")
-                    }
-                    NavRow("Chats and channels", icon = Icons.Rounded.Forum, subtitle = "Index songs in your own chats") { onSettings("index") }
-                    NavRow("Tasks", icon = Icons.Rounded.TaskAlt, subtitle = scan?.value?.text ?: "Nothing running", onClick = onTasks)
-                    NavRow("Listening", icon = Icons.Rounded.BarChart, subtitle = "Time listened, top songs and artists") {
-                        onSettings("stats")
-                    }
-                    NavRow("Duplicates", icon = Icons.Rounded.ContentCopy, subtitle = "Find repeated songs and remove the extras") {
-                        onSettings("library")
-                    }
-                    NavRow("Song info left", icon = Icons.Rounded.Rule, subtitle = "See which songs still lack info or a cover") {
-                        onSettings("missing")
-                    }
-                }
+                NavRow("Chats and channels", icon = Icons.Rounded.Forum, subtitle = "Index songs in your own chats") { onSettings("index") }
+                NavRow("Tasks", icon = Icons.Rounded.TaskAlt, subtitle = scan?.value?.text ?: "Nothing running", onClick = onTasks)
+                NavRow("Upload songs", icon = Icons.Rounded.Upload, subtitle = "Pick songs, see the queue, retry failures") { onSettings("uploadhub") }
+                NavRow("Listening", icon = Icons.Rounded.BarChart, subtitle = "Time listened, top songs and artists") { onSettings("stats") }
+                NavRow("Sort General", icon = Icons.Rounded.DriveFileMove, subtitle = "Suggests topics for songs in General") { onSettings("sort") }
+                NavRow("Duplicates", icon = Icons.Rounded.ContentCopy, subtitle = "Find repeated songs and remove the extras") { onSettings("dupes") }
+                NavRow("Song info left", icon = Icons.Rounded.Rule, subtitle = "See which songs still lack info or a cover") { onSettings("missing") }
             }
         }
         item {
-            ProfileSection("Devices", Icons.Rounded.Devices) {
-                NavRow("No other device connected", icon = Icons.Rounded.SettingsEthernet, subtitle = "Sync and play on your other devices") {
-                    onSettings("devices")
+            ProfileSection("devices", "Devices", Icons.Rounded.Devices, prefs) {
+                NavRow("Connection", icon = Icons.Rounded.SettingsEthernet, subtitle = "Telegram status. Syncing other devices is not built yet") {
+                    onSettings("conn")
                 }
+                NavRow("Background and devices", icon = Icons.Rounded.Devices, subtitle = "Keep running, connection details") { onSettings("devices") }
             }
         }
         item {
-            ProfileSection("Storage", Icons.Rounded.Storage) {
+            ProfileSection("storage", "Storage", Icons.Rounded.Storage, prefs) {
                 NavRow("Cache and backup", icon = Icons.Rounded.CleaningServices, subtitle = "Manage cached songs and library backups") {
                     onSettings("storage")
                 }
@@ -160,18 +154,31 @@ private fun Stat(icon: ImageVector, n: Int, label: String, modifier: Modifier, o
     }
 }
 
+/** A card whose body folds away. The open state is remembered and saved under profile_open_[key]. */
 @Composable
-private fun ProfileSection(title: String, icon: ImageVector, content: @Composable () -> Unit) {
+private fun ProfileSection(
+    key: String, title: String, icon: ImageVector, prefs: UiPrefs, defaultOpen: Boolean = false,
+    content: @Composable () -> Unit,
+) {
+    var open by androidx.compose.runtime.remember(key) { androidx.compose.runtime.mutableStateOf(prefs.flag("profile_open_$key", defaultOpen)) }
     Column(
         Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth()
-            .partSurface(LookGroup.Cards, MaterialTheme.colorScheme.surfaceContainerLow, RoundedCornerShape(28.dp)),
+            .partSurface(LookGroup.Cards, MaterialTheme.colorScheme.surfaceContainerLow, RoundedCornerShape(28.dp))
+            .animateContentSize(),
     ) {
-        Row(Modifier.fillMaxWidth().padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
+        val state = if (open) "Expanded" else "Collapsed"
+        Row(
+            Modifier.fillMaxWidth()
+                .clickable(onClickLabel = if (open) "Collapse $title" else "Expand $title") { open = !open; prefs.putFlag("profile_open_$key", open) }
+                .semantics(mergeDescendants = true) { stateDescription = state }
+                .padding(20.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             AppIcon(icon, null, Modifier.padding(end = 16.dp))
             Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
-            AppIcon(Icons.Rounded.ExpandLess, null)
+            AppIcon(if (open) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore, if (open) "Collapse $title" else "Expand $title")
         }
-        content()
+        if (open) content()
     }
 }
 

@@ -32,7 +32,23 @@ private fun tdlibDir(): String? = listOfNotNull(
     "D:/Git forks/Teleplayer/windows/third_party/tdlib",
 ).firstOrNull { File(it, if (System.getProperty("os.name").startsWith("Windows")) "tdjson.dll" else "libtdjson.so").exists() }
 
+private val t0 = System.nanoTime()
+@Volatile private var liveServices: AppServices? = null
+
+/** Appends elapsed milliseconds since main() began to startup.log in the app data folder. */
+private fun mark(dir: File, what: String) {
+    runCatching {
+        dir.mkdirs()
+        val ms = (System.nanoTime() - t0) / 1_000_000
+        val sinceJvm = System.currentTimeMillis() - java.lang.management.ManagementFactory.getRuntimeMXBean().startTime
+        File(dir, "startup.log").appendText("${java.time.LocalDateTime.now()}  +${ms} ms (jvm +${sinceJvm} ms)  $what\n")
+    }
+}
+
 fun main() {
+    val logDir = File(System.getenv("APPDATA") ?: System.getProperty("user.home"), "PaperPlay")
+    runCatching { File(logDir, "startup.log").takeIf { it.length() > 64_000 }?.delete() }
+    mark(logDir, "main start")
     // Set jna.library.path for TDLib only. VlcLoader will append the VLC path
     // automatically when the first JvmPlayerEngine is created.
     tdlibDir()?.let { System.setProperty("jna.library.path", it) }
@@ -62,7 +78,8 @@ fun main() {
                 restore = { source, pw -> BackupRestorer().restore(source, target, RestoreOptions(password = pw)) },
             ),
             libraryExists = { File(dir, "library.sqlite").exists() },
-            createServices = { AppServices(DesktopPlatform(dir)) },
+            createServices = { AppServices(DesktopPlatform(dir)).also { liveServices = it } },
+            mark = { mark(dir, it) },
             pickImage = { onPicked ->
                 val chooser = JFileChooser().apply { fileFilter = FileNameExtensionFilter("Pictures", "jpg", "jpeg", "png", "webp") }
                 if (chooser.showOpenDialog(null) != JFileChooser.APPROVE_OPTION) onPicked(null)
@@ -90,8 +107,13 @@ fun main() {
             setOnboarded = { runCatching { dir.mkdirs(); File(dir, "onboarded").writeText("1") } },
             windowTheme = { dark, bg, text -> WindowsTitleBar.apply(titleBarWindow, dark, bg, text) },
         )
-        Window(onCloseRequest = ::exitApplication, title = "Paper Play", state = rememberWindowState(width = 1320.dp, height = 840.dp), icon = androidx.compose.ui.res.painterResource("icon.png")) {
+        Window(onCloseRequest = {
+            // libvlc writes its plugin cache (plugins.dat) only when released.
+            liveServices?.releasePlayback()
+            exitApplication()
+        }, title = "Paper Play", state = rememberWindowState(width = 1320.dp, height = 840.dp), icon = androidx.compose.ui.res.painterResource("icon.png")) {
             titleBarWindow = window
+            androidx.compose.runtime.LaunchedEffect(Unit) { mark(dir, "window first composition") }
             App(env)
         }
     }

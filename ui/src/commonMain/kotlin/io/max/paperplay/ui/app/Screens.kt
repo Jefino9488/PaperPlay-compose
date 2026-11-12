@@ -238,10 +238,10 @@ fun DetailScreen(
     val scope = rememberCoroutineScope()
     val songs = remember(rawSongs, sort) { sort.apply(rawSongs) }
     val store = remember(backend) { backend.importStore() }
-    val libChanges by backend.services.library.changes.collectAsState()
     val source = remember(detail) { if (detail is Detail.Playlist) backend.playlistSource(detail.id) else null }
-    val missing = remember(detail, libChanges, bump, refreshing) {
-        if (detail is Detail.Playlist) detail.id.toLongOrNull()?.let { store.missing(it) }.orEmpty() else emptyList()
+    val missing by androidx.compose.runtime.produceState(emptyList<io.max.paperplay.core.library.MissingTrack>(), detail, bump, refreshing) {
+        if (detail !is Detail.Playlist) return@produceState
+        backend.services.library.changes.collect { value = detail.id.toLongOrNull()?.let { store.missing(it) }.orEmpty() }
     }
     Column(modifier) {
         BackTopBar(name, onBack) {

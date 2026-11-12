@@ -87,12 +87,12 @@ private val rateWorks = mapOf(
 @Composable
 fun SettingsHost(
     stack: MutableList<String>, prefs: UiPrefs, conn: ConnectionUi, songCount: Int, backend: CoreBackend,
-    onRestore: () -> Unit, onExit: () -> Unit, bottomPadding: Dp, modifier: Modifier = Modifier,
+    onRestore: () -> Unit, onExit: () -> Unit, bottomPadding: Dp, modifier: Modifier = Modifier, deep: Boolean = false,
 ) {
     val page = stack.lastOrNull()
     val title = categories.firstOrNull { it.id == page }?.title ?: settingsPageTitle(page) ?: "Settings"
     Column(modifier) {
-        BackTopBar(title, onBack = { if (stack.isEmpty()) onExit() else stack.removeAt(stack.lastIndex) })
+        BackTopBar(title, onBack = { if (stack.isEmpty() || (deep && stack.size <= 1)) onExit() else stack.removeAt(stack.lastIndex) })
         // The chat pages hold long lists, so they scroll lazily instead of inside the shared scroll column.
         if (page == "index") IndexPage(backend, stack, bottomPadding)
         else if (page != null && page.startsWith("index:")) ChatSongsPage(backend, page.removePrefix("index:").toLongOrNull() ?: 0L, stack, bottomPadding)
@@ -315,6 +315,7 @@ internal fun SettingsPage(
         "weather" -> WeatherPage(backend)
         "conn" -> ConnectionPage(conn, backend)
         "log" -> LogPage(backend)
+        "bots" -> BotsPage(backend)
         "dupes" -> DuplicatesPage(backend)
         "sort" -> SortPage(backend)
         "missing" -> MissingInfoPage(backend)

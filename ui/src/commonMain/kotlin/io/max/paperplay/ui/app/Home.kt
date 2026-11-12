@@ -237,7 +237,7 @@ private fun MixCard(mix: CollectionUi, onClick: () -> Unit) {
 /** Browse by genre: a tile per genre, largest first, with a cover tilted into the corner. */
 @Composable
 fun GenreGrid(songs: List<SongUi>, bottomPadding: Dp, onOpen: (Detail) -> Unit, modifier: Modifier = Modifier) {
-    val genres = songs.filter { !it.genre.isNullOrBlank() }.groupBy { it.genre!!.trim() }.entries.sortedByDescending { it.value.size }
+    val genres = androidx.compose.runtime.remember(songs) { songs.filter { !it.genre.isNullOrBlank() }.groupBy { it.genre!!.trim() }.entries.sortedByDescending { it.value.size } }
     if (genres.isEmpty()) {
         Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Genres appear here as song info is found.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
         return

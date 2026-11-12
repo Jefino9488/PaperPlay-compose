@@ -1,5 +1,5 @@
 PaperPlay Compose - what's done and what's left
-Updated 12 Nov 2026, afternoon
+Updated 12 Nov 2026, evening
 
 Marks: [x] done and builds, [~] half done, [ ] not done.
 Heads up: "done" means it compiles and I wrote it. The phone release build with
@@ -78,6 +78,18 @@ Speed and battery (12 Nov, big win on the phone)
     prefetched, stream reads use the known downloaded size
 [x] Smaller release APK: 35 MB down to 15.7 MB
 
+Profile and navigation (written 12 Nov, built and installed once the last build passes)
+[x] Profile sections collapse with a chevron, open state saved per section
+[x] Profile rows fixed: Duplicates goes to the right page, new rows for Upload songs
+    and Sort General, Connection and Devices rows
+[x] Desktop sidebar has a Tools group (Sort General, Duplicates, Song info left)
+[x] Back from a page opened from Profile returns to Profile, not the Settings list
+[x] Extra bots: add and remove tokens, bot pool shares uploads, rate limits per bot
+    (written, not compiled or tried yet; bots from a restored backup aren't started)
+[x] Detail screen no longer redraws on every library change, seek bar reads
+    progress at draw time, stable queue keys, handwritten baseline profile
+[x] Previews for equalizer, ListenBrainz, account, song info rows, stats and log
+
 Other
 [x] Task centre page (running tasks, history, clear)
 [x] Home mixes cached so Home opens faster
@@ -90,11 +102,15 @@ HALF DONE, FINISH THESE
 -----------------------
 [~] Small TDLib: built (14.4 MB raw, about 7.8 MB in the APK, same exports as the
     current one) but not swapped in or tested. Would give an APK of about 10.8 MB
-[~] Desktop opens slowly (over 2 minutes): VLC plugin cache is never saved, services
-    are built on the window thread, player starts at launch (partly fixed)
-[~] Detail screen still redraws on every library change (Screens.kt)
-[~] Seek bar still redraws four times a second while playing
-[~] No baseline profile yet (would make the release build smoother on first use)
+[~] Desktop opens slowly (over 2 minutes): fixes are written (VLC cache saved on exit
+    and made at build time, services built off the main thread with a splash,
+    player starts on first play, startup.log with timings) but not tested on the PC
+[~] PC app still the old build: new icon, dark title bar and one shuffle button
+    only show after the PC image is built and installed
+[~] Baseline profile is handwritten, not recorded on a phone
+[~] Seek bar wave doesn't pause when the app is in the background
+[~] LAN sync: only the merge rules are done (pure core with tests from the Flutter
+    sync tests). No hub, pairing, Devices page, queue sync or Android permissions
 [~] Mood scan: code written, but nothing starts it yet
 [~] Mixes: MixPage is written but Home still opens a mix as a normal list
 [~] "Doesn't fit" votes: not passed into the daily mixes, no vote screens
@@ -139,17 +155,23 @@ Playback
 
 Library
 [ ] Auto filing (new songs go to the right topic by themselves)
-[ ] Extra bots and the bot pool
-[ ] Rate limit recording
 [ ] Delete from Telegram from the song menu
 [ ] Neighbours view in Discover
-[ ] Export list screen (missing songs to text / M3U, Spotify and Apple links)
-[ ] Library status page
+[ ] Export list screen (Flutter's is a viewer of saved lists: copy links, Spotify
+    and Apple links, save CSV; the export functions already exist in core)
+[ ] Library status page (banner of what is running plus tiles: total songs, matched,
+    no match, covers, song info left)
+[ ] Pin playlists and songs for offline: groundwork exists (pinned column, eviction
+    skips pinned, streaming downloads pinned songs whole). Still to build: the pin
+    queue, the Pin button and menu wiring, the Cache manager page
+[ ] One-time repair for songs other bots posted (account downloads, our bot
+    re-uploads), and describing the account as optional in onboarding and Settings
 [ ] Topic picker page
 
 Devices
-[ ] LAN sync, pairing, devices page
-[ ] Library sync merge
+[ ] LAN hub, pairing code, Devices page (design: plain socket, ECDH key exchange
+    with a 6 digit code, signed and encrypted requests, off by default)
+[ ] Apply a sync merge to the database (snapshot build and apply)
 [ ] Remote playback and PC offload
 [ ] Log out of all devices
 [ ] Session export and import
@@ -187,13 +209,13 @@ TESTS
 
 ORDER I'D DO IT IN
 ------------------
-1. Fix the slow desktop start and rebuild the PC app (icon, title bar)
+1. Build and install the PC app, check the slow start with startup.log
 2. Swap in the small TDLib and test bot login, scan and playback on the phone
 3. Go through the device checks and the crash and missing songs
 4. Finish the half done list (mood, mixes, task stop buttons, upload queue)
-5. Auto filing, export list
+5. Auto filing, export list, library status
 6. Offline pinning, cache manager, quality badges
 7. Queue editing, speed, loudness
-8. LAN sync and devices
+8. LAN hub, pairing and devices
 9. Desktop tray and shortcuts, then macOS and Linux
 10. Port the Dart tests as each thing lands
