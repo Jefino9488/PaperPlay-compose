@@ -203,8 +203,8 @@ fun SongMenu(song: SongUi, actions: SongActions, icon: ImageVector = Icons.Round
             }
             item("Song info") { info = true }
             item("Find metadata") { actions.findMetadata(song) }
-            item("Edit tags") { actions.notice("Editing tags is not built yet.") }
-            item("Change cover") { actions.notice("Changing a cover is not built yet.") }
+            item("Edit tags") { actions.editTags(song) }
+            item("Change cover") { actions.changeCover(song) }
             actions.removeLabel?.let { label -> item(label) { actions.remove(song) } }
         }
     }

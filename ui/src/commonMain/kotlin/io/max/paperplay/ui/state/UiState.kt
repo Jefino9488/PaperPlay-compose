@@ -71,6 +71,10 @@ interface SongActions {
     fun notice(text: String) {}
     /** Looks the song up online again; says what happened through [notice]. */
     fun findMetadata(song: SongUi) { notice("Finding metadata is not available here.") }
+    /** Opens the tag editor. */
+    fun editTags(song: SongUi) { notice("Editing tags is not available here.") }
+    /** Opens the cover chooser. */
+    fun changeCover(song: SongUi) { notice("Changing a cover is not available here.") }
 }
 
 /** Actions on all songs picked in multi-select. */
