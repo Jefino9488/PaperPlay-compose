@@ -54,7 +54,37 @@ class AppServices(
 
     fun enableLanSync(isDesktop: Boolean): io.max.paperplay.core.sync.LanSync = lanSync ?: io.max.paperplay.core.sync.createLanSync(
         io.max.paperplay.core.sync.LanEnv(library, platform.secrets, scope, isDesktop, platform.deviceModel, { platform.secrets.get(Keys.BOT_TOKEN) }),
-    ).also { lanSync = it }
+    ).also { lanSync = it; bindLan(it) }
+
+    /** Lets a paired device drive playback here, and tells linked devices what is playing. */
+    private fun bindLan(lan: io.max.paperplay.core.sync.LanSync) {
+        scope.launch {
+            lan.messages.collect { m ->
+                if (m.type != "control") return@collect
+                val action = runCatching { (kotlinx.serialization.json.Json.parseToJsonElement(m.body) as kotlinx.serialization.json.JsonObject)["action"]?.let { (it as kotlinx.serialization.json.JsonPrimitive).content } }.getOrNull()
+                when (action) {
+                    "play" -> playback.play()
+                    "pause" -> playback.pause()
+                    "next" -> playback.next()
+                    "previous" -> playback.previous()
+                }
+            }
+        }
+        scope.launch {
+            var sent = emptyMap<String, Pair<String?, Boolean>>()
+            while (true) {
+                kotlinx.coroutines.delay(1_500)
+                if (!playbackStarted) continue
+                val np = playback.nowPlayingStatic.value
+                val state = np.song?.unique_id to np.isPlaying
+                val linked = lan.connected.value
+                for (d in linked) if (sent[d.id] != state) {
+                    runCatching { lan.sendNowPlaying(d.id, state.first, playback.nowPlaying.value.positionMs, np.isPlaying, np.song?.title, np.song?.artist) }
+                }
+                sent = linked.associate { it.id to state }
+            }
+        }
+    }
 
     /** Sends audio files to a chat or topic as the bot. */
     val uploader: Uploader by lazy {

@@ -216,6 +216,8 @@ fun PlaylistsTab(
     playlists: List<GroupUi>, favorites: List<SongUi>, recents: List<SongUi>, bottomPadding: Dp,
     onOpen: (Detail) -> Unit, onNewPlaylist: () -> Unit, onImportSpotify: () -> Unit,
 ) {
+    val read = LocalTelegramLists.current
+    val telegramLists = androidx.compose.runtime.remember(playlists.size, favorites.size) { read() }
     LazyColumn(Modifier.fillMaxWidth(), contentPadding = PaddingValues(top = 4.dp, bottom = bottomPadding + 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item { PlaylistActionRow(Icons.Rounded.Favorite, "Favorites") { onOpen(Detail.Songs("Favorites", favorites)) } }
         item { PlaylistActionRow(Icons.Rounded.History, "Recently played") { onOpen(Detail.Songs("Recently played", recents)) } }
@@ -230,6 +232,22 @@ fun PlaylistsTab(
                     Column(Modifier.weight(1f).padding(start = 14.dp)) {
                         Text(g.name, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium)
                         Text(g.subtitle, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+        }
+        // Telegram's own grouping: the main chat's topics and any starred channel. Nothing is shown when there are none.
+        val telegram = telegramLists
+        if (telegram.isNotEmpty()) {
+            item { Text("From Telegram", Modifier.padding(start = 20.dp, top = 16.dp, bottom = 4.dp), style = MaterialTheme.typography.titleMedium) }
+            items(telegram, key = { it.key }) { t ->
+                Surface(onClick = { onOpen(Detail.Songs(t.name, t.songs)) }, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp), shape = appShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+                    Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        io.max.paperplay.ui.components.CoverImage(t.songs.firstNotNullOfOrNull { it.coverUri }, t.key, size = 52.dp, radius = 10.dp)
+                        Column(Modifier.weight(1f).padding(start = 14.dp)) {
+                            Text(t.name, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium)
+                            Text("${t.songs.size} songs", maxLines = 1, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
                 }
             }

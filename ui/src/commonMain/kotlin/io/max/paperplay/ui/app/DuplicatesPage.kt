@@ -143,9 +143,11 @@ internal fun DuplicatesPage(backend: CoreBackend) {
                 if (inSection.isEmpty()) continue
                 SectionLabel("${labels.getValue(section)} (${inSection.size})")
                 for (g in inSection) {
+                    val art = (listOf(g.keep) + g.others).firstNotNullOfOrNull { it.song?.cover_path }
                     SettingsRow(
                         "${g.title} - ${g.artist}", icon = Icons.Rounded.ContentCopy,
                         subtitle = describeDuplicate(g) { p -> p.topicId?.let { topicNames["topic:${p.chatId}:$it"] } },
+                        leading = { io.max.paperplay.ui.components.CoverImage(art, "${g.title}|${g.artist}", size = 52.dp, radius = 8.dp) },
                     )
                     for (p in postsOf(g)) {
                         val job = jobOf(p)
@@ -162,6 +164,7 @@ internal fun DuplicatesPage(backend: CoreBackend) {
                                 if (on) tick(g, postsOf(g).filter { it.key in ticked || it.key == p.key })
                                 else ticked = ticked - p.key
                             }, enabled = !busy(p) && !active)
+                            io.max.paperplay.ui.components.CoverImage(p.song?.cover_path ?: art, "${g.title}|${g.artist}", Modifier.padding(end = 12.dp), size = 36.dp, radius = 6.dp)
                             Text(
                                 "${p.format}, ${sizeText(p.size)}" + (state?.let { " - $it" } ?: ""),
                                 style = MaterialTheme.typography.bodyMedium,

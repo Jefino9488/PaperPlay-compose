@@ -1,10 +1,14 @@
 package io.max.paperplay.desktop
 
 import androidx.compose.runtime.collectAsState
+import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
-import androidx.compose.ui.window.WindowDraggableArea
+import androidx.compose.foundation.window.WindowDraggableArea
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import io.max.paperplay.core.app.AppServices
@@ -110,7 +114,7 @@ fun main() {
     application {
         val dir = File(System.getenv("APPDATA") ?: System.getProperty("user.home"), "PaperPlay")
         val target = desktopRestoreTarget(dir)
-        var titleBarWindow: java.awt.Window? = null
+        var titleColors by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(androidx.compose.ui.graphics.Color(0xFF121212) to androidx.compose.ui.graphics.Color.White) }
         val env = AppEnv(
             restore = RestoreHooks(
                 pickBackup = { onPicked ->
@@ -148,17 +152,60 @@ fun main() {
             authRedirectUri = SPOTIFY_REDIRECT,
             onboarded = { File(dir, "onboarded").exists() },
             setOnboarded = { runCatching { dir.mkdirs(); File(dir, "onboarded").writeText("1") } },
-            windowTheme = { dark, bg, text -> WindowsTitleBar.apply(titleBarWindow, dark, bg, text) },
+            windowTheme = { _, bg, text -> titleColors = androidx.compose.ui.graphics.Color(bg) to androidx.compose.ui.graphics.Color(text) },
         )
-        Window(onCloseRequest = {
+        // The close button hides the window to the tray and music keeps playing; Quit in the tray menu ends the app.
+        var mainVisible by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(true) }
+        val mainState = rememberWindowState(width = 1320.dp, height = 840.dp)
+        val trayOk = androidx.compose.ui.window.isTraySupported
+        val fullscreen by io.max.paperplay.ui.app.WindowFullscreen.on.collectAsState()
+        androidx.compose.runtime.LaunchedEffect(Unit) { io.max.paperplay.ui.app.WindowFullscreen.supported.value = true }
+        androidx.compose.runtime.LaunchedEffect(fullscreen) {
+            mainState.placement = if (fullscreen) androidx.compose.ui.window.WindowPlacement.Fullscreen else androidx.compose.ui.window.WindowPlacement.Floating
+        }
+        val quit = {
             // libvlc writes its plugin cache (plugins.dat) only when released.
             liveServices?.releasePlayback()
             exitApplication()
-        }, title = "Paper Play", state = rememberWindowState(width = 1320.dp, height = 840.dp), icon = androidx.compose.ui.res.painterResource("icon.png")) {
-            titleBarWindow = window
+        }
+        if (trayOk) {
+            val icon = androidx.compose.ui.res.painterResource("icon.png")
+            val control = { f: (io.max.paperplay.core.app.PlaybackController) -> Unit -> liveServices?.takeIf { it.playbackStarted }?.let { f(it.playback) } }
+            androidx.compose.ui.window.Tray(
+                icon = icon, tooltip = "Paper Play",
+                onAction = { mainVisible = true; mainState.isMinimized = false },
+                menu = {
+                    Item("Open Paper Play", onClick = { mainVisible = true; mainState.isMinimized = false })
+                    Separator()
+                    Item("Play / Pause", onClick = { control { p -> if (p.nowPlayingStatic.value.isPlaying) p.pause() else p.play() } })
+                    Item("Next", onClick = { control { it.next() } })
+                    Item("Previous", onClick = { control { it.previous() } })
+                    Item("Mini player", onClick = { io.max.paperplay.ui.app.DesktopMini.visible.value = !io.max.paperplay.ui.app.DesktopMini.visible.value })
+                    Separator()
+                    Item("Quit", onClick = quit)
+                },
+            )
+        }
+        Window(
+            onCloseRequest = { if (trayOk) mainVisible = false else quit() },
+            visible = mainVisible, title = "Paper Play", state = mainState, undecorated = true, icon = androidx.compose.ui.res.painterResource("icon.png"),
+        ) {
+            androidx.compose.runtime.LaunchedEffect(mainVisible) { if (mainVisible) window.toFront() }
             androidx.compose.runtime.LaunchedEffect(Unit) { installFileDrop(window) }
             androidx.compose.runtime.LaunchedEffect(Unit) { mark(dir, "window first composition") }
-            App(env)
+            val maximized = mainState.placement == androidx.compose.ui.window.WindowPlacement.Maximized
+            Box(Modifier.fillMaxSize()) {
+                Column(Modifier.fillMaxSize()) {
+                    if (!fullscreen) AppTitleBar(
+                        "Paper Play", titleColors.first, titleColors.second, maximized,
+                        onMinimize = { mainState.isMinimized = true },
+                        onToggleMaximize = { mainState.placement = if (maximized) androidx.compose.ui.window.WindowPlacement.Floating else androidx.compose.ui.window.WindowPlacement.Maximized },
+                        onClose = { if (trayOk) mainVisible = false else quit() },
+                    )
+                    Box(Modifier.weight(1f)) { App(env) }
+                }
+                ResizeEdges(!maximized && !fullscreen)
+            }
         }
         val miniVisible by io.max.paperplay.ui.app.DesktopMini.visible.collectAsState()
         if (miniVisible) {

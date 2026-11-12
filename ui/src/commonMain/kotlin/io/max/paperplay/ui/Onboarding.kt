@@ -52,7 +52,7 @@ import org.jetbrains.compose.ui.tooling.preview.Preview
 /** Where the person wants to go after the tour. */
 enum class OnboardingChoice { None, Restore, Bot }
 
-private enum class Step { Welcome, How, Look, Profile, Connect, Bot, Chat, Account, Permissions, Done }
+private enum class Step { Welcome, How, Look, Profile, Connect, Bot, Chat, Account, Spotify, Permissions, Done }
 
 /**
  * The first-launch tour and setup wizard. With a [backend] it sets the bot up, adds the music chat and offers the
@@ -71,7 +71,7 @@ fun Onboarding(
     val steps = remember(setup) {
         buildList {
             addAll(listOf(Step.Welcome, Step.How, Step.Look, Step.Profile))
-            if (setup) addAll(listOf(Step.Connect, Step.Bot, Step.Chat, Step.Account))
+            if (setup) addAll(listOf(Step.Connect, Step.Bot, Step.Chat, Step.Account, Step.Spotify))
             if (isPhone) add(Step.Permissions)
             add(Step.Done)
         }
@@ -122,6 +122,7 @@ fun Onboarding(
                         Step.Account -> AccountStepPage {
                             if (backend != null) AccountPage(backend, onOpenIndex = null, onLogOut = { scope.launch { backend.account.logOut() } })
                         }
+                        Step.Spotify -> SpotifyStepPage { if (backend != null) io.max.paperplay.ui.app.SpotifyAccountSection(backend) }
                         Step.Permissions -> PermissionsPage(setPref)
                         Step.Done -> DonePage(revisit, botConnected, accountIn, conn.chats.size, onSetupBot = { goTo(Step.Bot) })
                     }

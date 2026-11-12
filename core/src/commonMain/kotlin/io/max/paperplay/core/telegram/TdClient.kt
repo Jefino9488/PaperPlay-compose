@@ -57,7 +57,7 @@ class TdConfig(
     val languageCode: String = "en",
     val deviceModel: String = "Android",
     val systemVersion: String = "",
-    val appVersion: String = "0.1.0",
+    val appVersion: String = "0.2.0",
     val useMessageDatabase: Boolean = true,
 ) {
     val isUser get() = botToken.isEmpty()

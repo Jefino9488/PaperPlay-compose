@@ -115,7 +115,7 @@ compose.desktop {
                 org.jetbrains.compose.desktop.application.dsl.TargetFormat.Deb,
             )
             packageName = "PaperPlay"
-            packageVersion = "1.0.0"
+            packageVersion = "1.1.0"
             // The packaged runtime only holds the modules named here: JDBC (the library database), naming and TLS.
             modules("java.sql", "java.naming", "jdk.unsupported", "jdk.crypto.ec", "jdk.httpserver")
             windows {

@@ -185,6 +185,18 @@ internal object TablerIcons {
             addPath(pathData = PathParser().parsePathString("M16 20h2a2 2 0 0 0 2 -2v-2").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
         }.build()
     }
+    val minimize: ImageVector by lazy {
+        ImageVector.Builder(name = "Tabler_minimize", defaultWidth = 24.dp, defaultHeight = 24.dp, viewportWidth = 24f, viewportHeight = 24f).apply {
+            addPath(pathData = PathParser().parsePathString("M5 9l4 0l0 -4").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+            addPath(pathData = PathParser().parsePathString("M3 3l6 6").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+            addPath(pathData = PathParser().parsePathString("M5 15l4 0l0 4").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+            addPath(pathData = PathParser().parsePathString("M3 21l6 -6").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+            addPath(pathData = PathParser().parsePathString("M19 9l-4 0l0 -4").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+            addPath(pathData = PathParser().parsePathString("M15 9l6 -6").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+            addPath(pathData = PathParser().parsePathString("M19 15l-4 0l0 4").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+            addPath(pathData = PathParser().parsePathString("M15 15l6 6").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+        }.build()
+    }
     val menu_2: ImageVector by lazy {
         ImageVector.Builder(name = "Tabler_menu_2", defaultWidth = 24.dp, defaultHeight = 24.dp, viewportWidth = 24f, viewportHeight = 24f).apply {
             addPath(pathData = PathParser().parsePathString("M4 6l16 0").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
@@ -429,6 +441,7 @@ internal fun tablerIconForMaterial(name: String): ImageVector? = when (name) {
     "VolumeUp" -> TablerIcons.volume
     "VolumeOff" -> TablerIcons.volume_off
     "OpenInFull", "Fullscreen" -> TablerIcons.maximize
+    "FullscreenExit", "CloseFullscreen" -> TablerIcons.minimize
     "KeyboardArrowDown", "ExpandMore" -> TablerIcons.chevron_down
     "ExpandLess" -> TablerIcons.chevron_up
     "ChevronRight" -> TablerIcons.chevron_right

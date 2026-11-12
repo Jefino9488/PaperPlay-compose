@@ -64,13 +64,16 @@ fun SettingsCard(icon: ImageVector, title: String, subtitle: String, onClick: ()
 fun SettingsRow(
     title: String, modifier: Modifier = Modifier, icon: ImageVector? = null, subtitle: String? = null,
     onClick: (() -> Unit)? = null, enabled: Boolean = true, trailing: @Composable () -> Unit = {},
+    /** Shown in place of [icon], such as a cover. */
+    leading: (@Composable () -> Unit)? = null,
 ) {
     Row(
         modifier.fillMaxWidth().then(if (onClick != null && enabled) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(horizontal = 20.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (icon != null) AppIcon(icon, null, Modifier.padding(end = 16.dp), tint = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline)
+        if (leading != null) Box(Modifier.padding(end = 16.dp)) { leading() }
+        else if (icon != null) AppIcon(icon, null, Modifier.padding(end = 16.dp), tint = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline)
         Column(Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.titleMedium, color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline)
             if (subtitle != null) Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)

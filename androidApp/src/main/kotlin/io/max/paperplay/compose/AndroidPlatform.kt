@@ -33,7 +33,7 @@ class AndroidPlatform(private val context: Context) : Platform {
     override fun openDriver(path: String): SqlDriver = libraryDriver(context, path)
     override fun createPlayer(): PlayerEngine = createPlayerEngine()
     override val deviceModel: String get() = Build.MODEL
-    override val appVersion: String get() = "0.1.0"
+    override val appVersion: String get() = "0.2.0"
 
     override fun canRunBackground(): Boolean = runCatching {
         val battery = context.registerReceiver(null, android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED))

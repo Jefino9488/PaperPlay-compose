@@ -160,8 +160,18 @@ interface LanSync {
     /** Stub: sends this device's queue (song unique ids and the playing index) to a linked device. */
     suspend fun sendQueue(deviceId: String, uniqueIds: List<String>, index: Int): Boolean
     /** Stub: sends the playing song and position to a linked device. */
-    suspend fun sendNowPlaying(deviceId: String, uniqueId: String?, positionMs: Long, playing: Boolean): Boolean
+    suspend fun sendNowPlaying(deviceId: String, uniqueId: String?, positionMs: Long, playing: Boolean, title: String? = null, artist: String? = null): Boolean
+
+    /** Names of the paired devices this one is dialling right now, for a short "Connecting to ..." notice. */
+    val connecting: StateFlow<List<String>> get() = kotlinx.coroutines.flow.MutableStateFlow(emptyList())
+    /** What each linked device says it is playing, by device id. */
+    val remoteNow: StateFlow<Map<String, RemoteNow>> get() = kotlinx.coroutines.flow.MutableStateFlow(emptyMap())
+    /** Asks a linked device to "play", "pause", "next" or "previous". False when it is not linked. */
+    suspend fun sendControl(deviceId: String, action: String): Boolean = false
 }
+
+/** The song a linked device is playing. */
+data class RemoteNow(val uniqueId: String?, val title: String?, val artist: String?, val playing: Boolean)
 
 /** What [createLanSync] needs. */
 class LanEnv(

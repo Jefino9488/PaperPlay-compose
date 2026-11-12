@@ -27,6 +27,7 @@ import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Forum
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.LibraryMusic
+import androidx.compose.material.icons.rounded.PlaylistAdd
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Person
@@ -165,6 +166,18 @@ internal fun ChatPage(chats: List<String>, connected: Boolean, onAdd: () -> Unit
             "Posts from other bots show up only if those bots post as the chat (anonymous admin).",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+    }
+}
+
+/** Optional: bring Spotify playlists in. The login is not needed for public playlists; it lifts the 100 track limit. */
+@Composable
+internal fun SpotifyStepPage(login: @Composable () -> Unit) = OnboardingPage(
+    "Spotify", "Optional. Skip it and set it up later in Settings.", Icons.Rounded.PlaylistAdd,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Point("Import your playlists", "Paste a Spotify playlist link and the songs you already have join a new playlist. The rest wait there and join when they show up.")
+        Point("Log in for the full list", "Without a login only a playlist's first 100 tracks can be read. Logging in with your own Spotify app reads every track.")
+        login()
     }
 }
 

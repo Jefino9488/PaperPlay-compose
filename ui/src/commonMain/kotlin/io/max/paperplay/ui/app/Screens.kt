@@ -260,7 +260,7 @@ fun DetailScreen(
         BackTopBar(name, onBack) {
             if (detail is Detail.Playlist) {
                 IconButton({ actions.notice(if (backend.togglePinAll(rawSongs.map { it.id })) "Keeping this playlist on this device" else "Playlist no longer kept on this device") }) { AppIcon(Icons.Rounded.PushPin, "Pin for offline") }
-                AddSongsButton(backend, detail.id, rawSongs.map { it.id }.toSet()) { actions.notice(it) }
+                AddSongsButton(backend, detail.id, rawSongs.map { it.id }.toSet(), { actions.notice(it) })
                 Box {
                     IconButton({ moreMenu = true }) { AppIcon(Icons.Rounded.MoreVert, "More") }
                     DropdownMenu(moreMenu, { moreMenu = false; sortMenu = false }) {

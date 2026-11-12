@@ -154,6 +154,27 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
 
     // A notification tap: the player, or Profile (where tasks are listed) for the background notification.
     val openRequest = open?.collectAsState()?.value
+    // A short notice while this device dials a paired device, and when one links. The sync object appears once the
+    // Connection page or the saved "on" setting creates it, so wait for it.
+    LaunchedEffect(Unit) {
+        var lan = backend.lanSync
+        while (lan == null) { kotlinx.coroutines.delay(2_000); lan = backend.lanSync }
+        val sync = lan
+        launch {
+            var seen = emptyList<String>()
+            sync.connecting.collect { now ->
+                val fresh = now.filter { it !in seen }
+                seen = now
+                fresh.firstOrNull()?.let { name -> snack.currentSnackbarData?.dismiss(); launch { snack.showSnackbar("Connecting to $name", duration = androidx.compose.material3.SnackbarDuration.Short) } }
+            }
+        }
+        var known = sync.connected.value.map { it.id }.toSet()
+        sync.connected.collect { devices ->
+            val now = devices.map { it.id }.toSet()
+            devices.firstOrNull { it.id !in known }?.let { d -> snack.currentSnackbarData?.dismiss(); launch { snack.showSnackbar("Connected to ${d.name}", duration = androidx.compose.material3.SnackbarDuration.Short) } }
+            known = now
+        }
+    }
     LaunchedEffect(openRequest) {
         when (openRequest) {
             "player" -> showPlayer = true
@@ -176,7 +197,7 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
     val g0 = androidx.compose.animation.animateColorAsState(backgroundTopColor(prefs, tint, base), androidx.compose.animation.core.tween(700))
     // The page itself is drawn by AppBackground; g0 only tints the window and top areas.
 
-    CompositionLocalProvider(LocalCoverLoader provides loader, LocalOnMissingCover provides backend::ensureCover, LocalListActions provides actions, io.max.paperplay.ui.LocalGlassBackdrop provides (if (anyGlass) pageBackdrop else null)) {
+    CompositionLocalProvider(LocalCoverLoader provides loader, LocalOnMissingCover provides backend::ensureCover, LocalListActions provides actions, LocalTelegramLists provides backend::telegramLists, LocalPageTop provides g0, io.max.paperplay.ui.LocalGlassBackdrop provides (if (anyGlass) pageBackdrop else null)) {
         TagDialogHost(backend, tagDialogs) { m -> scope.launch { snack.showSnackbar(m) } }
         Box(Modifier.fillMaxSize()) {
             // The page background alone is the layer glass cards and bars blur (content on it would recurse).

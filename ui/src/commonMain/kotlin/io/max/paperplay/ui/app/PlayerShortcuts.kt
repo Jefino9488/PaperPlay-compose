@@ -23,6 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
@@ -72,8 +73,13 @@ fun rememberPlayerKeys(backend: PlayerControls, volume: Float): PlayerKeys {
 @Composable
 fun Modifier.playerKeys(keys: PlayerKeys): Modifier {
     val focus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
-    return this.focusRequester(focus).focusable().onKeyEvent(keys::handle)
+    var inside by remember { mutableStateOf(false) }
+    // Clicking an empty spot clears focus and the keys would go nowhere, so take it back. A text field or button
+    // inside the window counts as focus here, and its own key handling runs first (typing a space types a space).
+    LaunchedEffect(inside) {
+        if (!inside) { kotlinx.coroutines.delay(60); runCatching { focus.requestFocus() } }
+    }
+    return this.onFocusChanged { inside = it.hasFocus }.focusRequester(focus).focusable().onKeyEvent(keys::handle)
 }
 
 private val shortcutList = listOf(

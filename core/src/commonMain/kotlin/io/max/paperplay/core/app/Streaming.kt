@@ -85,7 +85,13 @@ class TdStreamSource(
             fileOfMessage(message) ?: throw TdError(404, "Message holds no audio")
         } catch (e: TdError) {
             if (e.code == 404 || song.remote_id.isEmpty()) throw e
-            c.call(request("getRemoteFile") { put("remote_file_id", song.remote_id) })
+            // A file id is tied to one bot. When it is not valid for this one Telegram says "Wrong padding" or the like, which hides
+            // the real reason; the first error (message not found, chat not found) is the one worth showing.
+            try {
+                c.call(request("getRemoteFile") { put("remote_file_id", song.remote_id) })
+            } catch (second: TdError) {
+                throw TdError(e.code, e.message)
+            }
         }
         applyFile(file)
         if (fileId == 0) throw TdError(0, "No file id")

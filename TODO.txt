@@ -244,6 +244,20 @@ Ideas I haven't built yet
     shows they are slow
 
 
+ADDED 2026-11-12 LATE, NOT BUILT OR TRIED
+------------------------------------------
+[ ] Onboarding: animated logo, Connect plane centring, glass tour card, auto-advance after bot connects, Spotify page, permission 'allowed'
+[ ] Desktop: native file dialogs (folder picker via PowerShell), frameless mini player, adaptive player bar, more-menu, cover-gradient now playing
+[ ] Cover colour picker (hue sectors, 3-colour palette) and sharper big covers
+[ ] Settings: Appearance + Navigation merged, All parts includes the sidebar, bold transport icons in the Tabler set
+[ ] Android: single AppServices per process (port in use, possible crash cause), paper plane notification icon
+[ ] Background fill of missing info and lyrics (switch in Library); lyrics fetched ahead
+[ ] Playlists: From Telegram (main chat topics, starred channels); duplicates page covers
+[ ] Windows uninstaller asks to delete app data
+[ ] Measure the 7 s play start on the PC (lookup vs first bytes vs M4A index)
+[ ] Find the Android crash cause (no crash.txt; try logcat)
+[ ] PC shows 879 songs against 3112 on the phone: check the rescan after the wipe
+
 TESTS
 -----
 [x] Kotlin tests: backup (writer round trip too), database, TDLib client, audio info, index, selection,
@@ -268,3 +282,6 @@ ORDER I'D DO IT IN
 8. LAN hub, pairing and devices
 9. Desktop tray and shortcuts, then macOS and Linux
 10. Port the Dart tests as each thing lands
+
+[x] Desktop full player: Queue/Lyrics tabs on the right, window full screen toggle (hides title bar, exit icon), exits when the player closes. Uncompiled.
+[x] Desktop: custom title bar (undecorated window, own min/max/close, drag, edge resize, hidden in full screen); now playing view switches Queue/Lyrics instead of showing both. Uncompiled.

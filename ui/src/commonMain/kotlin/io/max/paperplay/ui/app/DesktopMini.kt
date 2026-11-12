@@ -126,3 +126,10 @@ internal fun MiniBody(state: PlaybackUiState, controls: PlayerControls?, onClose
 private fun MiniBodyPreview() = io.max.paperplay.ui.PreviewFrame(dark = true) {
     MiniBody(io.max.paperplay.ui.previewPlayback(), io.max.paperplay.ui.FakePlayerControls())
 }
+
+/** Window full screen on desktop: the player toggles [on], the desktop entry point applies it. [supported] stays false elsewhere. */
+object WindowFullscreen {
+    val on = MutableStateFlow(false)
+    val supported = MutableStateFlow(false)
+    fun toggle() { on.value = !on.value }
+}

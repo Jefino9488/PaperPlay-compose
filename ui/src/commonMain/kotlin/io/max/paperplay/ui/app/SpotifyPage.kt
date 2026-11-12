@@ -121,7 +121,7 @@ private fun ReviewList(backend: CoreBackend, store: ImportStore, waiting: List<M
 
 /** Client id, log in and log out. The login lets imports read every track, not the first 100. */
 @Composable
-private fun SpotifyAccountSection(backend: CoreBackend) {
+internal fun SpotifyAccountSection(backend: CoreBackend) {
     val account = backend.services.spotify
     val env = io.max.paperplay.ui.LocalAppEnv.current
     val scope = rememberCoroutineScope()

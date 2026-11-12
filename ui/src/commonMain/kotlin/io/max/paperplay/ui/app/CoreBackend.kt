@@ -955,6 +955,34 @@ class CoreBackend(val services: AppServices) : PlayerControls {
 
     fun mainChatId(): Long? = parseMainChat(repo.pref(MAIN_CHAT_KEY))
 
+    /** A Telegram topic or starred channel shown as a playlist. [key] is stable across refreshes. */
+    data class TelegramList(val key: String, val name: String, val songs: List<SongUi>)
+
+    fun isChannelStarred(chatId: Long) = repo.pref("channel_star:$chatId") == "true"
+
+    fun setChannelStarred(chatId: Long, on: Boolean) = repo.setPref("channel_star:$chatId", "$on")
+
+    /**
+     * Lists to show beside the playlists: the main chat's topics, only when Telegram gave it any (a chat without topics
+     * adds nothing), then every starred channel. Empty when there is nothing to show.
+     */
+    fun telegramLists(): List<TelegramList> {
+        val main = mainChatId() ?: return emptyList()
+        val all = byId.values
+        val out = ArrayList<TelegramList>()
+        val topics = runCatching { repo.repo.db.miscQueries.topics().executeAsList() }.getOrDefault(emptyList())
+        for (t in io.max.paperplay.core.filing.topicChoices(topics, main, taste.value.topicNames)) {
+            val songs = all.filter { it.chat_id == main && (it.topic_id ?: io.max.paperplay.core.filing.GENERAL_TOPIC_ID) == t.id }
+            if (songs.isNotEmpty()) out += TelegramList("topic:$main:${t.id}", t.name, songs.sortedByDescending { it.date }.map { it.toUi() })
+        }
+        for (c in runCatching { repo.chatList() }.getOrDefault(emptyList())) {
+            if (c.id == main || !isChannelStarred(c.id)) continue
+            val songs = all.filter { it.chat_id == c.id }
+            if (songs.isNotEmpty()) out += TelegramList("chat:${c.id}", c.title, songs.sortedByDescending { it.date }.map { it.toUi() })
+        }
+        return out
+    }
+
     fun setMainChat(chatId: Long) {
         repo.setPref(MAIN_CHAT_KEY, """{"id":$chatId,"at":${nowMoment().epochMs}}""")
     }

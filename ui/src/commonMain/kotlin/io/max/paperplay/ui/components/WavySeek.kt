@@ -137,11 +137,6 @@ fun WavySeek(
             lineTo(x, mid)
         }
         drawPath(path, active, style = line)
-        val thumbH = (if (dragging != null) 30.dp else 22.dp).toPx()
-        val thumbW = 6.dp.toPx()
-        drawRoundRect(
-            active, Offset(x - thumbW / 2, mid - thumbH / 2), Size(thumbW, thumbH), CornerRadius(thumbW / 2),
-        )
         }
         longPressText?.let { text ->
             Text(

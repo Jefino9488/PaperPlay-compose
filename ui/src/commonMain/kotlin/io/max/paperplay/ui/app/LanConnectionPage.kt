@@ -10,6 +10,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Pause
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.SkipNext
+import androidx.compose.material.icons.rounded.SkipPrevious
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Devices
 import androidx.compose.material.icons.rounded.Info
@@ -34,6 +38,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
@@ -75,6 +80,7 @@ data class LanUi(
     val discoveryOn: Boolean = true,
     val scanning: Boolean = false,
     val error: String? = null,
+    val remoteNow: Map<String, io.max.paperplay.core.sync.RemoteNow> = emptyMap(),
 )
 
 /** A result to show as text. */
@@ -95,6 +101,8 @@ class LanActions(
     val unpair: (String) -> Unit = {},
     val removeAddress: (String) -> Unit = {},
     val disconnect: (String) -> Unit = {},
+    /** Asks a linked device to "play", "pause", "next" or "previous". */
+    val control: (String, String) -> Unit = { _, _ -> },
     val addAddress: suspend (String) -> Boolean = { true },
     val connectPaired: suspend (String) -> LanOutcome = { LanOutcome(true, "Connected") },
     val connectCode: suspend (String, Int, String) -> LanOutcome = { _, _, _ -> LanOutcome(true, "Connected") },
@@ -157,6 +165,7 @@ internal fun LanConnectionPage(backend: CoreBackend) {
             unpair = { scope.launch { sync.unpair(it) } },
             removeAddress = { scope.launch { sync.removeAddress(it) } },
             disconnect = { scope.launch { sync.disconnect(it) } },
+            control = { id, action -> scope.launch { sync.sendControl(id, action) } },
             addAddress = { sync.addAddress(it) },
             connectPaired = { sync.connect(it).outcome() },
             connectCode = { host, port, code -> sync.connectWithCode(host, port, code).outcome() },
@@ -186,9 +195,10 @@ private fun LanSync.collectUi(): LanUi {
     val discoveryOn by l.discoveryOn.collectAsState()
     val scanning by l.scanning.collectAsState()
     val error by l.lastError.collectAsState()
+    val remote by l.remoteNow.collectAsState()
     return LanUi(
         true, listening, port, name, addresses, connected, saved, paired, discovered, pin, passwordSet,
-        onlyPaired, tokenMode, discoveryOn, scanning, error,
+        onlyPaired, tokenMode, discoveryOn, scanning, error, remote,
     )
 }
 
@@ -238,6 +248,8 @@ internal fun LanConnectionContent(ui: LanUi, a: LanActions) {
                         }
                     },
                     onDisconnect = { a.disconnect(d.id) },
+                    now = ui.remoteNow[d.id],
+                    onControl = { action -> a.control(d.id, action) },
                 )
             }
         }
@@ -415,12 +427,25 @@ internal fun PinRow(pin: PairingPin?, onShow: () -> Unit, onHide: () -> Unit) {
 }
 
 @Composable
-internal fun ConnectedRow(d: LanDevice, syncNote: String?, syncing: Boolean, onSync: () -> Unit, onDisconnect: () -> Unit) {
+internal fun ConnectedRow(
+    d: LanDevice, syncNote: String?, syncing: Boolean, onSync: () -> Unit, onDisconnect: () -> Unit,
+    now: io.max.paperplay.core.sync.RemoteNow? = null, onControl: ((String) -> Unit)? = null,
+) {
     Column {
         SettingsRow(
             d.name, icon = Icons.Rounded.Devices,
             subtitle = "${d.host}:${d.port}. ${if (d.desktop) "PC" else "Phone"}. ${if (d.paired) "Paired" else "Linked with the bot token"}",
         )
+        // What that device is playing, with its own controls. Only a paired device accepts them.
+        if (onControl != null && d.paired) Row(Modifier.padding(start = 56.dp, end = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(now?.title ?: "Nothing playing", maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall)
+                now?.artist?.let { Text(it, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            }
+            IconButton({ onControl("previous") }) { AppIcon(Icons.Rounded.SkipPrevious, "Previous on ${d.name}") }
+            IconButton({ onControl(if (now?.playing == true) "pause" else "play") }) { AppIcon(if (now?.playing == true) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (now?.playing == true) "Pause on ${d.name}" else "Play on ${d.name}") }
+            IconButton({ onControl("next") }) { AppIcon(Icons.Rounded.SkipNext, "Next on ${d.name}") }
+        }
         Row(Modifier.padding(start = 56.dp, end = 20.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onSync, enabled = !syncing) { Text(if (syncing) "Syncing" else "Sync now") }
             TextButton(onDisconnect) { Text("Disconnect") }

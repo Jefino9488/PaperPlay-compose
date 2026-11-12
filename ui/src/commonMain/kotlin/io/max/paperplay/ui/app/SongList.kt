@@ -7,6 +7,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -59,7 +60,13 @@ import io.max.paperplay.ui.state.SongActions
 import io.max.paperplay.ui.state.SongUi
 
 /** The shell's list actions, for pages (such as Settings pages) that show songs. */
+/** The colour at the top of the page behind the content, so pinned bars can match it instead of showing plain black. */
+internal val LocalPageTop = androidx.compose.runtime.staticCompositionLocalOf<androidx.compose.runtime.State<androidx.compose.ui.graphics.Color>?> { null }
+
 val LocalListActions = androidx.compose.runtime.staticCompositionLocalOf<ListActions?> { null }
+
+/** Topics of the main chat and starred channels, as lists to show beside the playlists. Empty where there are none. */
+internal val LocalTelegramLists = androidx.compose.runtime.staticCompositionLocalOf<() -> List<CoreBackend.TelegramList>> { { emptyList() } }
 
 /** What a list of songs can do; the shell provides one. */
 class ListActions(
@@ -189,12 +196,24 @@ fun SongList(
             )
         }
 
+        val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+        val barIndex = if (header != null) 1 else 0
+        // Pinned means rows scroll under the bar. At its natural place it stays see-through, so the page colour shows.
+        val pinned by androidx.compose.runtime.remember(barIndex) {
+            androidx.compose.runtime.derivedStateOf { listState.firstVisibleItemIndex > barIndex || (listState.firstVisibleItemIndex == barIndex && listState.firstVisibleItemScrollOffset > 0) }
+        }
+        val pageTop = LocalPageTop.current
+        val base = MaterialTheme.colorScheme.background
+        // On desktop the list sits on a card, not the page gradient, so the pinned bar takes the card colour.
+        val cardFill = MaterialTheme.colorScheme.surfaceContainerLow
         LazyColumn(
+            state = listState,
             modifier = Modifier.weight(1f),
             // Horizontal insets live on the items, so the pinned bar can span the full width and hide rows fully.
             contentPadding = PaddingValues(bottom = bottomPadding + 16.dp),
         ) {
-            if (header != null) item { Box(Modifier.padding(horizontal = 16.dp)) { header() } }
+            // A Column, not a Box: the header can hold several parts (cover, then the missing-songs row) that stack down.
+            if (header != null) item { Column(Modifier.padding(horizontal = 16.dp)) { header() } }
             if (shown.isNotEmpty()) stickyHeader(key = "song-list-bar") {
                 val mins = shown.sumOf { it.durationSec } / 60
                 val summary = "${shown.size} ${if (shown.size == 1) "song" else "songs"} · " +
@@ -202,7 +221,7 @@ fun SongList(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(MaterialTheme.colorScheme.background)
+                        .drawBehind { if (pinned) drawRect(if (io.max.paperplay.ui.isPhone) androidx.compose.ui.graphics.lerp(pageTop?.value ?: base, base, 0.45f).copy(alpha = 0.97f) else cardFill) }
                         .padding(start = 16.dp, end = 12.dp, top = 6.dp, bottom = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -228,7 +247,7 @@ fun SongList(
                     if (sortable) {
                         Row(
                             modifier = Modifier
-                                .widthIn(max = 120.dp)
+                                .widthIn(max = if (io.max.paperplay.ui.isPhone) 120.dp else 240.dp)
                                 .clip(CircleShape)
                                 .clickable { sortSheet = true }
                                 .padding(horizontal = 10.dp, vertical = 8.dp),

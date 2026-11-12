@@ -6,6 +6,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -204,18 +209,23 @@ fun PlayerBar(
     val song = state.current
     val scheme = MaterialTheme.colorScheme
     val muted = MaterialTheme.typography.labelSmall.copy(color = scheme.onSurfaceVariant)
-    var showLyrics by remember { mutableStateOf(false) }
     var showSleep by remember { mutableStateOf(false) }
-    BoxWithConstraints(modifier.fillMaxWidth().height(84.dp).padding(horizontal = 16.dp)) {
+    val prefs = LocalUiPrefs.current
+    val carded = prefs != null && (prefs.look(LookGroup.Player) == Look.Glass || prefs.playerCard)
+    val barShape = RoundedCornerShape(((prefs?.playerRadius ?: 40f) / 100f * 28f).dp)
+    fun shown(id: String) = prefs?.playerButton(id) ?: true
+    BoxWithConstraints(
+        modifier.fillMaxWidth().height(84.dp).padding(horizontal = if (carded) 8.dp else 0.dp, vertical = if (carded) 4.dp else 0.dp)
+            .then(if (carded) Modifier.partSurface(LookGroup.Player, scheme.surfaceContainerLow, barShape) else Modifier)
+            .padding(horizontal = 16.dp),
+    ) {
     // Wide windows put the song tools by the title; narrow ones keep them on the right so the title is never squeezed out.
     val wide = maxWidth >= 1100.dp
     val centre = (maxWidth * 0.34f).coerceIn(300.dp, 520.dp)
     val off = scheme.onSurfaceVariant
     val sz = Modifier.size(22.dp)
     val tools: @Composable () -> Unit = {
-        IconButton({ showLyrics = true }, enabled = song != null) { AppIcon(Icons.Outlined.Lyrics, "Lyrics", sz, tint = off.copy(alpha = if (song != null) 1f else 0.4f)) }
-        IconButton({ showSleep = true }) { AppIcon(Icons.Outlined.Bedtime, "Sleep timer", sz, tint = off) }
-        if (showLyrics && backend != null) song?.let { LyricsDialog(it.id, it.title, backend) { showLyrics = false } }
+        if (shown("sleep")) IconButton({ showSleep = true }) { AppIcon(Icons.Outlined.Bedtime, "Sleep timer", sz, tint = off) }
         if (showSleep && backend != null) SleepTimerDialog(backend) { showSleep = false }
     }
     Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
@@ -229,10 +239,9 @@ fun PlayerBar(
                         Text(song.artist, Modifier.weight(1f, fill = false), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
                     }
                 }
-                IconButton({ actions.setFavorite(song, !song.favorite) }) {
+                if (shown("favorite")) IconButton({ actions.setFavorite(song, !song.favorite) }) {
                     AppIcon(if (song.favorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder, if (song.favorite) "Remove from favorites" else "Add to favorites", tint = if (song.favorite) scheme.primary else scheme.onSurface)
                 }
-                io.max.paperplay.ui.components.SongMenu(song, actions.rowActions(), Icons.Rounded.MoreHoriz)
             }
             if (wide) tools()
         }
@@ -256,21 +265,16 @@ fun PlayerBar(
         }
         Row(horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
             val on = scheme.primary
-            IconButton(onTogglePanel) { AppIcon(Icons.Rounded.ViewSidebar, if (panelOn) "Hide the now playing panel" else "Show the now playing panel", sz, tint = if (panelOn) on else off) }
-            IconButton(onNowPlaying ?: onOpen) { AppIcon(Icons.Rounded.QueueMusic, "Queue", sz, tint = off) }
+            if (shown("panel")) IconButton(onTogglePanel) { AppIcon(Icons.Rounded.ViewSidebar, if (panelOn) "Hide the now playing panel" else "Show the now playing panel", sz, tint = if (panelOn) on else off) }
+            if (shown("queue")) IconButton(onNowPlaying ?: onOpen) { AppIcon(Icons.Rounded.QueueMusic, "Queue", sz, tint = off) }
             if (!wide) tools()
-            extras()
+            if (shown("devices")) extras()
             Spacer(Modifier.width(8.dp))
             var lastVolume by remember { mutableStateOf(1f) }
             IconButton({ if (volume > 0f) { lastVolume = volume; backend?.setVolume(0f) } else backend?.setVolume(lastVolume) }) { AppIcon(if (volume > 0f) Icons.Rounded.VolumeUp else Icons.Rounded.VolumeOff, "Mute", sz, tint = off) }
-            Slider(
-                volume, { backend?.setVolume(it) }, Modifier.width(100.dp),
-                thumb = { Box(Modifier.size(10.dp).clip(CircleShape).background(scheme.onSurface)) },
-                track = { st -> SliderDefaults.Track(st, Modifier.height(4.dp), thumbTrackGapSize = 0.dp, drawStopIndicator = null,
-                    colors = SliderDefaults.colors(activeTrackColor = scheme.onSurface, inactiveTrackColor = scheme.onSurface.copy(alpha = 0.2f))) },
-            )
+            VolumeBar(volume, { backend?.setVolume(it) }, scheme.onSurface, Modifier.width(100.dp))
             Spacer(Modifier.width(4.dp))
-            IconButton(onOpen) { AppIcon(Icons.Rounded.Fullscreen, "Full screen player", Modifier.size(26.dp), tint = off) }
+            if (shown("fullscreen")) IconButton(onOpen) { AppIcon(Icons.Rounded.Fullscreen, "Full screen player", Modifier.size(26.dp), tint = off) }
         }
     }
     }
@@ -434,3 +438,28 @@ fun PlayerBarNarrowPreview() = PlayerBarPreviewContent(io.max.paperplay.ui.previ
 @Preview(name = "Player bar idle", widthDp = 1280, heightDp = 84, showBackground = true)
 @Composable
 fun PlayerBarIdlePreview() = PlayerBarPreviewContent(PlaybackUiState(), dark = false)
+
+/** Volume slider drawn in one canvas so the track and thumb always share a centre line. */
+@Composable
+private fun VolumeBar(value: Float, onChange: (Float) -> Unit, color: Color, modifier: Modifier = Modifier) {
+    var drag by remember { mutableStateOf<Float?>(null) }
+    val shown = drag ?: value
+    var widthPx by remember { mutableStateOf(1f) }
+    fun at(x: Float) = (x / widthPx).coerceIn(0f, 1f)
+    androidx.compose.foundation.Canvas(
+        modifier.height(24.dp)
+            .onSizeChanged { widthPx = it.width.toFloat().coerceAtLeast(1f) }
+            .pointerInput(Unit) { detectTapGestures { onChange(at(it.x)) } }
+            .pointerInput(Unit) {
+                detectDragGestures(onDragStart = { drag = at(it.x); onChange(at(it.x)) }, onDragEnd = { drag = null }, onDragCancel = { drag = null }) { c, _ ->
+                    val v = at(c.position.x); drag = v; onChange(v)
+                }
+            },
+    ) {
+        val r = 5.dp.toPx(); val h = 4.dp.toPx(); val y = size.height / 2
+        val x = r + (size.width - 2 * r) * shown
+        drawRoundRect(color.copy(alpha = 0.2f), Offset(0f, y - h / 2), Size(size.width, h), CornerRadius(h / 2))
+        drawRoundRect(color, Offset(0f, y - h / 2), Size(x, h), CornerRadius(h / 2))
+        drawCircle(color, r, Offset(x, y))
+    }
+}

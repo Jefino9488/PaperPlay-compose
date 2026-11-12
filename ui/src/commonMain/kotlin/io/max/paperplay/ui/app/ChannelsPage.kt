@@ -46,6 +46,7 @@ internal fun ChannelsPage(conn: ConnectionUi, backend: CoreBackend, stack: Mutab
     val scan by backend.scan.collectAsState()
     val loggedIn by backend.account.loggedIn.collectAsState()
     val copyOn = remember { mutableStateMapOf<Long, Boolean>() }
+    val starOn = remember { mutableStateMapOf<Long, Boolean>() }
     val all = conn.chats.map { ChannelUi(it.id, it.title) }
     ChannelsContent(
         status = when {
@@ -63,6 +64,8 @@ internal fun ChannelsPage(conn: ConnectionUi, backend: CoreBackend, stack: Mutab
         showChats = loggedIn,
         copyOn = { id -> copyOn[id] ?: (backend.pref(io.max.paperplay.core.account.IndexPrefs.channelKey(id)) == "true") },
         onCopy = { id, on -> copyOn[id] = on; backend.setPref(io.max.paperplay.core.account.IndexPrefs.channelKey(id), "$on") },
+        starOn = { id -> starOn[id] ?: backend.isChannelStarred(id) },
+        onStar = { id, on -> starOn[id] = on; backend.setChannelStarred(id, on) },
     )
     if (showAdd) AddChannelDialog(backend, conn.ready) { showAdd = false }
 }
@@ -74,6 +77,7 @@ internal fun ChannelsContent(
     scanText: String?, scanFraction: Float?,
     onReconnect: () -> Unit, onAdd: () -> Unit, onScan: () -> Unit, onSetMain: (Long) -> Unit, onOpenIndex: () -> Unit,
     showChats: Boolean = false, copyOn: (Long) -> Boolean = { false }, onCopy: (Long, Boolean) -> Unit = { _, _ -> },
+    starOn: (Long) -> Boolean = { false }, onStar: (Long, Boolean) -> Unit = { _, _ -> },
 ) {
     val hasChats = main != null || others.isNotEmpty()
     Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -134,6 +138,13 @@ internal fun ChannelsContent(
                         Text("Off: this channel stays a playlist of its own", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Switch(copyOn(chat.id), { onCopy(chat.id, it) })
+                }
+                Row(Modifier.padding(start = 16.dp, end = 12.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Star as a playlist", style = MaterialTheme.typography.bodyMedium)
+                        Text("Lists this channel under Playlists, From Telegram", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Switch(starOn(chat.id), { onStar(chat.id, it) })
                 }
             }) {
                 OutlinedButton({ onSetMain(chat.id) }) { Text("Set as main") }

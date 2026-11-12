@@ -68,7 +68,7 @@ class UserSession(
     private val pref: (String) -> String?,
     private val setPref: (String, String) -> Unit,
     private val deviceModel: String = "Android",
-    private val appVersion: String = "0.1.0",
+    private val appVersion: String = "0.2.0",
     private val pause: suspend (millis: Long) -> Unit = { delay(it) },
 ) : AccountApi {
     private val _step = MutableStateFlow<LoginStep>(if (pref(USER_SESSION_PREF) == "1") LoginStep.Ready else LoginStep.LoggedOut)

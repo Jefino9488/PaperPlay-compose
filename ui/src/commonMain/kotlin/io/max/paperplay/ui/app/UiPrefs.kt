@@ -47,6 +47,7 @@ enum class LookGroup(val label: String, val hint: String) {
     Bars("Top bars", "App bars at the top of pages"),
     Cards("Cards", "Cards and tiles"),
     Overlays("Dialogs, sheets and menus", "Anything that opens over a page"),
+    Player("Player bar", "The bar along the bottom of a desktop window"),
 }
 enum class Look { Material, Glass }
 
@@ -136,6 +137,20 @@ class UiPrefs(private val read: (String) -> String?, private val write: (String,
     var sidebarWidth by mutableStateOf(read("sidebar_width")?.toFloatOrNull()?.coerceIn(180f, 320f) ?: 240f)
         private set
     fun putSidebarWidth(v: Float) { sidebarWidth = v; write("sidebar_width", "$v") }
+
+    /** Desktop player bar: corner size (0..100), a solid card behind it when the look is Material, and hidden buttons. */
+    var playerRadius by mutableStateOf(read("player_radius")?.toFloatOrNull()?.coerceIn(0f, 100f) ?: 40f)
+        private set
+    fun putPlayerRadius(v: Float) { playerRadius = v; write("player_radius", "$v") }
+    var playerCard by mutableStateOf(read("player_card") == "true")
+        private set
+    fun putPlayerCard(v: Boolean) { playerCard = v; write("player_card", "$v") }
+    private var playerHidden by mutableStateOf(read("player_hidden").orEmpty().split(',').filter { it.isNotBlank() }.toSet())
+    fun playerButton(id: String): Boolean = id !in playerHidden
+    fun setPlayerButton(id: String, on: Boolean) {
+        playerHidden = if (on) playerHidden - id else playerHidden + id
+        write("player_hidden", playerHidden.joinToString(","))
+    }
 
     val cornerScale: Float get() = (cornerRadius / 100f).coerceIn(0f, 1f)
 

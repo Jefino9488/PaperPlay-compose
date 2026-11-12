@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -343,7 +344,12 @@ class PlaybackController(
                 if (seekMs > 0) engine.seek(seekMs)
             }
             scope.launch { runCatching { resolver.prefetch(song) } }
-            warm.await()?.let { err -> meta.update { Meta(it.queue, it.shuffle, it.repeat, err) } }
+            warm.await()?.let { err ->
+                // The look-up can fail early (the chat is still loading) and succeed when the player asks again. Show the
+                // error only if the song does not start; a banner over a song that plays is wrong.
+                val played = kotlinx.coroutines.withTimeoutOrNull(8_000) { engine.state.first { it == PlayerState.Playing } } != null
+                if (!played) meta.update { Meta(it.queue, it.shuffle, it.repeat, err) }
+            }
         }
     }
 

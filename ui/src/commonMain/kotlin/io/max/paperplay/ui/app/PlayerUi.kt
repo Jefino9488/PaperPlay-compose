@@ -40,6 +40,8 @@ import androidx.compose.material.icons.outlined.Bedtime
 import androidx.compose.material.icons.outlined.Lyrics
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.Fullscreen
+import androidx.compose.material.icons.rounded.FullscreenExit
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.MoreHoriz
@@ -102,6 +104,10 @@ fun FullPlayer(state: PlaybackUiState, error: String?, backend: PlayerControls, 
     val base = MaterialTheme.colorScheme
     val scheme = coverScheme(song.coverUri) ?: remember(base.primary) { schemeFromSeed(base.primary.toArgb(), dark = true) }
     var showQueue by remember { mutableStateOf(false) }
+    var showLyrics by remember { mutableStateOf(false) }
+    val fullscreen by WindowFullscreen.on.collectAsState()
+    val canFullscreen by WindowFullscreen.supported.collectAsState()
+    androidx.compose.runtime.DisposableEffect(Unit) { onDispose { WindowFullscreen.on.value = false } }
     PlatformBackHandler(showQueue) { showQueue = false }
     val top by animateColorAsState(lerp(scheme.primaryContainer, Color.Black, 0.25f), tween(500))
     val mid by animateColorAsState(lerp(scheme.surfaceContainerLow, Color.Black, 0.75f), tween(500))
@@ -117,12 +123,31 @@ fun FullPlayer(state: PlaybackUiState, error: String?, backend: PlayerControls, 
             when {
                 wide -> Row(Modifier.fillMaxSize()) {
                     Column(Modifier.weight(1f).fillMaxHeight()) {
-                        IconButton(onClose, Modifier.padding(8.dp)) { AppIcon(Icons.Rounded.KeyboardArrowDown, "Close player", Modifier.size(32.dp)) }
+                        Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(onClose) { AppIcon(Icons.Rounded.KeyboardArrowDown, "Close player", Modifier.size(32.dp)) }
+                            Spacer(Modifier.weight(1f))
+                            if (canFullscreen) IconButton(WindowFullscreen::toggle) {
+                                AppIcon(if (fullscreen) Icons.Rounded.FullscreenExit else Icons.Rounded.Fullscreen, if (fullscreen) "Exit full screen" else "Full screen", Modifier.size(28.dp))
+                            }
+                        }
                         PlayerBody(song, state, error, backend, actions, onClose, grabber = false, Modifier.weight(1f))
                     }
                     Column(Modifier.weight(1f).fillMaxHeight().padding(end = 16.dp)) {
-                        Text("Queue", Modifier.padding(16.dp), style = MaterialTheme.typography.titleMedium)
-                        QueueList(state, backend, Modifier.weight(1f))
+                        Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            listOf(false to "Queue", true to "Lyrics").forEach { (lyr, name) ->
+                                val sel = showLyrics == lyr
+                                Text(
+                                    name,
+                                    Modifier.clip(RoundedCornerShape(50)).clickable { showLyrics = lyr }
+                                        .background(if (sel) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f) else Color.Transparent)
+                                        .padding(horizontal = 14.dp, vertical = 6.dp),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = if (sel) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                        if (showLyrics) LyricsPane(song, backend, large = false, modifier = Modifier.weight(1f).fillMaxWidth())
+                        else QueueList(state, backend, Modifier.weight(1f))
                     }
                 }
                 showQueue -> Column(Modifier.fillMaxSize()) {

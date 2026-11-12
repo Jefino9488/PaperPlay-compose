@@ -193,7 +193,7 @@ internal fun SettingsPage(
             Text("Pick Material 3 or glass for each part, or all at once.", Modifier.padding(horizontal = 20.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             SectionLabel("All parts")
             // On desktop the nav part is the sidebar, drawn with blur and tint like the cards.
-            val groups = LookGroup.entries.toList()
+            val groups = LookGroup.entries.filter { !isPhone || it != LookGroup.Player }
             ChoiceRow(Look.entries, if (groups.all { prefs.look(it) == Look.Glass }) Look.Glass else Look.Material, { it.name }, { l ->
                 groups.forEach { prefs.setLook(it, l) }
             })
@@ -212,6 +212,7 @@ internal fun SettingsPage(
             ) { groups.forEach { g -> Column(Modifier.weight(1f)) { part(g) } } }
             SectionLabel(if (isPhone) "Navigation bar" else "Sidebar")
             NavSettings(prefs)
+            if (!isPhone) PlayerBarSettings(prefs)
         }
         "nav" -> NavSettings(prefs)
         "glass" -> {
@@ -483,6 +484,18 @@ private fun SettingsListPhonePreview() = io.max.paperplay.ui.PreviewFrame {
 @Composable
 private fun SettingsListDesktopPreview() = io.max.paperplay.ui.PreviewFrame(dark = true) {
     SettingsList(io.max.paperplay.ui.previewPrefs(), mutableListOf())
+}
+
+/** Desktop player bar: background, corners and which buttons show. The Material or Glass look is chosen with the other parts above. */
+@Composable
+private fun PlayerBarSettings(prefs: UiPrefs) {
+    SectionLabel("Player bar")
+    SwitchRow("Bar background", prefs.playerCard, prefs::putPlayerCard, null, "A solid card behind the bar; Glass always has one")
+    SliderRow("Bar corners: ${prefs.playerRadius.toInt()}%", prefs.playerRadius, 0f..100f, { prefs.putPlayerRadius(it) })
+    listOf(
+        "favorite" to "Favorite", "sleep" to "Sleep timer", "panel" to "Now playing panel", "queue" to "Queue",
+        "devices" to "Devices and mini player", "fullscreen" to "Full screen player",
+    ).forEach { (id, label) -> SwitchRow(label, prefs.playerButton(id), { prefs.setPlayerButton(id, it) }) }
 }
 
 /** Sidebar settings on desktop, the bottom tab bar's on the phone. Shown at the end of Appearance. */

@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
@@ -119,6 +120,9 @@ internal class JavaLanSync(private val env: LanEnv) : LanSync {
     private val _scanning = MutableStateFlow(false)
     private val _error = MutableStateFlow<String?>(null)
     private val _messages = MutableSharedFlow<LanMessage>(extraBufferCapacity = 32)
+    private val _connecting = MutableStateFlow<List<String>>(emptyList())
+    private val _remoteNow = MutableStateFlow<Map<String, RemoteNow>>(emptyMap())
+    private var autoJob: Job? = null
 
     override val listening: StateFlow<Boolean> get() = _listening
     override val port: StateFlow<Int> get() = _port
@@ -136,6 +140,8 @@ internal class JavaLanSync(private val env: LanEnv) : LanSync {
     override val scanning: StateFlow<Boolean> get() = _scanning
     override val lastError: StateFlow<String?> get() = _error
     override val messages: SharedFlow<LanMessage> get() = _messages
+    override val connecting: StateFlow<List<String>> get() = _connecting
+    override val remoteNow: StateFlow<Map<String, RemoteNow>> get() = _remoteNow
 
     private var server: ServerSocket? = null
     private var acceptJob: Job? = null
@@ -202,6 +208,8 @@ internal class JavaLanSync(private val env: LanEnv) : LanSync {
             lib.setPref("lan_on", "1")
             _addresses.value = localIPv4()
             acceptJob = io.launch { acceptLoop(ss) }
+            autoJob?.cancel()
+            autoJob = io.launch { autoConnect() }
             if (_discovery.value) startDiscovery()
         }
     }
@@ -211,6 +219,7 @@ internal class JavaLanSync(private val env: LanEnv) : LanSync {
             lib.setPref("lan_on", "0")
             stopDiscovery()
             acceptJob?.cancel(); acceptJob = null
+            autoJob?.cancel(); autoJob = null
             runCatching { server?.close() }
             server = null
             for (p in peers.values.toList()) p.close()
@@ -342,6 +351,7 @@ internal class JavaLanSync(private val env: LanEnv) : LanSync {
 
     private fun publishConnected() {
         _connected.value = peers.values.map { it.info }.sortedBy { it.name }
+        _remoteNow.update { m -> m.filterKeys { it in peers.keys } }
     }
 
     private fun runLoop(p: Peer) {
@@ -379,7 +389,13 @@ internal class JavaLanSync(private val env: LanEnv) : LanSync {
                 }
             }
             "sync-reply" -> m.str("rid")?.let { p.waiting.remove(it)?.complete(m) }
-            "queue", "nowplaying" -> _messages.tryEmit(LanMessage(p.info.id, m.str("t") ?: "", m.toString()))
+            "nowplaying" -> {
+                _remoteNow.update { it + (p.info.id to RemoteNow(m.str("id"), m.str("title"), m.str("artist"), m.flag("playing") == true)) }
+                _messages.tryEmit(LanMessage(p.info.id, "nowplaying", m.toString()))
+            }
+            "queue" -> _messages.tryEmit(LanMessage(p.info.id, "queue", m.toString()))
+            // Only a paired device may drive playback; a device that linked with the token alone may not.
+            "control" -> if (p.info.paired) _messages.tryEmit(LanMessage(p.info.id, "control", m.toString()))
             else -> Unit
         }
     }
@@ -488,17 +504,23 @@ internal class JavaLanSync(private val env: LanEnv) : LanSync {
 
     override suspend fun connect(deviceId: String): ConnectResult = withContext(Dispatchers.IO) {
         peers[deviceId]?.let { return@withContext ConnectResult(true, null, it.info) }
+        val label = _paired.value.firstOrNull { it.id == deviceId }?.name ?: deviceId
+        _connecting.update { it + label }
+        try { dialPaired(deviceId) } finally { _connecting.update { it - label } }
+    }
+
+    private fun dialPaired(deviceId: String): ConnectResult {
         val tries = (bk { forDevice(deviceId) }.map { it.host to it.port } +
             _discovered.value.filter { it.id == deviceId }.map { it.host to it.port }).distinct()
-        if (tries.isEmpty()) return@withContext ConnectResult(false, LanFailure.Unreachable)
+        if (tries.isEmpty()) return ConnectResult(false, LanFailure.Unreachable)
         var last = ConnectResult(false, LanFailure.Unreachable)
         for ((h, p) in tries) {
             var r = result("$h:$p", dial(h, p, "key", null, deviceId))
             if (!r.ok && r.failure == LanFailure.NotPaired && _tokenMode.value) r = result("$h:$p", dial(h, p, "token", null, null))
-            if (r.ok) return@withContext r
+            if (r.ok) return r
             if (last.failure == LanFailure.Unreachable || r.failure != LanFailure.Unreachable) last = r
         }
-        last
+        return last
     }
 
     override suspend fun disconnect(deviceId: String) {
@@ -734,13 +756,33 @@ internal class JavaLanSync(private val env: LanEnv) : LanSync {
         }.isSuccess
     }
 
-    override suspend fun sendNowPlaying(deviceId: String, uniqueId: String?, positionMs: Long, playing: Boolean): Boolean =
+    override suspend fun sendControl(deviceId: String, action: String): Boolean = withContext(Dispatchers.IO) {
+        val p = peers[deviceId] ?: return@withContext false
+        runCatching { p.send(buildJsonObject { put("t", "control"); put("action", action) }) }.isSuccess
+    }
+
+    /** Dials every paired device that is not linked, now and then, so devices find each other without a tap. */
+    private suspend fun autoConnect() {
+        delay(2_000)
+        while (_listening.value) {
+            for (d in _paired.value) {
+                if (peers.containsKey(d.id) || _connecting.value.isNotEmpty()) continue
+                // Both sides may dial at once; a short random wait and a second look keep that rare.
+                delay((200..2_500).random().toLong())
+                if (peers.containsKey(d.id)) continue
+                runCatching { connect(d.id) }
+            }
+            delay(20_000)
+        }
+    }
+
+    override suspend fun sendNowPlaying(deviceId: String, uniqueId: String?, positionMs: Long, playing: Boolean, title: String?, artist: String?): Boolean =
         withContext(Dispatchers.IO) {
             val p = peers[deviceId] ?: return@withContext false
             runCatching {
                 p.send(
                     buildJsonObject {
-                        put("t", "nowplaying"); put("id", uniqueId); put("pos", positionMs); put("playing", playing)
+                        put("t", "nowplaying"); put("id", uniqueId); put("pos", positionMs); put("playing", playing); put("title", title); put("artist", artist)
                     },
                 )
             }.isSuccess

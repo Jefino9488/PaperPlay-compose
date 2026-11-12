@@ -82,6 +82,7 @@ fun DesktopNowPlayingView(
         return
     }
     var fullLyrics by remember(song.id) { mutableStateOf(false) }
+    var showLyrics by remember { mutableStateOf(false) }
     CoverTinted(song.coverUri) {
         // The shell paints the cover wash behind the whole window while this view is open, so the card needs no fill of its own.
         Box(modifier.fillMaxSize().clip(RoundedCornerShape(16.dp))) {
@@ -90,8 +91,22 @@ fun DesktopNowPlayingView(
             } else {
                 Row(Modifier.fillMaxSize().padding(24.dp), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
                     NowPlayingMain(song, state, backend, actions, onClose, { fullLyrics = true }, Modifier.weight(1f).fillMaxHeight())
-                    LyricsPane(song, backend, large = false, modifier = Modifier.weight(1.1f).fillMaxHeight())
-                    NowPlayingQueue(state, backend, Modifier.width(300.dp).fillMaxHeight())
+                    Column(Modifier.weight(1f).fillMaxHeight()) {
+                        val ink = MaterialTheme.colorScheme.onPrimaryContainer
+                        Row(Modifier.padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            listOf(false to "Queue", true to "Lyrics").forEach { (lyr, name) ->
+                                val sel = showLyrics == lyr
+                                Text(
+                                    name,
+                                    Modifier.clip(RoundedCornerShape(50)).clickable { showLyrics = lyr }
+                                        .background(if (sel) ink.copy(alpha = 0.14f) else Color.Transparent).padding(horizontal = 14.dp, vertical = 6.dp),
+                                    style = MaterialTheme.typography.titleMedium, color = if (sel) ink else ink.copy(alpha = 0.6f),
+                                )
+                            }
+                        }
+                        if (showLyrics) LyricsPane(song, backend, large = false, modifier = Modifier.weight(1f).fillMaxWidth())
+                        else NowPlayingQueue(state, backend, Modifier.weight(1f).fillMaxWidth())
+                    }
                 }
             }
         }
@@ -208,7 +223,6 @@ private fun NowPlayingQueue(state: PlaybackUiState, backend: PlayerControls, mod
     val list = rememberLazyListState()
     LaunchedEffect(state.queueIndex) { if (state.queueIndex > 0) list.scrollToItem(state.queueIndex - 1) }
     Column(modifier) {
-        Text("Queue", Modifier.padding(bottom = 8.dp), style = MaterialTheme.typography.titleMedium, color = ink)
         LazyColumn(Modifier.fillMaxSize(), state = list) {
             itemsIndexed(state.queue) { i, s ->
                 val on = i == state.queueIndex
