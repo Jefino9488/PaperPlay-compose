@@ -39,6 +39,8 @@ import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.outlined.Bedtime
 import androidx.compose.material.icons.outlined.Lyrics
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Devices
+import androidx.compose.material.icons.rounded.PhoneAndroid
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.Fullscreen
 import androidx.compose.material.icons.rounded.FullscreenExit
@@ -99,7 +101,10 @@ import io.max.paperplay.ui.theme.schemeFromSeed
  * phone the queue replaces the song; from 900dp the two sit side by side.
  */
 @Composable
-fun FullPlayer(state: PlaybackUiState, error: String?, backend: PlayerControls, actions: ListActions, onClose: () -> Unit, modifier: Modifier = Modifier) {
+fun FullPlayer(
+    state: PlaybackUiState, error: String?, backend: PlayerControls, actions: ListActions, onClose: () -> Unit, modifier: Modifier = Modifier,
+    onOpenSettings: ((String) -> Unit)? = null,
+) {
     val song = state.current ?: return
     val base = MaterialTheme.colorScheme
     val scheme = coverScheme(song.coverUri) ?: remember(base.primary) { schemeFromSeed(base.primary.toArgb(), dark = true) }
@@ -159,7 +164,7 @@ fun FullPlayer(state: PlaybackUiState, error: String?, backend: PlayerControls, 
                     }
                     QueueList(state, backend, Modifier.weight(1f))
                 }
-                else -> PlayerBody(song, state, error, backend, actions, onClose, grabber = true, Modifier.fillMaxSize(), onQueue = { showQueue = true })
+                else -> PlayerBody(song, state, error, backend, actions, onClose, grabber = true, Modifier.fillMaxSize(), onQueue = { showQueue = true }, onDevices = onOpenSettings?.let { open -> { id: String -> onClose(); open(id) } })
             }
         }
     }
@@ -168,7 +173,7 @@ fun FullPlayer(state: PlaybackUiState, error: String?, backend: PlayerControls, 
 @Composable
 private fun PlayerBody(
     song: SongUi, state: PlaybackUiState, error: String?, backend: PlayerControls, actions: ListActions, onClose: () -> Unit,
-    grabber: Boolean, modifier: Modifier = Modifier, onQueue: (() -> Unit)? = null,
+    grabber: Boolean, modifier: Modifier = Modifier, onQueue: (() -> Unit)? = null, onDevices: ((String) -> Unit)? = null,
 ) {
     val scheme = MaterialTheme.colorScheme
     BoxWithConstraints(modifier, contentAlignment = Alignment.TopCenter) {
@@ -206,6 +211,11 @@ private fun PlayerBody(
                             song.artist, maxLines = 1, overflow = TextOverflow.Ellipsis,
                             style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium, color = scheme.onSurface.copy(alpha = 0.7f),
                         )
+                    }
+                    if (onDevices != null) {
+                        var devicesOpen by remember { mutableStateOf(false) }
+                        IconButton({ devicesOpen = true }) { AppIcon(Icons.Rounded.Devices, "Devices") }
+                        if (devicesOpen) PhoneDevicesDialog(onDevices) { devicesOpen = false }
                     }
                     val standbyPrefs = if (io.max.paperplay.ui.isPhone) LocalUiPrefs.current?.standby else null
                     if (standbyPrefs != null) {
@@ -598,4 +608,35 @@ private fun LyricsDialogPreview() = io.max.paperplay.ui.PreviewFrame {
 @Composable
 private fun SleepTimerDialogPreview() = io.max.paperplay.ui.PreviewFrame {
     SleepTimerDialog(io.max.paperplay.ui.FakePlayerControls(sleepAt = 1L), onClose = {})
+}
+
+/** Where the song plays and the ways to link other devices; the two links open those settings pages. */
+@Composable
+private fun PhoneDevicesDialog(onOpen: (String) -> Unit, onDismiss: () -> Unit) {
+    val scheme = MaterialTheme.colorScheme
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Devices") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    AppIcon(Icons.Rounded.PhoneAndroid, null, tint = scheme.primary)
+                    Column(Modifier.padding(start = 12.dp)) {
+                        Text("This phone", color = scheme.primary, style = MaterialTheme.typography.bodyLarge)
+                        Text("Playing here", color = scheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+                listOf(
+                    Triple("netplay", "Network play", "Listen together with people on the same network"),
+                    Triple("devices", "Connect devices", "Link other PaperPlay devices and keep running"),
+                ).forEach { (id, title, hint) ->
+                    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { onDismiss(); onOpen(id) }.padding(vertical = 8.dp, horizontal = 4.dp)) {
+                        Text(title, style = MaterialTheme.typography.bodyLarge)
+                        Text(hint, color = scheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onDismiss) { Text("Close") } },
+    )
 }

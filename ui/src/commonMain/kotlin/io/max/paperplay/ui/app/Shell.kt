@@ -268,7 +268,10 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
                         taskRunning = scanning,
                     )
                 }
-                if (showPlayer) FullPlayer(pb, pbError, backend, actions, { showPlayer = false })
+                if (showPlayer) FullPlayer(
+                    pb, pbError, backend, actions, { showPlayer = false },
+                    onOpenSettings = { id -> navigate { settings = true; settingsDeep = true; settingsStack.clear(); settingsStack.add(id) } },
+                )
                 SnackbarHost(snack, Modifier.align(Alignment.TopCenter).padding(top = top))
             } else {
                 // Desktop: sidebar, content card, now playing panel, player bar.
