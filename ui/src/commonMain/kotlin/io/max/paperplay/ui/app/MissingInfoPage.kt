@@ -1,5 +1,20 @@
 package io.max.paperplay.ui.app
 
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import io.max.paperplay.ui.components.CoverImage
+import io.max.paperplay.ui.components.SongMenu
+import io.max.paperplay.ui.logic.Selection
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -60,22 +75,29 @@ internal fun missingOf(s: Song, lookupsOn: Boolean): Set<Missing> {
     }
 }
 
-/** Every song that still lacks something, what, a way to look them up again, and a CSV of the list. */
+/** Every song that still lacks something, what, selecting, a way to look them up again, and a CSV of the list. */
+@OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
 @Composable
 internal fun MissingInfoPage(backend: CoreBackend) {
-    val songs by backend.services.library.allSongs().collectAsState(emptyList())
+    val all by backend.services.library.allSongs().collectAsState(emptyList())
     val taste by backend.taste.collectAsState()
     val running by backend.services.enricher.running.collectAsState()
+    val coversQueued by backend.services.covers.queued.collectAsState()
     val clipboard = LocalClipboardManager.current
+    val listActions = LocalListActions.current
     var only by remember { mutableStateOf<Missing?>(null) }
     var note by remember { mutableStateOf<String?>(null) }
+    var selection by remember { mutableStateOf(Selection()) }
 
+    // One row per song, not one per version.
+    val songs = remember(all) { all.distinctBy { "${it.title.trim().lowercase()}|${it.artist.trim().lowercase()}" } }
     val rows = songs.map { it to missingOf(it, taste.lookups) }.filter { it.second.isNotEmpty() }
     val counts = Missing.entries.associateWith { m -> rows.count { m in it.second } }
     val shown = rows.filter { only == null || only in it.second }
         .sortedWith(compareByDescending<Pair<Song, Set<Missing>>> { it.second.size }.thenBy { it.first.title })
+    val scheme = MaterialTheme.colorScheme
 
-    LazyColumn(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+    LazyColumn(Modifier.fillMaxWidth()) {
         item {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
@@ -83,40 +105,77 @@ internal fun MissingInfoPage(backend: CoreBackend) {
                     style = MaterialTheme.typography.titleMedium,
                 )
                 Text(
-                    if (running) "Looking up song info now" else "No song info lookup running",
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    listOfNotNull(
+                        if (running) "Looking up song info now" else "No song info lookup running",
+                        if (coversQueued > 0) "Loading $coversQueued covers" else null,
+                    ).joinToString(" · "),
+                    style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant,
                 )
-                for (m in Missing.entries) if (counts.getValue(m) > 0) {
-                    FilterChip(selected = only == m, onClick = { only = if (only == m) null else m }, label = { Text("${m.label} (${counts.getValue(m)})") })
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    for (m in Missing.entries) if (counts.getValue(m) > 0) {
+                        FilterChip(selected = only == m, onClick = { only = if (only == m) null else m }, label = { Text("${m.label} (${counts.getValue(m)})") })
+                    }
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     FilledTonalButton(onClick = {
-                        val n = backend.services.enricher.retrySongs(shown.map { it.first })
+                        val picked = selection.ids
+                        val list = shown.map { it.first }.let { l -> if (picked.isEmpty()) l else l.filter { it.unique_id in picked } }
+                        val n = backend.services.enricher.retrySongs(list)
+                        selection = Selection()
                         note = if (n == 0) "Nothing to look up." else "Looking up $n songs again, info and covers."
                     }) {
                         AppIcon(Icons.Rounded.Refresh, null, Modifier.padding(end = 8.dp))
                         Text("Look up again")
                     }
+                    Text(
+                        note ?: "Redoes only the songs shown by the chosen filter, or the ones you selected. Songs you edited keep their info.",
+                        Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant,
+                    )
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedButton(enabled = shown.isNotEmpty(), onClick = { selection = Selection(shown.map { it.first.unique_id }.toSet()) }) { Text("Select all") }
+                    if (selection.ids.isNotEmpty()) OutlinedButton(onClick = { selection = Selection() }) { Text("Clear ${selection.ids.size}") }
                     OutlinedButton(enabled = shown.isNotEmpty(), onClick = {
                         val list = ExportList("missing", "Songs missing info", 0, shown.map { (s, _) -> ExportRow(s.title, s.artist, s.duration_sec.toInt()) })
                         clipboard.setText(AnnotatedString(exportCsv(list)))
                         note = "Copied ${shown.size} songs as CSV."
-                    }) { Text("Copy list as CSV") }
+                    }) { Text("Copy as CSV") }
                 }
-                Text(
-                    note ?: "Redoes only the songs shown by the chosen filter. Songs you edited keep their info.",
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                if (rows.isNotEmpty()) HorizontalDivider(Modifier.padding(top = 8.dp))
             }
         }
         items(shown, key = { it.first.unique_id }) { (s, missing) ->
-            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
-                Text(s.title, style = MaterialTheme.typography.bodyLarge, maxLines = 1)
-                Text(s.artist, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-                Text(
-                    missing.joinToString(" · ") { it.label }, style = MaterialTheme.typography.labelSmall,
-                    color = if (missing.any { it.todo }) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+            val picked = s.unique_id in selection.ids
+            val ui = remember(s) { s.toUi() }
+            Row(
+                Modifier.fillMaxWidth()
+                    .background(if (picked) scheme.secondaryContainer else androidx.compose.ui.graphics.Color.Transparent)
+                    .combinedClickable(
+                        onClick = { if (selection.ids.isNotEmpty()) selection = selection.toggle(s.unique_id) },
+                        onLongClick = { selection = selection.toggle(s.unique_id) },
+                    )
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (picked) Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
+                    AppIcon(Icons.Rounded.CheckCircle, "Selected", Modifier.size(28.dp), tint = scheme.primary)
+                } else CoverImage(ui.coverUri, ui.album.ifBlank { ui.title.ifBlank { ui.id } }, size = 44.dp, radius = 8.dp, coverId = ui.id)
+                Column(Modifier.weight(1f).padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(s.title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                    Text(s.artist, style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        for (m in Missing.entries) if (m in missing) {
+                            Text(
+                                m.label, style = MaterialTheme.typography.labelSmall,
+                                color = if (m.todo) scheme.onPrimaryContainer else scheme.onSurfaceVariant,
+                                modifier = Modifier.clip(RoundedCornerShape(8.dp))
+                                    .background(if (m.todo) scheme.primaryContainer else scheme.surfaceContainerHighest)
+                                    .padding(horizontal = 8.dp, vertical = 2.dp),
+                            )
+                        }
+                    }
+                }
+                listActions?.let { SongMenu(ui, it.rowActions()) }
             }
         }
     }

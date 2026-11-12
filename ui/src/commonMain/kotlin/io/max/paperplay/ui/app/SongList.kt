@@ -54,6 +54,9 @@ import io.max.paperplay.ui.logic.sortSongs
 import io.max.paperplay.ui.state.SongActions
 import io.max.paperplay.ui.state.SongUi
 
+/** The shell's list actions, for pages (such as Settings pages) that show songs. */
+val LocalListActions = androidx.compose.runtime.staticCompositionLocalOf<ListActions?> { null }
+
 /** What a list of songs can do; the shell provides one. */
 class ListActions(
     val play: (List<SongUi>, Int) -> Unit,
