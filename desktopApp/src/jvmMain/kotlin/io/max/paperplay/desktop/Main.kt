@@ -36,6 +36,19 @@ fun main() {
     // Set jna.library.path for TDLib only. VlcLoader will append the VLC path
     // automatically when the first JvmPlayerEngine is created.
     tdlibDir()?.let { System.setProperty("jna.library.path", it) }
+    io.max.paperplay.ui.app.BackupFiles.pickDestination = { name, onPicked ->
+        javax.swing.SwingUtilities.invokeLater {
+            val chooser = JFileChooser().apply {
+                fileFilter = FileNameExtensionFilter("Backup (*.zip)", "zip")
+                selectedFile = File(name)
+            }
+            if (chooser.showSaveDialog(null) != JFileChooser.APPROVE_OPTION) onPicked(null)
+            else {
+                val chosen = chooser.selectedFile.let { if (it.extension.isEmpty()) File(it.path + ".zip") else it }
+                onPicked(io.max.paperplay.ui.app.BackupDestination { path -> runCatching { File(path).copyTo(chosen, overwrite = true) }.isSuccess })
+            }
+        }
+    }
     application {
         val dir = File(System.getenv("APPDATA") ?: System.getProperty("user.home"), "PaperPlay")
         val target = desktopRestoreTarget(dir)

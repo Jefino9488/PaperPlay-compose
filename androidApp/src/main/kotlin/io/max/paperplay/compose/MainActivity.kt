@@ -129,6 +129,20 @@ class MainActivity : ComponentActivity() {
             val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
                 if (uri != null) pending[0]?.invoke(streamBackupSource { contentResolver.openInputStream(uri)!! })
             }
+            // Save backup: the system "save as" picker, then the finished zip is copied to the chosen document.
+            val savePending = remember { arrayOfNulls<(io.max.paperplay.ui.app.BackupDestination?) -> Unit>(1) }
+            val saver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+                savePending[0]?.invoke(
+                    uri?.let {
+                        io.max.paperplay.ui.app.BackupDestination { path ->
+                            runCatching { contentResolver.openOutputStream(it, "wt")!!.use { out -> File(path).inputStream().use { src -> src.copyTo(out) } } }.isSuccess
+                        }
+                    },
+                )
+            }
+            androidx.compose.runtime.SideEffect {
+                io.max.paperplay.ui.app.BackupFiles.pickDestination = { name, onPicked -> savePending[0] = onPicked; saver.launch(name) }
+            }
             // The media notification needs this on Android 13 and later; playing works without it.
             val notifications = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
             // New installs are asked on the onboarding permissions page, after reading why.

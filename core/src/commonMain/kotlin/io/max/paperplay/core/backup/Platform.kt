@@ -29,3 +29,32 @@ expect fun openSealedFile(sealedPath: String, password: String, outPath: String)
  * if there is none. Unsafe entry names are never written.
  */
 expect fun extractSessionZip(zipPath: String, targetDir: String): ByteArray?
+
+/**
+ * Like Flutter's `sealBytes`: JSON {salt, nonce, mac, data} (base64), key = PBKDF2-HMAC-SHA256(password, salt,
+ * 200000 iterations, 256 bits), cipher = AES-256-GCM with a 12-byte nonce and 16-byte tag. Slow by design.
+ */
+expect fun sealBytes(plain: ByteArray, password: String): String
+
+/**
+ * [sealBytes] for data too big for memory: streams the file at [plainPath] into the sealed JSON file at [outPath].
+ * The JSON is written as salt, nonce, data, mac, which [openSealed] and [openSealedFile] both read.
+ */
+expect fun sealFile(plainPath: String, password: String, outPath: String)
+
+/**
+ * Zips every file under [dir] (relative names) plus one entry [extraName] holding [extra], into [outPath]. Returns false,
+ * leaving no file, if [dir] is missing or its files add up to more than [maxBytes].
+ */
+expect fun zipFolder(dir: String, extraName: String, extra: ByteArray, outPath: String, maxBytes: Long): Boolean
+
+/** Creates the zip at [outPath], lets [block] fill it, and closes it. */
+expect fun writeZip(outPath: String, block: (BackupSink) -> Unit)
+
+/** Where a backup's entries go. */
+interface BackupSink {
+    fun add(name: String, bytes: ByteArray)
+
+    /** Adds the file at [path] as [name]; false if there is no such file. */
+    fun addFile(name: String, path: String): Boolean
+}

@@ -7,7 +7,9 @@ import java.io.File
 import java.io.InputStream
 import java.security.GeneralSecurityException
 import java.util.Base64
+import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
+import java.util.zip.ZipOutputStream
 import javax.crypto.AEADBadTagException
 import javax.crypto.Cipher
 import javax.crypto.SecretKeyFactory
@@ -203,4 +205,87 @@ actual fun extractSessionZip(zipPath: String, targetDir: String): ByteArray? {
         }
     }
     return key
+}
+
+private fun newKey(password: String, salt: ByteArray) = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
+    .generateSecret(PBEKeySpec(password.toCharArray(), salt, KDF_ITERATIONS, 256)).encoded
+
+private fun encryptCipher(key: ByteArray, nonce: ByteArray) = Cipher.getInstance("AES/GCM/NoPadding").apply {
+    init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(128, nonce))
+}
+
+private fun randomBytes(n: Int) = ByteArray(n).also { java.security.SecureRandom().nextBytes(it) }
+
+actual fun sealBytes(plain: ByteArray, password: String): String {
+    val salt = randomBytes(16)
+    val nonce = randomBytes(12)
+    val out = encryptCipher(newKey(password, salt), nonce).doFinal(plain) // cipher text, then the 16-byte tag
+    val e = Base64.getEncoder()
+    val data = out.copyOfRange(0, out.size - 16)
+    val mac = out.copyOfRange(out.size - 16, out.size)
+    return """{"salt":"${e.encodeToString(salt)}","nonce":"${e.encodeToString(nonce)}","mac":"${e.encodeToString(mac)}","data":"${e.encodeToString(data)}"}"""
+}
+
+actual fun sealFile(plainPath: String, password: String, outPath: String) {
+    val salt = randomBytes(16)
+    val nonce = randomBytes(12)
+    val cipher = encryptCipher(newKey(password, salt), nonce)
+    val e = Base64.getEncoder()
+    File(outPath).apply { parentFile?.mkdirs() }.outputStream().buffered(256 * 1024).use { out ->
+        out.write("""{"salt":"${e.encodeToString(salt)}","nonce":"${e.encodeToString(nonce)}","data":"""".encodeToByteArray())
+        // Closing the encoder writes its last padding; the file must stay open for the tag.
+        val keepOpen = object : java.io.FilterOutputStream(out) {
+            override fun write(b: ByteArray, off: Int, len: Int) { out.write(b, off, len) }
+            override fun close() { flush() }
+        }
+        var tag = ByteArray(0)
+        e.wrap(keepOpen).use { data ->
+            File(plainPath).inputStream().buffered(256 * 1024).use { input ->
+                val buf = ByteArray(256 * 1024)
+                while (true) {
+                    val n = input.read(buf)
+                    if (n < 0) break
+                    cipher.update(buf, 0, n)?.let { data.write(it) }
+                }
+            }
+            val last = cipher.doFinal()
+            data.write(last, 0, last.size - 16)
+            tag = last.copyOfRange(last.size - 16, last.size)
+        }
+        out.write("""","mac":"${e.encodeToString(tag)}"}""".encodeToByteArray())
+    }
+}
+
+actual fun zipFolder(dir: String, extraName: String, extra: ByteArray, outPath: String, maxBytes: Long): Boolean {
+    val root = File(dir)
+    if (!root.isDirectory) return false
+    val files = root.walkTopDown().filter { it.isFile }.toList()
+    if (files.sumOf { it.length() } > maxBytes) return false
+    File(outPath).apply { parentFile?.mkdirs() }.outputStream().buffered(256 * 1024).let { ZipOutputStream(it) }.use { zip ->
+        for (f in files) {
+            zip.putNextEntry(ZipEntry(f.relativeTo(root).path.replace('\\', '/')))
+            f.inputStream().buffered(256 * 1024).use { it.copyTo(zip) }
+            zip.closeEntry()
+        }
+        zip.putNextEntry(ZipEntry(extraName)); zip.write(extra); zip.closeEntry()
+    }
+    return true
+}
+
+actual fun writeZip(outPath: String, block: (BackupSink) -> Unit) {
+    File(outPath).apply { parentFile?.mkdirs() }.outputStream().buffered(256 * 1024).let { ZipOutputStream(it) }.use { zip ->
+        block(object : BackupSink {
+            override fun add(name: String, bytes: ByteArray) {
+                zip.putNextEntry(ZipEntry(name)); zip.write(bytes); zip.closeEntry()
+            }
+            override fun addFile(name: String, path: String): Boolean {
+                val f = File(path)
+                if (!f.isFile) return false
+                zip.putNextEntry(ZipEntry(name))
+                f.inputStream().buffered(256 * 1024).use { it.copyTo(zip) }
+                zip.closeEntry()
+                return true
+            }
+        })
+    }
 }

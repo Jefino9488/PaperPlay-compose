@@ -280,8 +280,15 @@ internal fun SettingsPage(
             SliderRow("Cache size", idx.toFloat(), 0f..(cacheLimits.size - 1f), { limit = cacheLimits[it.toInt()] }, steps = cacheLimits.size - 2,
                 onDone = { backend.setPref("cache_limit", "$limit") })
             SettingsRow("Clear cache", icon = Icons.Rounded.CleaningServices, subtitle = "Deletes streamed songs stored on this device. They download again when played", onClick = { confirm = "clearcache" })
-            SettingsRow("Save backup", icon = Icons.Rounded.SaveAlt, subtitle = "Not built in this app yet", enabled = false)
-            SettingsRow("Restore backup", icon = Icons.Rounded.Restore, subtitle = "Replaces your current library", onClick = { confirm = "restore" })
+            val backupBusy by backend.backupProgress.collectAsState()
+            SettingsRow("Save backup", icon = Icons.Rounded.SaveAlt, subtitle = "Song info, covers, playlists, favorites and layout, as a .zip file",
+                enabled = backupBusy == null && BackupFiles.pickDestination != null, onClick = { confirm = "savebackup" })
+            SettingsRow("Restore from file", icon = Icons.Rounded.Restore, subtitle = "Replaces your current library", enabled = backupBusy == null, onClick = { confirm = "restore" })
+            backupBusy?.let { (stage, fraction) ->
+                Column(Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
+                    Text(stage + (fraction?.let { " (${(it * 100).toInt()}%)" } ?: ""), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
         }
         "channels" -> ChannelsPage(conn, backend, stack)
         "credentials" -> Column(Modifier.padding(16.dp)) {
@@ -315,6 +322,9 @@ internal fun SettingsPage(
     }
     notice.value?.let { Text(it, Modifier.padding(20.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
     when (confirm) {
+        "savebackup" -> BackupPasswordDialog({ pw ->
+            backend.services.scope.launch { notice.value = backend.saveBackup(pw, "paperplay-backup-${io.max.paperplay.core.app.dayOf(io.max.paperplay.ui.nowMoment().epochMs)}.zip") }
+        }) { confirm = null }
         "rescan" -> ConfirmDialog("Run a full rescan?", "Re-reads every message in your music chats. Takes a few minutes and sends Telegram a lot of requests.", "Rescan", backend::rescan) { confirm = null }
         "restore" -> ConfirmDialog("Restore a backup?", "This replaces your library, playlists and favorites with the backup.", "Restore", onRestore) { confirm = null }
         "clearcache" -> ConfirmDialog("Clear the cache?", "Streamed songs stored on this device are deleted. Stop playback first. They download again when played.", "Clear", { backend.clearCache { notice.value = it } }) { confirm = null }

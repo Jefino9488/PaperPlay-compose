@@ -143,6 +143,16 @@ class UserSession(
         _step.value = LoginStep.LoggedOut
     }
 
+    /** Stops the client so its files are whole for a backup; it starts again when next needed. Stays logged in. */
+    suspend fun closeForBackup() {
+        val c = lock.withLock {
+            watcher?.cancel()
+            watcher = null
+            client.also { client = null }
+        }
+        runCatching { c?.shutdown() }
+    }
+
     /** The running client, starting it (and following its login state) when there is none. */
     private suspend fun open(): TdClient = lock.withLock {
         client?.let { return it }

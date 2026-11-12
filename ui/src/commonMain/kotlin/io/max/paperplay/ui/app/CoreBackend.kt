@@ -1,6 +1,7 @@
 package io.max.paperplay.ui.app
 
 import io.max.paperplay.core.app.AppServices
+import io.max.paperplay.core.app.createBackup
 import io.max.paperplay.core.app.NowPlaying
 import io.max.paperplay.core.app.Repeat
 import io.max.paperplay.core.library.LibraryChat
@@ -34,6 +35,7 @@ import io.max.paperplay.ui.state.PlaybackUiState
 import io.max.paperplay.ui.state.RepeatUi
 import io.max.paperplay.ui.state.SongUi
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
@@ -153,7 +155,7 @@ class CoreBackend(val services: AppServices) {
         }
     }
 
-    val http: HttpFetcher = io.max.paperplay.core.integrations.JavaHttp()
+    val http: HttpFetcher = io.max.paperplay.core.integrations.defaultHttpFetcher()
     private val weatherService = WeatherService(http)
 
     val weatherPlace = MutableStateFlow(
@@ -364,6 +366,38 @@ class CoreBackend(val services: AppServices) {
                 e.message ?: "The cache could not be cleared."
             }
             done(msg)
+        }
+    }
+
+    /** What a running backup is doing and how far along (null fraction when unknown); null when none runs. */
+    val backupProgress = MutableStateFlow<Pair<String, Double?>?>(null)
+
+    /**
+     * Builds a full backup (Flutter's format), asks the platform where to put it, and copies it there. With a
+     * [password] the keys and account session are included, sealed with it. Returns a message to show.
+     */
+    suspend fun saveBackup(password: String?, suggestedName: String): String {
+        val pick = BackupFiles.pickDestination ?: return "Saving a backup is not supported here."
+        if (backupProgress.value != null) return "A backup is already running."
+        val tmp = services.platform.dataDir.trimEnd('/', '\\') + "/backup-tmp.zip"
+        backupProgress.value = "Starting" to 0.0
+        return try {
+            val summary = services.createBackup(tmp, password) { stage, fraction -> backupProgress.value = stage to fraction }
+            backupProgress.value = "Choose where to save it, then it is copied" to null
+            val dest = kotlinx.coroutines.suspendCancellableCoroutine<BackupDestination?> { c ->
+                pick(suggestedName) { if (c.isActive) c.resumeWith(Result.success(it)) }
+            }
+            if (dest == null) "Backup not saved."
+            else if (withContext(Dispatchers.Default) { dest.save(tmp) }) {
+                "Backup saved: ${summary.songs} songs" + if (password != null && !summary.credentials) ". No bot keys to add yet." else "."
+            } else "Backup not saved."
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            "Couldn't save the backup: ${e.message ?: e::class.simpleName}"
+        } finally {
+            backupProgress.value = null
+            io.max.paperplay.core.backup.Fs.deleteRecursively(tmp)
         }
     }
 
