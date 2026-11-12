@@ -6,7 +6,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Tray
 import androidx.compose.ui.window.Window
 import androidx.compose.foundation.window.WindowDraggableArea
 import androidx.compose.ui.window.application
@@ -114,7 +116,7 @@ fun main() {
     application {
         val dir = File(System.getenv("APPDATA") ?: System.getProperty("user.home"), "PaperPlay")
         val target = desktopRestoreTarget(dir)
-        var titleColors by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(androidx.compose.ui.graphics.Color(0xFF121212) to androidx.compose.ui.graphics.Color.White) }
+        var titleBarWindow: java.awt.Window? = null
         val env = AppEnv(
             restore = RestoreHooks(
                 pickBackup = { onPicked ->
@@ -152,7 +154,7 @@ fun main() {
             authRedirectUri = SPOTIFY_REDIRECT,
             onboarded = { File(dir, "onboarded").exists() },
             setOnboarded = { runCatching { dir.mkdirs(); File(dir, "onboarded").writeText("1") } },
-            windowTheme = { _, bg, text -> titleColors = androidx.compose.ui.graphics.Color(bg) to androidx.compose.ui.graphics.Color(text) },
+            windowTheme = { dark, bg, text -> WindowsTitleBar.apply(titleBarWindow, dark, bg, text) },
         )
         // The close button hides the window to the tray and music keeps playing; Quit in the tray menu ends the app.
         var mainVisible by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(true) }
@@ -171,7 +173,7 @@ fun main() {
         if (trayOk) {
             val icon = androidx.compose.ui.res.painterResource("icon.png")
             val control = { f: (io.max.paperplay.core.app.PlaybackController) -> Unit -> liveServices?.takeIf { it.playbackStarted }?.let { f(it.playback) } }
-            androidx.compose.ui.window.Tray(
+            Tray(
                 icon = icon, tooltip = "Paper Play",
                 onAction = { mainVisible = true; mainState.isMinimized = false },
                 menu = {
@@ -188,24 +190,14 @@ fun main() {
         }
         Window(
             onCloseRequest = { if (trayOk) mainVisible = false else quit() },
-            visible = mainVisible, title = "Paper Play", state = mainState, undecorated = true, icon = androidx.compose.ui.res.painterResource("icon.png"),
+            visible = mainVisible, title = "Paper Play", state = mainState, icon = androidx.compose.ui.res.painterResource("icon.png"),
         ) {
+            titleBarWindow = window
             androidx.compose.runtime.LaunchedEffect(mainVisible) { if (mainVisible) window.toFront() }
             androidx.compose.runtime.LaunchedEffect(Unit) { installFileDrop(window) }
             androidx.compose.runtime.LaunchedEffect(Unit) { mark(dir, "window first composition") }
-            val maximized = mainState.placement == androidx.compose.ui.window.WindowPlacement.Maximized
-            Box(Modifier.fillMaxSize()) {
-                Column(Modifier.fillMaxSize()) {
-                    if (!fullscreen) AppTitleBar(
-                        "Paper Play", titleColors.first, titleColors.second, maximized,
-                        onMinimize = { mainState.isMinimized = true },
-                        onToggleMaximize = { mainState.placement = if (maximized) androidx.compose.ui.window.WindowPlacement.Floating else androidx.compose.ui.window.WindowPlacement.Maximized },
-                        onClose = { if (trayOk) mainVisible = false else quit() },
-                    )
-                    Box(Modifier.weight(1f)) { App(env) }
-                }
-                ResizeEdges(!maximized && !fullscreen)
-            }
+            App(env)
+        }
         }
         val miniVisible by io.max.paperplay.ui.app.DesktopMini.visible.collectAsState()
         if (miniVisible) {

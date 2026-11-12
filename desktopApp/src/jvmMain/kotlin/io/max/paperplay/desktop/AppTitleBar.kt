@@ -18,7 +18,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.material3.Text
+import androidx.compose.foundation.text.BasicText
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.foundation.window.WindowDraggableArea
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -56,7 +58,7 @@ internal fun WindowScope.AppTitleBar(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Image(painterResource("icon.png"), null, Modifier.size(16.dp))
-                Text(title, Modifier.padding(start = 10.dp), color = content, fontSize = 12.sp)
+                BasicText(title, Modifier.padding(start = 10.dp), style = TextStyle(color = content, fontSize = 12.sp))
             }
         }
         CaptionButton(content, Color.White.copy(alpha = 0.12f), onMinimize) { c ->

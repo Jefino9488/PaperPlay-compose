@@ -386,7 +386,12 @@ class MetadataEnricher(
         val own = all.filter { !it.coverUrl.isNullOrBlank() && seen.add(it.coverUrl) }
             .map { CoverOption(it.coverUrl!!, listOf(it.album, it.artist).filter { s -> s.isNotEmpty() }.joinToString(" - ")) }
         val more = runCatching { coverSources.options(term) }.getOrDefault(emptyList()).filter { seen.add(it.url) }
-        return own + more
+        // The same release often comes from two sources under different links, so also drop repeats by name, then put
+        // the results that share the most words with the search first (the services return loose matches).
+        val words = term.lowercase().split(Regex("\\W+")).filter { it.length > 1 }
+        val named = HashSet<String>()
+        return (own + more).filter { o -> o.label.isBlank() || named.add(o.label.lowercase().trim()) }
+            .sortedByDescending { o -> val l = o.label.lowercase(); words.count { it in l } }
     }
 
     private val coverSources by lazy { io.max.paperplay.core.metadata.CoverSources(http, clock) }

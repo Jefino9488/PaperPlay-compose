@@ -196,8 +196,17 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
     val tint = (if (prefs.coverGradient) coverScheme(pb.current?.coverUri, dark) else null)?.primaryContainer ?: MaterialTheme.colorScheme.primaryContainer
     val g0 = androidx.compose.animation.animateColorAsState(backgroundTopColor(prefs, tint, base), androidx.compose.animation.core.tween(700))
     // The page itself is drawn by AppBackground; g0 only tints the window and top areas.
+    // Colour of the page where a pinned list bar sits, a fifth of the way down: the cover wash eases from g0 to g1 over the top 45%.
+    val pinnedBar = androidx.compose.runtime.remember(tint, base, prefs.background) {
+        androidx.compose.runtime.derivedStateOf {
+            if (prefs.background == BgMode.Cover) {
+                val g1 = tint.copy(alpha = 0.32f).compositeOver(base)
+                androidx.compose.ui.graphics.lerp(g0.value, g1, 0.45f)
+            } else base
+        }
+    }
 
-    CompositionLocalProvider(LocalCoverLoader provides loader, LocalOnMissingCover provides backend::ensureCover, LocalListActions provides actions, LocalTelegramLists provides backend::telegramLists, LocalPageTop provides g0, io.max.paperplay.ui.LocalGlassBackdrop provides (if (anyGlass) pageBackdrop else null)) {
+    CompositionLocalProvider(LocalCoverLoader provides loader, LocalOnMissingCover provides backend::ensureCover, LocalListActions provides actions, LocalTelegramLists provides backend::telegramLists, LocalPageTop provides pinnedBar, io.max.paperplay.ui.LocalGlassBackdrop provides (if (anyGlass) pageBackdrop else null)) {
         TagDialogHost(backend, tagDialogs) { m -> scope.launch { snack.showSnackbar(m) } }
         Box(Modifier.fillMaxSize()) {
             // The page background alone is the layer glass cards and bars blur (content on it would recurse).

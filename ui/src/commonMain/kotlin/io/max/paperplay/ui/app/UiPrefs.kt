@@ -65,6 +65,17 @@ val accentOptions = listOf(
 
 /** Look and layout choices, stored under the same pref keys as the Flutter app so a restored backup carries over. */
 class UiPrefs(private val read: (String) -> String?, private val write: (String, String) -> Unit) {
+    /** How song lists are ordered, shared by every list and kept between launches. */
+    var songSort by mutableStateOf(io.max.paperplay.ui.logic.SongSort.entries.firstOrNull { it.name == read("song_sort") } ?: io.max.paperplay.ui.logic.SongSort.Added)
+        private set
+    var songSortReverse by mutableStateOf(read("song_sort_rev") == "true")
+        private set
+
+    fun setSongSort(sort: io.max.paperplay.ui.logic.SongSort, reverse: Boolean) {
+        songSort = sort; songSortReverse = reverse
+        write("song_sort", sort.name); write("song_sort_rev", "$reverse")
+    }
+
     var themeMode by mutableStateOf(ThemeMode.entries.firstOrNull { it.name.lowercase() == read("theme_mode") } ?: ThemeMode.System)
         private set
     var amoled by mutableStateOf(read("theme_amoled") != "false")

@@ -119,8 +119,10 @@ fun SongList(
     empty: String = "No songs here yet.",
 ) {
     var query by remember { mutableStateOf("") }
-    var sort by remember { mutableStateOf(SongSort.Added) }
-    var reverse by remember { mutableStateOf(false) }
+    // The sort is remembered between lists and launches.
+    val uiPrefs = LocalUiPrefs.current
+    var sort by remember { mutableStateOf(uiPrefs?.songSort ?: SongSort.Added) }
+    var reverse by remember { mutableStateOf(uiPrefs?.songSortReverse ?: false) }
     var selection by remember { mutableStateOf(Selection()) }
     var sortSheet by remember { mutableStateOf(false) }
 
@@ -221,7 +223,7 @@ fun SongList(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .drawBehind { if (pinned) drawRect(if (io.max.paperplay.ui.isPhone) androidx.compose.ui.graphics.lerp(pageTop?.value ?: base, base, 0.45f).copy(alpha = 0.97f) else cardFill) }
+                        .drawBehind { if (pinned) drawRect(if (io.max.paperplay.ui.isPhone) pageTop?.value ?: base else cardFill) }
                         .padding(start = 16.dp, end = 12.dp, top = 6.dp, bottom = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -245,28 +247,9 @@ fun SongList(
                         overflow = TextOverflow.Ellipsis,
                     )
                     if (sortable) {
-                        Row(
-                            modifier = Modifier
-                                .widthIn(max = if (io.max.paperplay.ui.isPhone) 120.dp else 240.dp)
-                                .clip(CircleShape)
-                                .clickable { sortSheet = true }
-                                .padding(horizontal = 10.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        ) {
-                            AppIcon(Icons.AutoMirrored.Rounded.Sort, contentDescription = "Sort", modifier = Modifier.size(18.dp))
-                            Text(
-                                text = sort.label,
-                                style = MaterialTheme.typography.labelLarge,
-                                maxLines = 1,
-                                softWrap = false,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            AppIcon(
-                                if (reverse) Icons.Rounded.ArrowUpward else Icons.Rounded.ArrowDownward,
-                                contentDescription = null,
-                                modifier = Modifier.size(14.dp),
-                            )
+                        // Icon only; the order itself shows in the sheet that opens, and is remembered.
+                        IconButton(onClick = { sortSheet = true }) {
+                            AppIcon(Icons.AutoMirrored.Rounded.Sort, contentDescription = "Sort: ${sort.label}")
                         }
                     }
                 }
@@ -314,6 +297,7 @@ fun SongList(
                         TextButton(
                             onClick = {
                                 if (option == sort) reverse = !reverse else { sort = option; reverse = false }
+                                uiPrefs?.setSongSort(sort, reverse)
                                 sortSheet = false
                             },
                             modifier = Modifier.fillMaxWidth(),
