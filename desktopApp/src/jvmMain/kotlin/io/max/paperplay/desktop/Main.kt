@@ -72,6 +72,8 @@ fun main() {
             },
             authRedirect = LoopbackAuth(),
             authRedirectUri = SPOTIFY_REDIRECT,
+            onboarded = { File(dir, "onboarded").exists() },
+            setOnboarded = { runCatching { dir.mkdirs(); File(dir, "onboarded").writeText("1") } },
         )
         Window(onCloseRequest = ::exitApplication, title = "Paper Play", state = rememberWindowState(width = 1320.dp, height = 840.dp), icon = androidx.compose.ui.res.painterResource("icon.png")) {
             App(env)

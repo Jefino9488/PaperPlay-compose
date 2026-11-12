@@ -38,6 +38,13 @@ class AppEnv(
     val authRedirect: io.max.paperplay.core.integrations.AuthRedirect? = null,
     /** The redirect link to add in the Spotify dashboard for this platform. */
     val authRedirectUri: String = "",
+    /** True once the first-launch tour was finished or skipped. */
+    val onboarded: () -> Boolean = { true },
+    val setOnboarded: () -> Unit = {},
+    /** Set true (from Settings) to show the tour again. */
+    val showTour: kotlinx.coroutines.flow.MutableStateFlow<Boolean> = kotlinx.coroutines.flow.MutableStateFlow(false),
+    /** Asks for the notification permission; null where not needed. */
+    val requestNotifications: (() -> Unit)? = null,
 )
 
 val LocalAppEnv = androidx.compose.runtime.staticCompositionLocalOf<AppEnv?> { null }
@@ -45,21 +52,49 @@ val LocalAppEnv = androidx.compose.runtime.staticCompositionLocalOf<AppEnv?> { n
 @Composable
 fun App(env: AppEnv) {
     var restoring by remember { mutableStateOf(!env.libraryExists()) }
+    // A library already on disk means an existing install, so the tour is not forced on it.
+    var touring by remember { mutableStateOf(!env.onboarded() && !env.libraryExists()) }
+    // Choices made before the library exists; applied once it does.
+    val pending = remember { mutableMapOf<String, String>() }
     androidx.compose.runtime.CompositionLocalProvider(LocalAppEnv provides env) { PaperPlayTheme {
-        if (restoring) {
+        if (touring) {
+            val tourPrefs = remember { UiPrefs(pending::get, pending::put) }
+            val dark = when (tourPrefs.themeMode) {
+                ThemeMode.Dark -> true
+                ThemeMode.Light -> false
+                ThemeMode.System -> androidx.compose.foundation.isSystemInDarkTheme()
+            }
+            PaperPlayTheme(dark = dark, seed = tourPrefs.seed, dynamic = tourPrefs.accent == "dynamic", amoled = tourPrefs.amoled) {
+                Onboarding(tourPrefs, revisit = false, setPref = { k, v -> pending[k] = v }) { choice ->
+                    env.setOnboarded()
+                    when (choice) {
+                        OnboardingChoice.Restore -> restoring = true
+                        OnboardingChoice.Bot -> restoring = false
+                        OnboardingChoice.None -> {}
+                    }
+                    touring = false
+                }
+            }
+        } else if (restoring) {
             RestoreScreen(
                 env.restore, onContinue = { restoring = false }, onSkip = { restoring = false },
                 skipLabel = "Set up without a backup",
             )
         } else {
-            Main(env, onRestore = { restoring = true })
+            Main(env, pending, onRestore = { restoring = true })
         }
     } }
 }
 
 @Composable
-private fun Main(env: AppEnv, onRestore: () -> Unit) {
-    val backend = remember { CoreBackend(env.createServices()) }
+private fun Main(env: AppEnv, pending: MutableMap<String, String>, onRestore: () -> Unit) {
+    val backend = remember {
+        CoreBackend(env.createServices()).also { b ->
+            pending.forEach { (k, v) -> b.setPref(k, v) }
+            pending.clear()
+        }
+    }
+    val tour by env.showTour.collectAsState()
     val hasCredentials by backend.hasCredentials.collectAsState()
     LaunchedEffect(hasCredentials) {
         if (hasCredentials) backend.connect()
@@ -82,6 +117,7 @@ private fun Main(env: AppEnv, onRestore: () -> Unit) {
     PaperPlayTheme(dark = dark, seed = seed, dynamic = prefs.accent == "dynamic", amoled = prefs.amoled) {
         androidx.compose.runtime.CompositionLocalProvider(io.max.paperplay.ui.app.LocalUiPrefs provides prefs) {
             if (hasCredentials) MainShell(backend, prefs, restore, env.open) else SetupScreen(backend, onSaved = {}, onRestore = restore)
+            if (tour) Onboarding(prefs, revisit = true, setPref = backend::setPref) { env.showTour.value = false }
         }
     }
 }

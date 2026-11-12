@@ -115,6 +115,7 @@ class MainActivity : ComponentActivity() {
         }
         intent?.getStringExtra(OPEN_EXTRA)?.let { open.value = it }
         val library = File(filesDir, "library.sqlite")
+        val onboardedFile = File(filesDir, "onboarded")
         val target = RestoreTarget(
             library.path.replace(File.separatorChar, '/'),
             File(filesDir, "covers").path,
@@ -130,8 +131,9 @@ class MainActivity : ComponentActivity() {
             }
             // The media notification needs this on Android 13 and later; playing works without it.
             val notifications = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
+            // New installs are asked on the onboarding permissions page, after reading why.
             LaunchedEffect(Unit) {
-                if (Build.VERSION.SDK_INT >= 33) notifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+                if (Build.VERSION.SDK_INT >= 33 && (onboardedFile.exists() || library.exists())) notifications.launch(Manifest.permission.POST_NOTIFICATIONS)
             }
             // Profile photo: copied into the app's files, so the picked document can be released.
             val photoPending = remember { arrayOfNulls<(String?) -> Unit>(1) }
@@ -179,6 +181,9 @@ class MainActivity : ComponentActivity() {
                     pickImage = { onPicked -> imagePending[0] = onPicked; imagePicker.launch(arrayOf("image/*")) },
                     authRedirect = auth,
                     authRedirectUri = SPOTIFY_REDIRECT,
+                    onboarded = { onboardedFile.exists() },
+                    setOnboarded = { runCatching { onboardedFile.writeText("1") } },
+                    requestNotifications = if (Build.VERSION.SDK_INT >= 33) ({ notifications.launch(Manifest.permission.POST_NOTIFICATIONS) }) else null,
                 )
             }
             App(env)
