@@ -77,6 +77,7 @@ import io.max.paperplay.ui.state.Load
 import io.max.paperplay.ui.state.PlaybackUiState
 import io.max.paperplay.ui.state.SongUi
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.flowOf
 import androidx.compose.runtime.snapshotFlow
@@ -378,7 +379,8 @@ fun SearchScreen(
     var results by remember { mutableStateOf<List<SongUi>>(emptyList()) }
     val recent = remember { mutableStateListOf<String>() }
     LaunchedEffect(Unit) {
-        snapshotFlow { query }.debounce(150).collect { q ->
+        // collectLatest: the result flow never completes (it follows the library), so a plain collect would block every later query.
+        snapshotFlow { query }.debounce(150).collectLatest { q ->
             if (q.isBlank()) results = emptyList()
             else search(q).collect {
                 results = it
@@ -392,7 +394,7 @@ fun SearchScreen(
     }
     Column(modifier) {
         TopBar("Search")
-        PillField(query, { query = it }, "Songs, artists or albums", Modifier.padding(horizontal = 16.dp, vertical = 2.dp))
+        PillField(query, { query = it }, "Songs, artists, albums or years", Modifier.padding(horizontal = 16.dp, vertical = 2.dp))
         if (query.isBlank()) {
             if (recent.isNotEmpty()) {
                 Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
