@@ -127,6 +127,9 @@ class UiPrefs(private val read: (String) -> String?, private val write: (String,
         private set
     var nowPlayingPanel by mutableStateOf(read("now_playing_panel") != "false")
         private set
+    /** Transitions become instant (see [io.max.paperplay.ui.theme.LocalReduceMotion]). */
+    var reduceMotion by mutableStateOf(read("reduce_motion") == "true")
+        private set
     var profileName by mutableStateOf(read("profile_name") ?: "Listener")
         private set
     var profilePhoto by mutableStateOf(read("profile_photo")?.takeIf { it.isNotEmpty() })
@@ -227,6 +230,7 @@ class UiPrefs(private val read: (String) -> String?, private val write: (String,
         write("bg_anim_speed", "$speed"); write("bg_anim_density", "$density")
     }
     fun putNowPlayingPanel(on: Boolean) { nowPlayingPanel = on; write("now_playing_panel", "$on") }
+    fun putReduceMotion(on: Boolean) { reduceMotion = on; write("reduce_motion", "$on") }
     fun setLook(g: LookGroup, l: Look) { looks[g] = l; write("look_${g.name.lowercase()}", l.name.lowercase()) }
 
     fun putCornerRadius(value: Float) {

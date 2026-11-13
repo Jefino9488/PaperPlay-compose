@@ -174,6 +174,7 @@ internal fun SettingsPage(
             ChoiceRow(IconSet.entries, prefs.iconSet, { it.label }, prefs::putIconSet)
             Text("Applies to the app on Android and desktop. Only the icons used by PaperPlay are included.", Modifier.padding(horizontal = 20.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             SwitchRow("True black", prefs.amoled, prefs::putAmoled, Icons.Rounded.DarkMode, "Pure black surfaces on dark, easier on OLED screens")
+            SwitchRow("Reduce motion", prefs.reduceMotion, prefs::putReduceMotion, null, "Screens and the player switch instantly instead of sliding and fading")
             SectionLabel("Accent")
             androidx.compose.foundation.layout.FlowRow(Modifier.padding(horizontal = 16.dp)) {
                 if (isPhone) {
