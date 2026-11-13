@@ -142,7 +142,7 @@ class PlaybackService : MediaSessionService() {
         }
     }
 
-    /** Device equalizers have a handful of bands, so each takes the gain of the nearest of [EQ_BANDS_HZ]. */
+    /** Device equalizers have a handful of bands, so each reads the curve through [EQ_BANDS_HZ] at its own frequency. */
     private fun applyEqualizer(audioSessionId: Int) {
         runCatching { eq?.release() }
         eq = null
@@ -155,8 +155,7 @@ class PlaybackService : MediaSessionService() {
             for (b in 0 until e.numberOfBands) {
                 val hz = e.getCenterFreq(b.toShort()) / 1000.0
                 if (hz <= 0.0) continue
-                val i = EQ_BANDS_HZ.indices.minByOrNull { abs(ln(EQ_BANDS_HZ[it] / hz)) } ?: continue
-                val level = (gains.getOrElse(i) { 0f } * 100).toInt().coerceIn(range[0].toInt(), range[1].toInt())
+                val level = (eqGainAt(gains, hz) * 100).toInt().coerceIn(range[0].toInt(), range[1].toInt())
                 e.setBandLevel(b.toShort(), level.toShort())
             }
             e.enabled = true

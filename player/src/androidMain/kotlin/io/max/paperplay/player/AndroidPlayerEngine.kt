@@ -59,12 +59,15 @@ class AndroidPlayerEngine : PlayerEngine {
     override val durationMs: StateFlow<Long> = _durationMs
     override val bufferedMs: StateFlow<Long> = _bufferedMs
     override val currentIndex: StateFlow<Int> = _currentIndex
+    private val _info = MutableStateFlow<OutputInfo?>(null)
+    override val outputInfo: StateFlow<OutputInfo?> = _info
 
     private val playerListener = object : Player.Listener {
         override fun onEvents(player: Player, events: Player.Events) {
             if (player.playerError == null && (player.playbackState == Player.STATE_READY || player.playbackState == Player.STATE_BUFFERING)) {
                 failed = false
             }
+            if (events.containsAny(Player.EVENT_TRACKS_CHANGED, Player.EVENT_IS_PLAYING_CHANGED, Player.EVENT_PLAYBACK_PARAMETERS_CHANGED, Player.EVENT_DEVICE_VOLUME_CHANGED)) publishInfo(player)
             sync()
         }
 
@@ -384,7 +387,7 @@ class AndroidPlayerEngine : PlayerEngine {
         val clamped = volume.coerceIn(0f, 1f)
         onMain {
             volumeLevel = clamped
-            controller?.takeIf { it.isConnected }?.volume = clamped
+            controller?.takeIf { it.isConnected }?.let { it.volume = clamped; publishInfo(it) }
         }
     }
 
@@ -393,6 +396,7 @@ class AndroidPlayerEngine : PlayerEngine {
         onMain {
             val mc = controller ?: return@onMain
             if (mc.isConnected) sendEqualizer(mc, gainsDb)
+            publishInfo(mc)
         }
     }
 
@@ -407,7 +411,55 @@ class AndroidPlayerEngine : PlayerEngine {
         onMain {
             val mc = controller ?: return@onMain
             if (mc.isConnected) sendNormalize(mc, on)
+            publishInfo(mc)
         }
+    }
+
+    /** The decoded track's format from Media3, plus what Android says about the output device and the effects in the path. */
+    private fun publishInfo(player: Player) {
+        val format = player.currentTracks.groups
+            .firstOrNull { it.type == androidx.media3.common.C.TRACK_TYPE_AUDIO && it.isSelected }
+            ?.let { g -> (0 until g.length).firstOrNull { g.isTrackSelected(it) }?.let { g.getTrackFormat(it) } }
+        val am = context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+        val outputs = am.getDevices(android.media.AudioManager.GET_DEVICES_OUTPUTS)
+        val external = outputs.firstOrNull {
+            it.type in setOf(
+                android.media.AudioDeviceInfo.TYPE_BLUETOOTH_A2DP, android.media.AudioDeviceInfo.TYPE_BLE_HEADSET,
+                android.media.AudioDeviceInfo.TYPE_WIRED_HEADPHONES, android.media.AudioDeviceInfo.TYPE_WIRED_HEADSET,
+                android.media.AudioDeviceInfo.TYPE_USB_HEADSET, android.media.AudioDeviceInfo.TYPE_USB_DEVICE,
+            )
+        }
+        val outRate = am.getProperty(android.media.AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE)?.toIntOrNull()
+        val effects = buildList {
+            if (PlaybackCore.eqGains?.any { kotlin.math.abs(it) >= 0.05f } == true) add("Equalizer")
+            if (PlaybackCore.normalize) add("Normalise")
+            if (PlaybackCore.speed != 1f) add("Speed ${PlaybackCore.speed}x")
+            if (volumeLevel < 0.995f) add("Volume ${(volumeLevel * 100).toInt()}%")
+        }
+        val rate = format?.sampleRate?.takeIf { it > 0 }
+        val depth = when (format?.pcmEncoding) {
+            androidx.media3.common.C.ENCODING_PCM_16BIT -> 16
+            androidx.media3.common.C.ENCODING_PCM_24BIT -> 24
+            androidx.media3.common.C.ENCODING_PCM_32BIT, androidx.media3.common.C.ENCODING_PCM_FLOAT -> 32
+            else -> null
+        }
+        val matches = rate != null && outRate != null && rate == outRate
+        _info.value = OutputInfo(
+            codec = format?.sampleMimeType?.substringAfter('/')?.uppercase(),
+            sampleRateHz = rate,
+            channels = format?.channelCount?.takeIf { it > 0 },
+            bitrateKbps = format?.averageBitrate?.takeIf { it > 0 }?.let { it / 1000 },
+            bitDepth = depth,
+            device = external?.productName?.toString()?.takeIf { it.isNotBlank() } ?: (if (external != null) "Headphones" else android.os.Build.MODEL),
+            outputRateHz = outRate,
+            effects = effects,
+            bitPerfect = effects.isEmpty() && matches && external == null,
+            note = when {
+                effects.isNotEmpty() -> "Effects change the sound before it reaches the output."
+                !matches -> "The device mixes at ${outRate ?: "an unknown"} Hz, so this track is resampled."
+                else -> "Android's mixer can still convert the format; only a bit-perfect USB DAC route skips it."
+            },
+        )
     }
 
     private fun sendNormalize(mc: MediaController, on: Boolean) {

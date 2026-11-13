@@ -41,6 +41,12 @@ internal class FakePlayerControls(
     override val sleepAt: StateFlow<Long?> = MutableStateFlow(sleepAt)
     override val speed: StateFlow<Float> = MutableStateFlow(1f)
     override val volume: StateFlow<Float> = MutableStateFlow(0.8f)
+    override val outputInfo: StateFlow<io.max.paperplay.player.OutputInfo?> = MutableStateFlow(
+        io.max.paperplay.player.OutputInfo(
+            codec = "ALAC", sampleRateHz = 96000, channels = 2, bitrateKbps = 2400, bitDepth = 24, device = "Speakers", outputRateHz = 48000,
+            effects = listOf("Equalizer"), note = "Windows mixes sound at the format set in Sound settings.",
+        ),
+    )
     override fun setSpeed(speed: Float) {}
     override fun removeFromQueue(index: Int) {}
     override fun moveInQueue(from: Int, to: Int) {}

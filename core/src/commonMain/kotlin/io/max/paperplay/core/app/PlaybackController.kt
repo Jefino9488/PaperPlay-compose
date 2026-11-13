@@ -211,6 +211,7 @@ class PlaybackController(
     }
     fun seek(positionMs: Long) = engine.seek(positionMs)
     fun setVolume(volume: Float) = engine.setVolume(volume)
+    val outputInfo get() = engine.outputInfo
     fun setEqualizer(gainsDb: List<Float>?) = engine.setEqualizer(gainsDb)
     fun setSpeed(speed: Float) = engine.setSpeed(speed)
     fun setNormalize(on: Boolean) = engine.setNormalize(on)

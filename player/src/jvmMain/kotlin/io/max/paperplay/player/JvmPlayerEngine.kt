@@ -34,11 +34,15 @@ class JvmPlayerEngine(vararg vlcArgs: String) : PlayerEngine {
     override val durationMs: StateFlow<Long> = _durationMs
     override val bufferedMs: StateFlow<Long> = _bufferedMs
     override val currentIndex: StateFlow<Int> = _currentIndex
+    private val _info = MutableStateFlow<OutputInfo?>(null)
+    override val outputInfo: StateFlow<OutputInfo?> = _info
+    @Volatile private var eqGains: List<Float>? = null
 
     private val factory = run {
         val loaderArgs = VlcLoader.init()
         // Prepend plugin-path and no-video before any caller-supplied vlcArgs.
-        MediaPlayerFactory("--no-video", *loaderArgs.toTypedArray(), *vlcArgs)
+        // WASAPI output and the high quality resampler; callers' own args (tests pass --aout=dummy) come last and win.
+        MediaPlayerFactory("--no-video", "--aout=mmdevice", "--audio-resampler=soxr", *loaderArgs.toTypedArray(), *vlcArgs)
     }
     private val player = factory.mediaPlayers().newMediaPlayer()
     private val http = lazy { StreamHttpServer() }
@@ -48,7 +52,13 @@ class JvmPlayerEngine(vararg vlcArgs: String) : PlayerEngine {
     init {
         player.events().addMediaPlayerEventListener(object : MediaPlayerEventAdapter() {
             // libvlc has no audio output until playback starts, so a volume set earlier is applied now.
-            override fun playing(mp: MediaPlayer) { _state.value = PlayerState.Playing; mp.audio().setVolume((volume * 100).toInt()); if (rate != 1f) mp.controls().setRate(rate) }
+            override fun playing(mp: MediaPlayer) {
+                _state.value = PlayerState.Playing
+                mp.audio().setVolume((volume * 100).toInt()); if (rate != 1f) mp.controls().setRate(rate)
+                // The equalizer needs an audio output too, so it is applied again for each new track.
+                applyEqualizer(mp)
+                publishInfo(mp)
+            }
             override fun paused(mp: MediaPlayer) { _state.value = PlayerState.Paused }
             override fun error(mp: MediaPlayer) { _state.value = PlayerState.Error }
             override fun lengthChanged(mp: MediaPlayer, newLength: Long) { _durationMs.value = newLength }
@@ -70,8 +80,8 @@ class JvmPlayerEngine(vararg vlcArgs: String) : PlayerEngine {
         _durationMs.value = 0
         val mrl = item.source?.let { http.value.register(item.uri, it) } ?: item.uri
         // The stream is a loopback server fed from disk, so libvlc's default one second of network buffering only delays the first sound.
-        val fast = arrayOf(":network-caching=250", ":file-caching=250")
-        if (normalize) player.media().play(mrl, *fast, ":audio-filter=normvol", ":norm-max-level=1.5") else player.media().play(mrl, *fast)
+        val fast = arrayOf(":network-caching=500", ":file-caching=500")
+        if (normalize) player.media().play(mrl, *fast, ":audio-filter=normvol", ":norm-max-level=1.0") else player.media().play(mrl, *fast)
     }
 
     override fun setQueue(items: List<QueueItem>, startIndex: Int) = cmd {
@@ -103,7 +113,7 @@ class JvmPlayerEngine(vararg vlcArgs: String) : PlayerEngine {
 
     override fun setSpeed(speed: Float) {
         rate = speed.coerceIn(0.5f, 2f)
-        cmd { player.controls().setRate(rate) }
+        cmd { player.controls().setRate(rate); publishInfo(player) }
     }
 
     /** Takes effect from the next track. */
@@ -111,22 +121,46 @@ class JvmPlayerEngine(vararg vlcArgs: String) : PlayerEngine {
 
     override fun setVolume(volume: Float) {
         this.volume = volume.coerceIn(0f, 1f)
-        cmd { player.audio().setVolume((this.volume * 100).toInt()) }
+        cmd { player.audio().setVolume((this.volume * 100).toInt()); publishInfo(player) }
     }
 
     override fun setEqualizer(gainsDb: List<Float>?) = cmd {
-        if (gainsDb == null) {
-            player.audio().setEqualizer(null)
-        } else {
-            val eq = factory.equalizer().newEqualizer()
-            // VLC has ten bands; each takes the gain of the nearest of ours.
-            val vlcHz = listOf(60, 170, 310, 600, 1000, 3000, 6000, 12000, 14000, 16000)
-            vlcHz.forEachIndexed { b, hz ->
-                val i = EQ_BANDS_HZ.indices.minByOrNull { kotlin.math.abs(kotlin.math.ln(EQ_BANDS_HZ[it].toDouble() / hz)) } ?: 0
-                eq.setAmp(b, gainsDb.getOrElse(i) { 0f }.coerceIn(-12f, 12f))
-            }
-            player.audio().setEqualizer(eq)
+        eqGains = gainsDb
+        applyEqualizer(player)
+        publishInfo(player)
+    }
+
+    private fun applyEqualizer(mp: MediaPlayer) {
+        val gains = eqGains
+        if (gains == null || gains.size != EQ_BANDS_HZ.size) { mp.audio().setEqualizer(null); return }
+        val eq = factory.equalizer().newEqualizer()
+        // VLC has ten bands; each reads our curve at its own frequency.
+        val vlcHz = listOf(60, 170, 310, 600, 1000, 3000, 6000, 12000, 14000, 16000)
+        val amps = vlcHz.map { eqGainAt(gains, it.toDouble()).coerceIn(-12f, 12f) }
+        // VLC's equalizer does not protect against clipping, so the whole curve is lowered by its loudest boost.
+        eq.setPreamp(-(amps.maxOrNull() ?: 0f).coerceAtLeast(0f))
+        amps.forEachIndexed { b, db -> eq.setAmp(b, db) }
+        mp.audio().setEqualizer(eq)
+    }
+
+    private fun publishInfo(mp: MediaPlayer) {
+        val track = runCatching { mp.media().info()?.audioTracks()?.firstOrNull() }.getOrNull()
+        val effects = buildList {
+            if (eqGains != null) add("Equalizer")
+            if (normalize) add("Normalise")
+            if (rate != 1f) add("Speed ${rate}x")
+            if (volume < 0.995f) add("Volume ${(volume * 100).toInt()}%")
         }
+        _info.value = OutputInfo(
+            codec = track?.codecName()?.takeIf { it.isNotBlank() },
+            sampleRateHz = track?.rate()?.takeIf { it > 0 },
+            channels = track?.channels()?.takeIf { it > 0 },
+            bitrateKbps = track?.bitRate()?.takeIf { it > 0 }?.let { it / 1000 },
+            device = runCatching { mp.audio().outputDevice() }.getOrNull()?.takeIf { it.isNotBlank() } ?: "System default output",
+            effects = effects,
+            bitPerfect = false,
+            note = "Windows mixes sound at the format set in Sound settings, so desktop playback is not bit-perfect even with no effects.",
+        )
     }
 
     override fun release() {

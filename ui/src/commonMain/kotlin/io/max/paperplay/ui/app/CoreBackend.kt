@@ -78,6 +78,8 @@ data class ScanUi(val text: String, val fraction: Double?)
 interface PlayerControls {
     val position: StateFlow<PositionUi>
     val sleepAt: StateFlow<Long?>
+    /** Source format and output path of the song playing, for the output info screen. */
+    val outputInfo: StateFlow<io.max.paperplay.player.OutputInfo?>
     /** Output volume, 0 to 1. */
     val volume: StateFlow<Float>
     /** Playback speed, 1 is normal. */
@@ -456,10 +458,10 @@ class CoreBackend(val services: AppServices) : PlayerControls {
         }
     }
 
-    // Equalizer: five bands in dB, saved as a JSON list like the Flutter app does.
+    // Equalizer: ten bands in dB, saved as a list like the Flutter app does. Older five-band saves are stretched to ten.
     val eqOn = MutableStateFlow(repo.pref("eq_on") == "true")
     val eqGains = MutableStateFlow(
-        repo.pref("eq_gains")?.trim('[', ']', ' ')?.split(',')?.mapNotNull { it.trim().toFloatOrNull() }?.takeIf { it.size == 5 } ?: List(5) { 0f },
+        io.max.paperplay.player.migrateEqGains(repo.pref("eq_gains")?.trim('[', ']', ' ')?.split(',')?.mapNotNull { it.trim().toFloatOrNull() }),
     )
 
     fun setEqualizer(on: Boolean = eqOn.value, gains: List<Float> = eqGains.value) {
@@ -477,6 +479,8 @@ class CoreBackend(val services: AppServices) : PlayerControls {
         else repo.pref("listenbrainz_user")?.takeIf { it.isNotEmpty() } ?: "your account",
     )
 
+    private val _outputInfo = MutableStateFlow<io.max.paperplay.player.OutputInfo?>(null)
+    override val outputInfo: StateFlow<io.max.paperplay.player.OutputInfo?> = _outputInfo
 
     /** Checks the token with ListenBrainz and keeps it. Returns a problem as text, or null when it worked. */
     suspend fun connectListenBrainz(token: String): String? {
@@ -680,6 +684,7 @@ class CoreBackend(val services: AppServices) : PlayerControls {
             }
         }
     }
+            scope.launch { p.outputInfo.collect { _outputInfo.value = it } }
 
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     /** Puts the last queue back, paused, once the connection is up (or after 20 seconds) and nothing has been played. */
