@@ -1,6 +1,6 @@
 # PaperPlay Compose: what's done and what's left
 
-Updated 13 Nov 2026, evening (fixes round at the end; compiles, not tried; `[x]` in section 1 not individually re-checked)
+Updated 13 Nov 2026, night (sync, bots, search and volume round at the end; compiles, not tried; `[x]` in section 1 not individually re-checked)
 
 **Marks:** `[x]` done and written, `[~]` half done, `[ ]` not done.
 "Compiles, not tried" means the Android release and desktop release built on 12 Nov (night) but the feature has not been tried on a device.
@@ -314,3 +314,19 @@ Updated 13 Nov 2026, evening (fixes round at the end; compiles, not tried; `[x]`
 - [ ] Try all of the above on screen and on the phone; check tray click, full screen click-to-minimise, the noise, file dialogs
 - [ ] RAM: earlier build used about 450 MB (heap 40 MB, metaspace 67 MB, Intel D3D12 driver files about 175 MB, TDLib and libvlc about 100 MB). Not a Rust problem. Test `-Dskiko.renderApi=OPENGL` and `SOFTWARE`, lazy libvlc, fewer classes
 - [ ] Not done: live level meter in the equalizer (curve only), channel last-scanned time, panel toggle also hidden in the now playing view, VLC output rate not shown on desktop
+
+## Update 2026-11-13 (late: sync, bots, search, volume, icons; compiles, not tried on a device)
+- [x] Search no longer stops after the first query (the result flow was collected, never cancelled: `collectLatest` in `SearchScreen`); search also matches the year; film songs match through the album tag
+- [x] Plain lyrics (no timestamps, any language) drift down with the song; dragging takes over, they follow again after 6 s
+- [x] Phone mini player: devices button opens the app's Devices dialog (This phone, live linked devices with controls, Audio output switcher, Network play, Connect devices)
+- [x] Desktop player bar Devices popup is live (it was a static placeholder): own addresses, linked devices with now playing and controls, paired devices away with Connect (`DevicesPanel.kt`, `LocalLanSync` from the shell)
+- [x] Connection page: one entry per device with all its addresses, each editable and deletable, plus add an address to a device; "This device" card with own addresses first; sync result says it goes both ways and counts both sides
+- [x] A paired device that announces itself is linked at once (old or new address, tried first), and a seen address shows "Seen on this network" instead of "Trying now"
+- [x] Profile photo and name changes show a saved message
+- [x] Bots page: name, @username and picture for the main bot and every extra bot (read through each bot's own TDLib session)
+- [x] Spotify client id is hidden with an eye button; the browser page after Spotify login is themed (light or dark)
+- [x] PC player bar, now playing view and mini player use the phone's rewind, play and fast-forward glyphs; mini player has format badge (switch in Player bar settings), width that follows the song text, play/pause/cover/progress animations, Windows rounded corners (no transparent window)
+- [x] System volume: the volume bar follows and sets the Android media volume and the Windows master volume (`SystemVolume` in the player module, Core Audio through JNA); app-only volume stays where there is no system volume. Windows part is compile-checked only
+- [ ] Try on screen and phone: all of the above, especially system volume on Windows, tray click, full screen, themed login page, device popups
+- [ ] Idea list: remote control and live device list already exist; per-device permissions, safety code on pairing, trusted networks, offline-proof pairing (PAKE), "Only paired devices may link" on by default
+- [ ] RAM (measured on the new build, idle): desktop 319 MB working set, heap 46 MB, metaspace 64 MB, Intel D3D12 driver files about 175 MB, libvlc loaded at idle (create it on first play), 52 threads, CPU 1%; Android native heap 158 MB allocated (TDLib), Java heap 14 MB, private 64 MB. Next: lazy libvlc, `-Dskiko.renderApi=OPENGL`/`SOFTWARE` test, TDLib options (no message database, smaller caches)
