@@ -40,6 +40,7 @@ import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Devices
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
 import androidx.compose.material3.IconButton
@@ -169,6 +170,9 @@ fun MiniPlayer(
                     Text(song.title, modifier = Modifier.basicMarquee(), maxLines = 1, style = MaterialTheme.typography.titleSmall, color = ink)
                     Text(song.artist, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = ink.copy(alpha = 0.75f))
                 }
+                // Opens the system audio output chooser (speaker, Bluetooth, cast); only where the platform has one.
+                val switchOutput = io.max.paperplay.ui.rememberOutputSwitcher()
+                if (switchOutput != null) IconButton(switchOutput, Modifier.size(40.dp)) { AppIcon(Icons.Rounded.Devices, "Output devices", Modifier.size(22.dp), tint = ink) }
                 IconButton(onPrevious) { AppIcon(Icons.Rounded.SkipPrevious, "Previous", tint = ink) }
                 IconButton(onToggle) { AppIcon(if (state.playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (state.playing) "Pause" else "Play", Modifier.size(32.dp), tint = ink) }
                 IconButton(onNext) { AppIcon(Icons.Rounded.SkipNext, "Next", tint = ink) }
