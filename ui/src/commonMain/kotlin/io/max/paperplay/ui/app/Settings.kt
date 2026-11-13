@@ -353,15 +353,18 @@ internal fun SettingsPage(
         "channels" -> ChannelsPage(conn, backend, stack)
         "profile" -> {
             var name by remember { mutableStateOf(prefs.profileName) }
+            // Tell the person what happened: the shell's snackbar when there is one, else the note at the foot of the page.
+            val toast = LocalListActions.current
+            val say = { m: String -> toast?.notice(m) ?: run { notice.value = m } }
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Avatar(prefs.profilePhoto, prefs.profileName, 96.dp)
                 val pick = env?.pickPhoto
                 if (pick != null) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton({ pick { path -> if (path != null) prefs.putProfilePhoto(path) } }) { Text("Change photo") }
-                    if (prefs.profilePhoto != null) OutlinedButton({ prefs.putProfilePhoto(null) }) { Text("Remove photo") }
+                    OutlinedButton({ pick { path -> if (path != null) { prefs.putProfilePhoto(path); say("Profile photo saved") } } }) { Text("Change photo") }
+                    if (prefs.profilePhoto != null) OutlinedButton({ prefs.putProfilePhoto(null); say("Profile photo removed") }) { Text("Remove photo") }
                 }
                 OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), label = { Text("Name") }, singleLine = true)
-                Button({ prefs.putProfileName(name.trim().ifEmpty { "Listener" }) }) { Text("Save name") }
+                Button({ prefs.putProfileName(name.trim().ifEmpty { "Listener" }); say("Name saved") }) { Text("Save name") }
             }
         }
         "mixlearn" -> MixLearnPage(backend) { confirm = "clearlearned" }
