@@ -89,9 +89,13 @@ fun WavySeek(
                 if (label != null) stateDescription = label
             }
             .pointerInput(Unit) {
+                // Only touches on the line itself count, so brushing past the bar or the times never seeks.
+                val reach = 14.dp.toPx()
+                val lineY = 20.dp.toPx()
                 detectTapGestures(
-                    onTap = { onSeek((it.x / size.width).coerceIn(0f, 1f)) },
+                    onTap = { if (kotlin.math.abs(it.y - lineY) <= reach) onSeek((it.x / size.width).coerceIn(0f, 1f)) },
                     onLongPress = {
+                        if (kotlin.math.abs(it.y - lineY) > reach) return@detectTapGestures
                         val fraction = (it.x / size.width).coerceIn(0f, 1f)
                         dragging = fraction
                         longPressText = longPressLabel?.invoke(fraction) ?: label
@@ -100,11 +104,14 @@ fun WavySeek(
                 )
             }
             .pointerInput(Unit) {
+                val reach = 14.dp.toPx()
+                val lineY = 20.dp.toPx()
+                var live = false
                 detectHorizontalDragGestures(
-                    onDragStart = { dragging = (it.x / size.width).coerceIn(0f, 1f) },
-                    onDragEnd = { dragging?.let(onSeek); dragging = null },
-                    onDragCancel = { dragging = null },
-                ) { change, _ -> dragging = (change.position.x / size.width).coerceIn(0f, 1f) }
+                    onDragStart = { live = kotlin.math.abs(it.y - lineY) <= reach; if (live) dragging = (it.x / size.width).coerceIn(0f, 1f) },
+                    onDragEnd = { if (live) dragging?.let(onSeek); dragging = null; live = false },
+                    onDragCancel = { dragging = null; live = false },
+                ) { change, _ -> if (live) dragging = (change.position.x / size.width).coerceIn(0f, 1f) }
             },
         ) {
         val stroke = 5.dp.toPx()
