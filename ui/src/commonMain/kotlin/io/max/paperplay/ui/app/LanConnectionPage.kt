@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.SkipNext
@@ -103,7 +105,10 @@ class LanActions(
     val disconnect: (String) -> Unit = {},
     /** Asks a linked device to "play", "pause", "next" or "previous". */
     val control: (String, String) -> Unit = { _, _ -> },
-    val addAddress: suspend (String) -> Boolean = { true },
+    /** Adds an address; with a device id it becomes one more address of that device. */
+    val addAddress: suspend (String, String?) -> Boolean = { _, _ -> true },
+    /** Changes a saved address (its key) to new text. */
+    val editAddress: suspend (String, String) -> Boolean = { _, _ -> true },
     val connectPaired: suspend (String) -> LanOutcome = { LanOutcome(true, "Connected") },
     val connectCode: suspend (String, Int, String) -> LanOutcome = { _, _, _ -> LanOutcome(true, "Connected") },
     val connectToken: suspend (String, Int) -> LanOutcome = { _, _ -> LanOutcome(true, "Connected") },
@@ -134,12 +139,12 @@ private fun resultText(r: AddressState?) = when (r) {
     AddressState.Trying -> "Trying now"
     AddressState.Unreachable -> "Could not reach it"
     AddressState.Refused -> "Refused the link"
+    AddressState.Seen -> "Seen on this network"
 }
 
 /** Settings > Devices > Connection, the local network part. Needs a backend; see [LanConnectionContent] for the screen itself. */
 @Composable
 internal fun LanConnectionPage(backend: CoreBackend) {
-    AddressState.Seen -> "Seen on this network"
     var lan by remember { mutableStateOf(backend.lanSync) }
     val sync = lan
     if (sync == null) {
@@ -168,7 +173,8 @@ internal fun LanConnectionPage(backend: CoreBackend) {
             removeAddress = { scope.launch { sync.removeAddress(it) } },
             disconnect = { scope.launch { sync.disconnect(it) } },
             control = { id, action -> scope.launch { sync.sendControl(id, action) } },
-            addAddress = { sync.addAddress(it) },
+            addAddress = { text, id -> sync.addAddress(text, null, id) },
+            editAddress = { key, text -> sync.editAddress(key, text) },
             connectPaired = { sync.connect(it).outcome() },
             connectCode = { host, port, code -> sync.connectWithCode(host, port, code).outcome() },
             connectToken = { host, port -> sync.connectWithToken(host, port).outcome() },
@@ -207,7 +213,8 @@ private fun LanSync.collectUi(): LanUi {
 private sealed interface LanDialog {
     data object Password : LanDialog
     data object Name : LanDialog
-    data object AddAddress : LanDialog
+    data class AddAddress(val deviceId: String?, val deviceName: String?) : LanDialog
+    data class EditAddress(val key: String, val current: String) : LanDialog
     data object ResetCode : LanDialog
     data object UnpairAll : LanDialog
     data class Code(val host: String, val port: Int, val name: String) : LanDialog
@@ -233,6 +240,20 @@ internal fun LanConnectionContent(ui: LanUi, a: LanActions) {
             )
         }
         if (!ui.available) return@Column
+
+        LanCard("This device") {
+            SettingsRow("Device name", icon = Icons.Rounded.Devices, subtitle = ui.name.ifBlank { "Not set" }) {
+                TextButton({ dialog = LanDialog.Name }) { Text("Edit") }
+            }
+            if (ui.addresses.isEmpty()) SettingsRow("No network address", subtitle = "Join a Wi-Fi or wired network to be found by other devices")
+            for (addr in ui.addresses) {
+                SettingsRow("$addr:${ui.port}", subtitle = "Type this on the other device") {
+                    IconButton({ clipboard.setText(AnnotatedString("$addr:${ui.port}")); note = "Copied $addr:${ui.port}" }) {
+                        AppIcon(Icons.Rounded.ContentCopy, "Copy address")
+                    }
+                }
+            }
+        }
 
         LanCard("Connected devices") {
             if (ui.connected.isEmpty()) {
@@ -277,25 +298,30 @@ internal fun LanConnectionContent(ui: LanUi, a: LanActions) {
             }
         }
 
-        LanCard("Saved addresses") {
-            if (ui.saved.isEmpty()) SettingsRow("No saved addresses", subtitle = "Add the address of a device to connect to it")
-            for (k in ui.saved) {
-                SavedRow(
-                    k,
+        LanCard("Known devices") {
+            // One entry per device however many addresses it has had: a phone that moves between home, office and other Wi-Fi
+            // (or gets a new address after a router restart) stays one device with a list of addresses to edit or delete.
+            val groups = ui.saved.groupBy { it.deviceId ?: it.name?.let { n -> "name:$n" } ?: "addr:${it.key}" }
+            if (groups.isEmpty()) SettingsRow("No saved addresses", subtitle = "Add the address of a device to connect to it")
+            for ((_, list) in groups) {
+                val id = list.firstNotNullOfOrNull { it.deviceId }
+                val title = id?.let { i -> ui.paired.firstOrNull { it.id == i }?.name ?: ui.connected.firstOrNull { it.id == i }?.name }
+                    ?: list.firstNotNullOfOrNull { it.name } ?: list.first().host
+                val isConnected = id != null && ui.connected.any { it.id == id }
+                DeviceGroup(
+                    title, list, isConnected, id != null && id in pairedIds,
                     onConnect = {
-                        val id = k.deviceId
-                        if (id != null && id in pairedIds) {
-                            scope.launch { note = a.connectPaired(id).text }
-                        } else {
-                            dialog = LanDialog.Code(k.host, k.port, k.name ?: k.host)
-                        }
+                        if (id != null && id in pairedIds) scope.launch { note = a.connectPaired(id).text }
+                        else dialog = LanDialog.Code(list.first().host, list.first().port, title)
                     },
-                    onDelete = { a.removeAddress(k.key) },
+                    onEdit = { key -> dialog = LanDialog.EditAddress(key, key) },
+                    onDelete = { key -> a.removeAddress(key) },
+                    onAdd = { dialog = LanDialog.AddAddress(id, title) },
                 )
             }
-            OutlinedButton({ dialog = LanDialog.AddAddress }, Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
+            OutlinedButton({ dialog = LanDialog.AddAddress(null, null) }, Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
                 AppIcon(Icons.Rounded.Add, null, Modifier.padding(end = 8.dp))
-                Text("Add address")
+                Text("Add a new device address")
             }
         }
 
@@ -325,20 +351,6 @@ internal fun LanConnectionContent(ui: LanUi, a: LanActions) {
             }
         }
 
-        LanCard("This device") {
-            SettingsRow("Device name", icon = Icons.Rounded.Devices, subtitle = ui.name.ifBlank { "Not set" }) {
-                TextButton({ dialog = LanDialog.Name }) { Text("Edit") }
-            }
-            if (ui.addresses.isEmpty()) SettingsRow("No network address", subtitle = "Join a Wi-Fi or wired network to be found by other devices")
-            for (addr in ui.addresses) {
-                SettingsRow("$addr:${ui.port}", subtitle = "Type this on the other device") {
-                    IconButton({ clipboard.setText(AnnotatedString("$addr:${ui.port}")); note = "Copied $addr:${ui.port}" }) {
-                        AppIcon(Icons.Rounded.ContentCopy, "Copy address")
-                    }
-                }
-            }
-        }
-
         LanCard("Encryption") {
             SettingsRow("Always on", icon = Icons.Rounded.Lock, subtitle = "Every connection is encrypted and can't be turned off.")
             SwitchRow(
@@ -362,10 +374,14 @@ internal fun LanConnectionContent(ui: LanUi, a: LanActions) {
     when (val d = dialog) {
         null -> {}
         LanDialog.Name -> LanTextDialog("Device name", "Name", "Save", { dialog = null }, initial = ui.name) { a.setName(it); null }
-        LanDialog.AddAddress -> LanTextDialog(
-            "Add address", "Address", "Add", { dialog = null },
+        is LanDialog.AddAddress -> LanTextDialog(
+            if (d.deviceName != null) "Add an address of ${d.deviceName}" else "Add address", "Address", "Add", { dialog = null },
+            message = if (d.deviceName != null) "Another address this device answers at, for example on your office or home network." else "For example 192.168.1.5 or 192.168.1.5:47872",
+        ) { if (a.addAddress(it, d.deviceId)) null else "That is not an address" }
+        is LanDialog.EditAddress -> LanTextDialog(
+            "Edit address", "Address", "Save", { dialog = null }, initial = d.current,
             message = "For example 192.168.1.5 or 192.168.1.5:47872",
-        ) { if (a.addAddress(it)) null else "That is not an address" }
+        ) { if (a.editAddress(d.key, it)) null else "That is not an address" }
         LanDialog.Password -> LanTextDialog(
             "Password", "New password", "Save", { dialog = null }, secret = true,
             message = "At least 6 characters. A new device can enter it instead of a PIN.",
@@ -453,6 +469,31 @@ internal fun ConnectedRow(
             TextButton(onDisconnect) { Text("Disconnect") }
         }
         syncNote?.let { Text(it, Modifier.padding(start = 56.dp, end = 20.dp, top = 4.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+    }
+}
+
+/** One device with all its saved addresses, each of which can be edited or deleted, and a way to add another. */
+@Composable
+private fun DeviceGroup(
+    title: String, addresses: List<KnownAddress>, connected: Boolean, paired: Boolean,
+    onConnect: () -> Unit, onEdit: (String) -> Unit, onDelete: (String) -> Unit, onAdd: () -> Unit,
+) {
+    Column(Modifier.padding(bottom = 8.dp)) {
+        SettingsRow(
+            title, icon = Icons.Rounded.Devices,
+            subtitle = if (connected) "Connected" else if (paired) "Paired, not connected" else "Not paired yet",
+        ) { Button(onConnect, enabled = !connected) { Text(if (connected) "Connected" else "Connect") } }
+        for (k in addresses) {
+            Row(Modifier.padding(start = 56.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("${k.host}:${k.port}", style = MaterialTheme.typography.bodyMedium)
+                    Text(resultText(k.lastResult), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                IconButton({ onEdit(k.key) }) { AppIcon(Icons.Rounded.Edit, "Edit address ${k.host}") }
+                IconButton({ onDelete(k.key) }) { AppIcon(Icons.Rounded.Delete, "Delete address ${k.host}") }
+            }
+        }
+        TextButton(onAdd, Modifier.padding(start = 48.dp)) { Text("Add an address of $title") }
     }
 }
 
