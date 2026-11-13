@@ -330,3 +330,10 @@ Updated 13 Nov 2026, night (sync, bots, search and volume round at the end; comp
 - [ ] Try on screen and phone: all of the above, especially system volume on Windows, tray click, full screen, themed login page, device popups
 - [ ] Idea list: remote control and live device list already exist; per-device permissions, safety code on pairing, trusted networks, offline-proof pairing (PAKE), "Only paired devices may link" on by default
 - [ ] RAM (measured on the new build, idle): desktop 319 MB working set, heap 46 MB, metaspace 64 MB, Intel D3D12 driver files about 175 MB, libvlc loaded at idle (create it on first play), 52 threads, CPU 1%; Android native heap 158 MB allocated (TDLib), Java heap 14 MB, private 64 MB. Next: lazy libvlc, `-Dskiko.renderApi=OPENGL`/`SOFTWARE` test, TDLib options (no message database, smaller caches)
+
+## Update 2026-11-13 (last: reading with every bot; compiles, not tried)
+- [x] Reading speed is the real number of requests a minute (one at a time when slow; lanes only above 30 a minute) so Full rescan and Repair stop hitting Telegram's rate limit; the slider is on the Repair page and above Full rescan (Library settings)
+- [x] Repair can read each chat with every logged-in extra bot (switch "Also read with the extra bots", on by default). Each bot adds only songs the library lacks; songs only an extra bot can read are stored as `bot:<id>:<remote id>` and played, pinned and given covers through that bot
+- [x] Repair can also read the main chat with your own account (switch "Also read with your account", off by default); songs no bot could read are added to play through the account (the Recover page's index and `addMissingFromMainChat`)
+- [ ] Try on the real chat: Repair with the bots switch on; the log shows one line per bot. Check a song that only an extra bot can read plays, and that the song count rises towards the phone's 3,112
+- [ ] Not done: start extra bots only when a scan or upload needs them and stop them after idle (they all run at launch now and cost memory); find which bot sent a song from the account's view; a device without a song's owner bot falls back to the main bot, which cannot read it
