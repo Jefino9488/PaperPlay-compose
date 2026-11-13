@@ -148,6 +148,7 @@ internal class JavaLanSync(private val env: LanEnv) : LanSync {
     private var udp: DatagramSocket? = null
     private var udpJobs: List<Job> = emptyList()
     private val peers = ConcurrentHashMap<String, Peer>()
+    private val autoDialing = ConcurrentHashMap.newKeySet<String>()
     private val pending = AtomicInteger(0)
 
     init {
@@ -510,8 +511,9 @@ internal class JavaLanSync(private val env: LanEnv) : LanSync {
     }
 
     private fun dialPaired(deviceId: String): ConnectResult {
-        val tries = (bk { forDevice(deviceId) }.map { it.host to it.port } +
-            _discovered.value.filter { it.id == deviceId }.map { it.host to it.port }).distinct()
+        // Where the device was just heard comes first, then every address saved for it, newest first.
+        val tries = (_discovered.value.filter { it.id == deviceId }.map { it.host to it.port } +
+            bk { forDevice(deviceId) }.map { it.host to it.port }).distinct()
         if (tries.isEmpty()) return ConnectResult(false, LanFailure.Unreachable)
         var last = ConnectResult(false, LanFailure.Unreachable)
         for ((h, p) in tries) {
@@ -705,8 +707,19 @@ internal class JavaLanSync(private val env: LanEnv) : LanSync {
     private fun addDiscovered(d: DiscoveredDevice) {
         val cutoff = env.clock() - 3 * 60_000
         val known = bk { forDevice(d.id).isNotEmpty() } || d.paired
-        if (known) bk { learn(d.host, d.port, d.id, d.name, AddressState.Trying) }
+        // Announcing is not trying: the address is only marked as seen, so it is not shown as "Trying now" for ever.
+        if (known) bk { learn(d.host, d.port, d.id, d.name, AddressState.Seen) }
         _discovered.value = (listOf(d) + _discovered.value.filter { it.id != d.id && it.lastSeen >= cutoff }).sortedByDescending { it.lastSeen }
+        // A paired device that shows up, at its old address or a new one, is linked at once instead of at the next 20 second round.
+        if (d.paired && _listening.value && !peers.containsKey(d.id) && autoDialing.add(d.id)) {
+            io.launch {
+                try {
+                    // Both sides see each other's announcement; a short random wait and a second look keep double dials rare.
+                    delay((150..900).random().toLong())
+                    if (!peers.containsKey(d.id) && _connecting.value.isEmpty()) runCatching { connect(d.id) }
+                } finally { autoDialing.remove(d.id) }
+            }
+        }
     }
 
     private fun probe(host: String, port: Int): DiscoveredDevice? {

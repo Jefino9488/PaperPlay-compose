@@ -139,6 +139,7 @@ private fun resultText(r: AddressState?) = when (r) {
 /** Settings > Devices > Connection, the local network part. Needs a backend; see [LanConnectionContent] for the screen itself. */
 @Composable
 internal fun LanConnectionPage(backend: CoreBackend) {
+    AddressState.Seen -> "Seen on this network"
     var lan by remember { mutableStateOf(backend.lanSync) }
     val sync = lan
     if (sync == null) {

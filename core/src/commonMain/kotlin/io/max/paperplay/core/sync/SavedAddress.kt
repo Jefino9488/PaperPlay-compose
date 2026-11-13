@@ -13,7 +13,8 @@ const val lanPort = 47872
 enum class ConnectFailure { Unreachable, Refused }
 
 /** How the last try at a saved address went. */
-enum class AddressState { Connected, Trying, Unreachable, Refused }
+/** [Seen] means the device announced itself there (it is on this network) without a link being made yet. */
+enum class AddressState { Connected, Trying, Unreachable, Refused, Seen }
 
 /** An address to try for another device. */
 data class SavedAddress(
