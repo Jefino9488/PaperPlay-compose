@@ -536,9 +536,9 @@ internal class JavaLanSync(private val env: LanEnv) : LanSync {
         if (targets.isEmpty()) return@withContext SyncResult(false, LanFailure.NotReady)
         var songs = 0
         var lists = 0
+        var other = 0
         var failure: LanFailure? = null
         for (p in targets) {
-        var other = 0
             val rid = newUuid()
             val waiter = CompletableDeferred<JsonObject>()
             p.waiting[rid] = waiter
@@ -548,9 +548,9 @@ internal class JavaLanSync(private val env: LanEnv) : LanSync {
                 if (reply == null || reply.flag("error") == true) { failure = failure ?: LanFailure.Protocol; continue }
                 val res = store.apply(SnapshotCodec.decode(reply.obj("data") ?: throw IllegalArgumentException("no data")))
                 songs += res.songsChanged; lists += res.playlistsChanged
+                other += (reply["changed"] as? kotlinx.serialization.json.JsonPrimitive)?.content?.toIntOrNull() ?: 0
             } catch (e: IOException) {
                 failure = failure ?: LanFailure.Protocol
-                other += (reply["changed"] as? kotlinx.serialization.json.JsonPrimitive)?.content?.toIntOrNull() ?: 0
             } catch (e: IllegalArgumentException) {
                 failure = failure ?: LanFailure.Protocol
             } finally {
