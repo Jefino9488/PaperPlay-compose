@@ -174,7 +174,7 @@ private fun CoverDialog(backend: CoreBackend, song: Song, notice: (String) -> Un
     val scope = rememberCoroutineScope()
     val pickImage = LocalAppEnv.current?.pickImage
     var term by remember {
-        mutableStateOf(listOfNotNull(song.album.ifBlank { song.title }, song.artist.takeIf { it != "Unknown artist" }).joinToString(" "))
+        mutableStateOf(listOfNotNull(song.title, song.artist.takeIf { it != "Unknown artist" }).joinToString(" "))
     }
     var options by remember { mutableStateOf<List<CoverOption>?>(null) }
     var busy by remember { mutableStateOf(true) }
