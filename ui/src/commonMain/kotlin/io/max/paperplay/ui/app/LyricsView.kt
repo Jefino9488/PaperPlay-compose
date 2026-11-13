@@ -21,6 +21,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -56,7 +57,7 @@ fun LyricsPane(song: SongUi, backend: PlayerControls, large: Boolean, modifier: 
     when {
         !loaded -> Text("Looking for lyrics", modifier.padding(24.dp), style = style, color = ink.copy(alpha = 0.6f))
         text == null -> Text("No lyrics found for this song.", modifier.padding(24.dp), style = style, color = ink.copy(alpha = 0.6f))
-        lines.isEmpty() -> Column(modifier.verticalScroll(rememberScrollState()).padding(24.dp)) { Text(text.orEmpty(), style = style, color = ink) }
+        lines.isEmpty() -> PlainLyrics(text.orEmpty(), style, ink, backend, song.durationSec * 1000L, modifier)
         else -> LazyColumn(modifier, state = list, contentPadding = PaddingValues(horizontal = 16.dp, vertical = 48.dp)) {
             itemsIndexed(lines) { i, l ->
                 Text(
@@ -68,6 +69,30 @@ fun LyricsPane(song: SongUi, backend: PlayerControls, large: Boolean, modifier: 
             }
         }
     }
+}
+
+/**
+ * Lyrics with no timestamps (any language) cannot be followed line by line, so they drift down in step with the song: the scroll
+ * position tracks the share of the song played. Dragging them takes over; after a few quiet seconds they follow the song again.
+ */
+@Composable
+private fun PlainLyrics(text: String, style: androidx.compose.ui.text.TextStyle, ink: androidx.compose.ui.graphics.Color, backend: PlayerControls, totalMs: Long, modifier: Modifier) {
+    val scroll = rememberScrollState()
+    val pos = backend.position.collectAsState()
+    val dragged by scroll.interactionSource.collectIsDraggedAsState()
+    var following by remember(text) { mutableStateOf(true) }
+    LaunchedEffect(dragged) {
+        if (dragged) following = false
+        else if (!following) { kotlinx.coroutines.delay(6000); following = true }
+    }
+    LaunchedEffect(text, following) {
+        androidx.compose.runtime.snapshotFlow {
+            // The first and last stretch of a song are usually instrumental, so the text is spread over the middle.
+            val played = if (totalMs > 0) pos.value.positionMs.toFloat() / totalMs else 0f
+            (((played - 0.05f) / 0.88f).coerceIn(0f, 1f) * scroll.maxValue).toInt()
+        }.collect { target -> if (following) scroll.animateScrollTo(target, androidx.compose.animation.core.tween(900, easing = androidx.compose.animation.core.LinearEasing)) }
+    }
+    Column(modifier.verticalScroll(scroll).padding(24.dp)) { Text(text, style = style, color = ink) }
 }
 
 /** Lyrics filling the whole content area, with the song named at the top and a way back. */
