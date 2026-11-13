@@ -1,6 +1,6 @@
 # PaperPlay Compose: what's done and what's left
 
-Updated 13 Nov 2026, night (sync, bots, search and volume round at the end; compiles, not tried; `[x]` in section 1 not individually re-checked)
+Updated 13 Nov 2026, end of session (compiles, mostly not tried on a device; `[x]` in section 1 not individually re-checked)
 
 **Marks:** `[x]` done and written, `[~]` half done, `[ ]` not done.
 "Compiles, not tried" means the Android release and desktop release built on 12 Nov (night) but the feature has not been tried on a device.
@@ -337,3 +337,12 @@ Updated 13 Nov 2026, night (sync, bots, search and volume round at the end; comp
 - [x] Repair can also read the main chat with your own account (switch "Also read with your account", off by default); songs no bot could read are added to play through the account (the Recover page's index and `addMissingFromMainChat`)
 - [ ] Try on the real chat: Repair with the bots switch on; the log shows one line per bot. Check a song that only an extra bot can read plays, and that the song count rises towards the phone's 3,112
 - [ ] Not done: start extra bots only when a scan or upload needs them and stop them after idle (they all run at launch now and cost memory); find which bot sent a song from the account's view; a device without a song's owner bot falls back to the main bot, which cannot read it
+
+## Update 2026-11-13 (end of session: clean devices, memory leaks, docs)
+- [x] Devices: no addresses in the player popups; phone sheet "Play on" (current output card with the song, other devices with controls, tiles for Connection, Network play and Output); PC keeps the minimal popup with Connection and Network play buttons that open those settings pages
+- [x] Memory leaks (desktop, grow with songs played): `StreamHttpServer` kept every played song registered (now the last 8), `QueueItem` cached one stream source per item for the life of the queue (now asks the resolver each time). An idle app was flat over 8 minutes (private 678 MB, heap 24 to 38 MB, 68 threads)
+- [x] Extra bots run with no message database (less memory per bot)
+- [x] README updated: features, release script, known limitations
+- [ ] Proposed, not built: Spotify style active device. Selecting another device sends it the queue, song and position and it starts there (the first pauses); this player mirrors the active device's song and progress with a "playing on <device>" icon and controls it; selecting this device pulls the queue back; a linked device that starts playing becomes the active one on the others automatically. Needs queue and position messages in `JavaLanSync` (`LanMessage` and `sendQueue` exist as stubs) and an `activeDevice` state in `CoreBackend`
+- [ ] Next memory steps: start extra bots only when a scan or upload needs them and stop them when idle; create libvlc on the first play (restoring the last session creates the player at startup); test `-Dskiko.renderApi=OPENGL` and `SOFTWARE`; measure a long listening session
+- [ ] Try everything on screen and phone before trusting it: the unchecked lines of the last four sections
