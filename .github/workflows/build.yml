@@ -125,6 +125,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release download deps --repo "${{ github.repository }}" --pattern "tdlib-windows.zip" --dir "$env:RUNNER_TEMP" 2>$null
+          $global:LASTEXITCODE = 0 # a missing release is expected; the step must not inherit gh's exit code
           if (Test-Path "$env:RUNNER_TEMP\tdlib-windows.zip") {
             Expand-Archive "$env:RUNNER_TEMP\tdlib-windows.zip" -DestinationPath "$env:RUNNER_TEMP\tdlib" -Force
             "PAPERPLAY_TDLIB=$env:RUNNER_TEMP\tdlib" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
