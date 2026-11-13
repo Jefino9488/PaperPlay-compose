@@ -55,7 +55,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import org.jetbrains.compose.ui.tooling.preview.Preview
@@ -86,7 +85,7 @@ fun NavBar(selected: Int, backdrop: Backdrop, prefs: UiPrefs, inset: Dp, onSelec
     val items: @Composable () -> Unit = {
         Row(Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 6.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
             entries.forEachIndexed { i, e ->
-                val w by animateFloatAsState(if (layout == NavLayout.Pill && i == selected) 1.9f else 1f)
+                val w by animateFloatAsState(if (layout == NavLayout.Pill && i == selected) 1.9f else 1f, io.max.paperplay.ui.theme.motionSpring(), label = "pill")
                 NavItem(e, i == selected, prefs, if (layout == NavLayout.Dock || layout == NavLayout.Pill) Modifier.weight(w) else Modifier, taskRunning = taskRunning && i == 3) { onSelect(i) }
             }
         }
@@ -114,7 +113,6 @@ private fun NavItem(e: NavEntry, on: Boolean, prefs: UiPrefs, modifier: Modifier
     val look = prefs.selectionLook
     val scheme = MaterialTheme.colorScheme
     val ink = if (on) (if (look == SelectionLook.Fill) scheme.onPrimaryContainer else scheme.primary) else scheme.onSurface
-    val scale by animateFloatAsState(1f)
     val shape = RoundedCornerShape(28.dp * (prefs.selectionRadius / 100f))
     val bg = when {
         on && look == SelectionLook.Fill -> scheme.primaryContainer.copy(alpha = 0.9f)
@@ -125,10 +123,10 @@ private fun NavItem(e: NavEntry, on: Boolean, prefs: UiPrefs, modifier: Modifier
     val icon: @Composable () -> Unit = {
         if (taskRunning) {
             BadgedBox(badge = { Badge() }) {
-                AppIcon(if (on) e.selected else e.icon, e.label, Modifier.size(27.dp).scale(scale), tint = ink)
+                AppIcon(if (on) e.selected else e.icon, e.label, Modifier.size(27.dp), tint = ink)
             }
         } else {
-            AppIcon(if (on) e.selected else e.icon, e.label, Modifier.size(27.dp).scale(scale), tint = ink)
+            AppIcon(if (on) e.selected else e.icon, e.label, Modifier.size(27.dp), tint = ink)
         }
     }
     val inner = Modifier.clip(shape).background(bg).then(ring).clickable(onClick = onClick).animateContentSize()

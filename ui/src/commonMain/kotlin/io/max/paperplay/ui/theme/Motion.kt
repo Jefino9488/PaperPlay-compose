@@ -8,6 +8,8 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.lazy.LazyItemScope
+import androidx.compose.ui.Modifier
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.staticCompositionLocalOf
 
@@ -34,3 +36,12 @@ fun <T> motionTween(durationMs: Int = Motion.STANDARD, easing: Easing = Motion.S
 @Composable
 fun <T> sheetSpring(): FiniteAnimationSpec<T> =
     if (LocalReduceMotion.current) snap() else spring(dampingRatio = 0.85f, stiffness = Spring.StiffnessMediumLow)
+
+/** A lightly bouncy spring for things that settle, such as the nav bar pill. */
+@Composable
+fun <T> motionSpring(): FiniteAnimationSpec<T> =
+    if (LocalReduceMotion.current) snap() else spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMedium)
+
+/** For items of a lazy list with stable keys: they glide to a new place and fade in and out. Nothing when motion is reduced. */
+@Composable
+fun LazyItemScope.motionItem(): Modifier = if (LocalReduceMotion.current) Modifier else Modifier.animateItem()

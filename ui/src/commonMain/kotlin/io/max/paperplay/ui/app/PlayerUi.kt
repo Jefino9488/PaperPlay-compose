@@ -1,6 +1,7 @@
 ﻿package io.max.paperplay.ui.app
 
 import io.max.paperplay.ui.components.AppIcon
+import io.max.paperplay.ui.theme.motionItem
 import kotlinx.coroutines.launch
 
 import androidx.compose.animation.animateColorAsState
@@ -403,7 +404,7 @@ private fun QueueList(state: PlaybackUiState, backend: PlayerControls, modifier:
         itemsIndexed(state.queue, key = { i, _ -> keys[i] }) { i, s ->
             val on = i == state.queueIndex
             Row(
-                Modifier.fillMaxWidth().background(if (on) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f) else Color.Transparent)
+                motionItem().fillMaxWidth().background(if (on) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f) else Color.Transparent)
                     .clickable { backend.playQueueIndex(i) }.padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
