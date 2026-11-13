@@ -176,7 +176,7 @@ fun MiniPlayer(
                 if (onDevices != null) {
                     var devicesOpen by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
                     IconButton({ devicesOpen = true }, Modifier.size(40.dp)) { AppIcon(Icons.Rounded.Devices, "Devices", Modifier.size(22.dp), tint = ink) }
-                    if (devicesOpen) PhoneDevicesDialog(onDevices, io.max.paperplay.ui.rememberOutputSwitcher()) { devicesOpen = false }
+                    if (devicesOpen) PhoneDevicesDialog(onDevices, io.max.paperplay.ui.rememberOutputSwitcher(), song) { devicesOpen = false }
                 }
                 IconButton(onPrevious) { AppIcon(Icons.Rounded.SkipPrevious, "Previous", tint = ink) }
                 IconButton(onToggle) { AppIcon(if (state.playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (state.playing) "Pause" else "Play", Modifier.size(32.dp), tint = ink) }

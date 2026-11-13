@@ -262,7 +262,7 @@ private fun PlayerBody(
                         Text(out.name, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall, modifier = Modifier.widthIn(max = 200.dp))
                     }
                 }
-                if (devicesOpen && onDevices != null) PhoneDevicesDialog(onDevices, switchOutput) { devicesOpen = false }
+                if (devicesOpen && onDevices != null) PhoneDevicesDialog(onDevices, switchOutput, song) { devicesOpen = false }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     val standbyPrefs = if (io.max.paperplay.ui.isPhone) LocalUiPrefs.current?.standby else null
                     if (standbyPrefs != null) {
@@ -624,41 +624,6 @@ private fun SleepTimerDialogPreview() = io.max.paperplay.ui.PreviewFrame {
 }
 
 /** Where the song plays and the ways to link other devices; the two links open those settings pages. */
-@Composable
-internal fun PhoneDevicesDialog(onOpen: (String) -> Unit, switchOutput: (() -> Unit)?, onDismiss: () -> Unit) {
-    val scheme = MaterialTheme.colorScheme
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Devices") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    AppIcon(Icons.Rounded.PhoneAndroid, null, tint = scheme.primary)
-                    Column(Modifier.padding(start = 12.dp)) {
-                        Text("This phone", color = scheme.primary, style = MaterialTheme.typography.bodyLarge)
-                        Text("Playing here", color = scheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-                    }
-                }
-                LanDevicesSection(Modifier.padding(vertical = 8.dp))
-                if (switchOutput != null) Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { onDismiss(); switchOutput() }.padding(vertical = 8.dp, horizontal = 4.dp)) {
-                    Text("Audio output", style = MaterialTheme.typography.bodyLarge)
-                    Text("Speaker, Bluetooth or cast", color = scheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-                }
-                listOf(
-                    Triple("netplay", "Network play", "Listen together with people on the same network"),
-                    Triple("devices", "Connect devices", "Link other PaperPlay devices and keep running"),
-                ).forEach { (id, title, hint) ->
-                    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { onDismiss(); onOpen(id) }.padding(vertical = 8.dp, horizontal = 4.dp)) {
-                        Text(title, style = MaterialTheme.typography.bodyLarge)
-                        Text(hint, color = scheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-                    }
-                }
-            }
-        },
-        confirmButton = { TextButton(onDismiss) { Text("Close") } },
-    )
-}
-
 /** What the song is, what the output does to it and whether it arrives untouched. Answers "is this playing at full quality?". */
 @Composable
 internal fun OutputInfoDialog(song: SongUi, backend: PlayerControls, onDismiss: () -> Unit) {
