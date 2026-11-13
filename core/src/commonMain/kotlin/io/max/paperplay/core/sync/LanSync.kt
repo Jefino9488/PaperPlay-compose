@@ -59,8 +59,8 @@ enum class LanFailure {
 /** Result of a connect. [device] is set when [ok]. */
 data class ConnectResult(val ok: Boolean, val failure: LanFailure? = null, val device: LanDevice? = null)
 
-/** What a sync changed on this device. */
-data class SyncResult(val ok: Boolean, val failure: LanFailure? = null, val songsChanged: Int = 0, val playlistsChanged: Int = 0)
+/** What a sync changed: [songsChanged] and [playlistsChanged] on this device, [otherChanged] (songs and playlists together) on the other. A sync goes both ways. */
+data class SyncResult(val ok: Boolean, val failure: LanFailure? = null, val songsChanged: Int = 0, val playlistsChanged: Int = 0, val otherChanged: Int = 0)
 
 /** A message from a linked device that is not part of the sync (queue and now playing share, stubs for now). */
 data class LanMessage(val deviceId: String, val type: String, val body: String)

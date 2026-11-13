@@ -125,7 +125,8 @@ private fun failureText(f: LanFailure?) = when (f) {
 
 private fun ConnectResult.outcome() = if (ok) LanOutcome(true, "Connected to ${device?.name ?: "the device"}") else LanOutcome(false, failureText(failure))
 private fun SyncResult.outcome() =
-    if (ok) LanOutcome(true, "Synced. Changed here: $songsChanged songs, $playlistsChanged playlists") else LanOutcome(false, failureText(failure))
+    // The sync goes both ways: each side sends what it has and keeps the newer change for every song and playlist.
+    if (ok) LanOutcome(true, "Synced both ways. Updated on this device: $songsChanged songs, $playlistsChanged playlists. Updated on the other: $otherChanged") else LanOutcome(false, failureText(failure))
 
 private fun resultText(r: AddressState?) = when (r) {
     null -> "Not tried yet"
@@ -547,7 +548,7 @@ private fun PinRowPreview() = io.max.paperplay.ui.PreviewFrame {
 
 @org.jetbrains.compose.ui.tooling.preview.Preview(name = "Connected row", widthDp = 390, heightDp = 220, showBackground = true)
 @Composable
-private fun ConnectedRowPreview() = io.max.paperplay.ui.PreviewFrame { ConnectedRow(sampleDevice, "Synced. Changed here: 3 songs, 0 playlists", false, {}, {}) }
+private fun ConnectedRowPreview() = io.max.paperplay.ui.PreviewFrame { ConnectedRow(sampleDevice, "Synced both ways. Updated on this device: 3 songs, 0 playlists. Updated on the other: 1", false, {}, {}) }
 
 @org.jetbrains.compose.ui.tooling.preview.Preview(name = "Saved row", widthDp = 390, heightDp = 200, showBackground = true)
 @Composable

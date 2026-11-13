@@ -536,6 +536,7 @@ internal class JavaLanSync(private val env: LanEnv) : LanSync {
         var lists = 0
         var failure: LanFailure? = null
         for (p in targets) {
+        var other = 0
             val rid = newUuid()
             val waiter = CompletableDeferred<JsonObject>()
             p.waiting[rid] = waiter
@@ -547,13 +548,14 @@ internal class JavaLanSync(private val env: LanEnv) : LanSync {
                 songs += res.songsChanged; lists += res.playlistsChanged
             } catch (e: IOException) {
                 failure = failure ?: LanFailure.Protocol
+                other += (reply["changed"] as? kotlinx.serialization.json.JsonPrimitive)?.content?.toIntOrNull() ?: 0
             } catch (e: IllegalArgumentException) {
                 failure = failure ?: LanFailure.Protocol
             } finally {
                 p.waiting.remove(rid)
             }
         }
-        SyncResult(failure == null, failure, songs, lists)
+        SyncResult(failure == null, failure, songs, lists, other)
     }
 
     override suspend fun unpair(deviceId: String) {
