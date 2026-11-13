@@ -3,9 +3,12 @@ package io.max.paperplay.ui
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.ImageBitmap
 
-/** Runs [onBack] on the system back gesture or key while [enabled]. Desktop has no back gesture, so it does nothing there. */
+/**
+ * Runs [onBack] on the system back gesture or key while [enabled]. While a swipe is under way [onProgress] gets how far
+ * it has gone, 0 to 1, and 0 again if it is cancelled. Desktop has no back gesture, so it does nothing there.
+ */
 @Composable
-expect fun PlatformBackHandler(enabled: Boolean, onBack: () -> Unit)
+expect fun PlatformBackHandler(enabled: Boolean, onProgress: (Float) -> Unit = {}, onBack: () -> Unit)
 
 /** False while the app is in the background, so animations that run every frame can stop. Always true on desktop. */
 @Composable

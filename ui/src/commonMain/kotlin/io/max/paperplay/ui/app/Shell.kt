@@ -41,6 +41,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -93,6 +94,8 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
     // True when a page was opened straight from Profile or a library link: Back then returns there, not to the Settings list.
     var settingsDeep by remember { mutableStateOf(false) }
     var showPlayer by remember { mutableStateOf(false) }
+    // How far the full player has slid up; it follows a drag and the back swipe.
+    val sheet = remember { PlayerSheetState() }
     // Where the phone came from, so Back returns there instead of jumping to Home or Settings.
     val history = remember { mutableStateListOf<NavSnapshot>() }
     fun snapshot() = NavSnapshot(tab, libraryTab, profilePage, detail, settings, settingsStack.toList(), settingsDeep, page)
@@ -186,7 +189,12 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
         if (openRequest != null) open?.value = null
     }
     // One handler: several enabled handlers would let the last one win.
-    PlatformBackHandler(showPlayer || settings || detail != null || profilePage != null || tab != 0 || history.isNotEmpty(), ::handleBack)
+    PlatformBackHandler(
+        showPlayer || settings || detail != null || profilePage != null || tab != 0 || history.isNotEmpty(),
+        // The player shrinks a little as the swipe goes; a cancelled swipe puts it back.
+        onProgress = { p -> if (showPlayer) scope.launch { sheet.progress.snapTo(1f - 0.3f * p) } },
+        onBack = ::handleBack,
+    )
 
     val songs = (lib.songs as? Load.Ready)?.value.orEmpty()
     val currentId = pb.current?.id
@@ -259,7 +267,7 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
                     Modifier.align(Alignment.BottomCenter).fillMaxWidth().then(if (prefs.floatingNav) Modifier.padding(start = 16.dp, end = 16.dp, bottom = bottomInset.coerceAtLeast(12.dp)) else Modifier),
                 ) {
                     if (pb.current != null) {
-                        MiniPlayer(pb, { showPlayer = true }, backend::togglePlay, backend::next, backend::previous, { pos.value.progress(pb.durationMs) }, if (prefs.floatingNav) Modifier else Modifier.padding(horizontal = 8.dp),
+                        MiniPlayer(pb, { showPlayer = true }, backend::togglePlay, backend::next, backend::previous, { pos.value.progress(pb.durationMs) }, Modifier.graphicsLayer { alpha = 1f - sheet.progress.value }.then(if (prefs.floatingNav) Modifier else Modifier.padding(horizontal = 8.dp)),
                             onDevices = { id -> navigate { settings = true; settingsDeep = true; settingsStack.clear(); settingsStack.add(id) } })
                         Box(Modifier.height(8.dp))
                     }
@@ -272,10 +280,12 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
                         taskRunning = scanning,
                     )
                 }
-                if (showPlayer) FullPlayer(
-                    pb, pbError, backend, actions, { showPlayer = false },
-                    onOpenSettings = { id -> navigate { settings = true; settingsDeep = true; settingsStack.clear(); settingsStack.add(id) } },
-                )
+                PlayerSheetHost(showPlayer, sheet) {
+                    FullPlayer(
+                        pb, pbError, backend, actions, { showPlayer = false },
+                        onOpenSettings = { id -> navigate { settings = true; settingsDeep = true; settingsStack.clear(); settingsStack.add(id) } },
+                    )
+                }
                 SnackbarHost(snack, Modifier.align(Alignment.TopCenter).padding(top = top))
             } else {
                 // Desktop: sidebar, content card, now playing panel, player bar.
@@ -378,7 +388,7 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
                         shell()
                     }
                 } else shell()
-                if (showPlayer) FullPlayer(pb, pbError, backend, actions, { showPlayer = false })
+                PlayerSheetHost(showPlayer, sheet) { FullPlayer(pb, pbError, backend, actions, { showPlayer = false }) }
                 SnackbarHost(snack, Modifier.align(Alignment.BottomCenter).padding(bottom = 96.dp))
                 ShortcutsOverlay(keys, Modifier.fillMaxSize())
             }

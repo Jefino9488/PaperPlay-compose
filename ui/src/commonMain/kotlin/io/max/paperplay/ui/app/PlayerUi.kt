@@ -1,6 +1,7 @@
 ﻿package io.max.paperplay.ui.app
 
 import io.max.paperplay.ui.components.AppIcon
+import kotlinx.coroutines.launch
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -166,16 +167,17 @@ fun FullPlayer(
                         else QueueList(state, backend, Modifier.weight(1f))
                     }
                 }
-                showQueue -> Column(Modifier.fillMaxSize()) {
-                    Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        IconButton({ showQueue = false }) { AppIcon(Icons.Rounded.KeyboardArrowDown, "Back to the song", Modifier.size(32.dp)) }
-                        Text("Queue", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
-                        Text("${state.queue.size} songs", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Spacer(Modifier.width(12.dp))
-                    }
-                    QueueList(state, backend, Modifier.weight(1f))
+                else -> androidx.compose.animation.Crossfade(showQueue, animationSpec = io.max.paperplay.ui.theme.motionTween(), label = "queue") { queueShown ->
+                    if (queueShown) Column(Modifier.fillMaxSize()) {
+                        Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            IconButton({ showQueue = false }) { AppIcon(Icons.Rounded.KeyboardArrowDown, "Back to the song", Modifier.size(32.dp)) }
+                            Text("Queue", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+                            Text("${state.queue.size} songs", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Spacer(Modifier.width(12.dp))
+                        }
+                        QueueList(state, backend, Modifier.weight(1f))
+                    } else PlayerBody(song, state, error, backend, actions, onClose, grabber = true, Modifier.fillMaxSize(), onQueue = { showQueue = true }, onStandby = openStandby, onDevices = onOpenSettings?.let { open -> { id: String -> onClose(); open(id) } })
                 }
-                else -> PlayerBody(song, state, error, backend, actions, onClose, grabber = true, Modifier.fillMaxSize(), onQueue = { showQueue = true }, onStandby = openStandby, onDevices = onOpenSettings?.let { open -> { id: String -> onClose(); open(id) } })
             }
         }
     }
@@ -194,22 +196,35 @@ private fun PlayerBody(
         val short = io.max.paperplay.ui.isPhone && maxWidth > maxHeight
         // Room the controls need, so short screens shrink the cover, not them.
         val art = if (short) (maxHeight - 40.dp).coerceAtLeast(120.dp) else minOf(maxWidth - 48.dp, maxHeight - 25.dp - 410.dp).coerceAtLeast(120.dp)
+        val sheet = LocalPlayerSheet.current
+        val sheetPx = with(androidx.compose.ui.platform.LocalDensity.current) { maxHeight.toPx() }
+        val sheetSpec = androidx.compose.runtime.rememberUpdatedState(io.max.paperplay.ui.theme.sheetSpring<Float>())
+        val dragScope = androidx.compose.runtime.rememberCoroutineScope()
         val cover: @Composable (Modifier) -> Unit = { cm ->
-            // Drag down on the cover to close, sideways to change song.
+            // Drag down on the cover and the whole player follows your finger; sideways changes song, up opens the queue.
             Column(
-                cm.pointerInput(Unit) {
+                cm.pointerInput(sheet, sheetPx) {
                     var dx = 0f; var dy = 0f
+                    var pulling = false
+                    val tracker = androidx.compose.ui.input.pointer.util.VelocityTracker()
                     detectDragGestures(
-                        onDragStart = { dx = 0f; dy = 0f },
+                        onDragStart = { dx = 0f; dy = 0f; pulling = false; tracker.resetTracking() },
                         onDragEnd = {
                             when {
-                                dy > 80f && dy > kotlin.math.abs(dx) -> onClose()
+                                pulling -> dragScope.launch { if (sheet.release(tracker.calculateVelocity().y, sheetPx, sheetSpec.value)) onClose() }
                                 dy < -80f && dy < -kotlin.math.abs(dx) -> onQueue?.invoke()
                                 dx < -80f -> backend.next()
                                 dx > 80f -> backend.previous()
                             }
                         },
-                    ) { change, drag -> change.consume(); dx += drag.x; dy += drag.y }
+                        onDragCancel = { sheet.pull(0f) },
+                    ) { change, drag ->
+                        change.consume(); dx += drag.x; dy += drag.y
+                        // A drag that starts downward takes the whole sheet with it.
+                        if (!pulling && dy > 0f && dy > kotlin.math.abs(dx)) pulling = true
+                        tracker.addPosition(change.uptimeMillis, androidx.compose.ui.geometry.Offset(0f, dy))
+                        if (pulling) sheet.pull(dy)
+                    }
                 },
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
