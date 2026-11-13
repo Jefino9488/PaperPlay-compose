@@ -639,6 +639,7 @@ internal fun PhoneDevicesDialog(onOpen: (String) -> Unit, switchOutput: (() -> U
                         Text("Playing here", color = scheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                     }
                 }
+                LanDevicesSection(Modifier.padding(vertical = 8.dp))
                 if (switchOutput != null) Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { onDismiss(); switchOutput() }.padding(vertical = 8.dp, horizontal = 4.dp)) {
                     Text("Audio output", style = MaterialTheme.typography.bodyLarge)
                     Text("Speaker, Bluetooth or cast", color = scheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)

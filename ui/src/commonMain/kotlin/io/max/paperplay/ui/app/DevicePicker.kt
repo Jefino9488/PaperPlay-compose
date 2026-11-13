@@ -67,10 +67,7 @@ fun DevicePickerPopup(devices: List<DeviceUi>, onDismiss: () -> Unit) {
                         if (d.active) AppIcon(Icons.Rounded.Check, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
                     }
                 }
-                Text(
-                    "No other devices found. Other PaperPlay devices on your network will appear here once they can be reached.",
-                    Modifier.padding(top = 16.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                LanDevicesSection(Modifier.padding(top = 16.dp))
             }
         }
     }
