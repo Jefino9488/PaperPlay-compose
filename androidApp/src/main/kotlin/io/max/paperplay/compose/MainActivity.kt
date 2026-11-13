@@ -29,6 +29,7 @@ import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -48,7 +49,7 @@ class MainActivity : ComponentActivity() {
         open.value = "upload"
         Thread {
             val files = uris.mapNotNull { copyToCache(it, dir) }
-            if (files.isNotEmpty()) IncomingShares.files.value = IncomingShares.files.value + files
+            if (files.isNotEmpty()) IncomingShares.files.update { it + files }
         }.start()
     }
 
@@ -77,8 +78,8 @@ class MainActivity : ComponentActivity() {
     /** Runs the keep-alive notification while the pref allows it (off unless chosen), following the scanner. */
     @OptIn(FlowPreview::class)
     private fun watchActivity(s: AppServices) {
-        val allowed = s.library.pref("keep_running") == "true"
-        if (allowed) KeepAliveService.start(applicationContext)
+        fun allowed() = s.library.pref("keep_running") == "true"
+        if (allowed()) KeepAliveService.start(applicationContext)
         // Updates are dropped while the service is off, so the collector can run either way.
         s.scope.launch {
             var idleSince = 0L
@@ -97,7 +98,7 @@ class MainActivity : ComponentActivity() {
                     if (busy) {
                         idleSince = 0L
                         // Work began again: bring the service back if the pref allows it.
-                        if (allowed) KeepAliveService.start(applicationContext)
+                        if (allowed()) KeepAliveService.start(applicationContext)
                     } else {
                         if (idleSince == 0L) idleSince = now
                         if (now - idleSince >= 5 * 60_000L) KeepAliveService.stop(applicationContext)
@@ -187,10 +188,14 @@ class MainActivity : ComponentActivity() {
         auth.deliver(intent?.data)
         // A crash leaves its error text in a file, shown in Settings > Telegram > Bot activity on the next start.
         val crashFile = File(filesDir, "crash.txt")
-        val previous = Thread.getDefaultUncaughtExceptionHandler()
-        Thread.setDefaultUncaughtExceptionHandler { t, e ->
-            runCatching { crashFile.writeText(Thread.currentThread().name + ": " + e.stackTraceToString().take(6000)) }
-            previous?.uncaughtException(t, e)
+        // Once per process: every new activity used to wrap the previous handler again.
+        if (!crashHandlerInstalled) {
+            crashHandlerInstalled = true
+            val previous = Thread.getDefaultUncaughtExceptionHandler()
+            Thread.setDefaultUncaughtExceptionHandler { t, e ->
+                runCatching { crashFile.writeText(Thread.currentThread().name + ": " + e.stackTraceToString().take(6000)) }
+                previous?.uncaughtException(t, e)
+            }
         }
         intent?.getStringExtra(OPEN_EXTRA)?.let { open.value = it }
         val library = File(filesDir, "library.sqlite")
@@ -326,6 +331,8 @@ class MainActivity : ComponentActivity() {
         /** The services of this process, shared by every activity instance. Cleared by a restore, which closes them. */
         @Volatile
         var shared: AppServices? = null
+
+        private var crashHandlerInstalled = false
 
         /** True while an activity of the app is visible. */
         @Volatile

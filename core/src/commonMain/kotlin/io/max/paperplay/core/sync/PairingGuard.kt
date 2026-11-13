@@ -20,8 +20,10 @@ class PairingGuard(
     private var pin: PairingPin? = null
     private var password: String? = null
     private val fails = HashMap<String, Int>()
+    private val failsSince = HashMap<String, Long>()
     private val lockedUntil = HashMap<String, Long>()
     private var failsAll = 0
+    private var failsAllSince = 0L
     private var lockedAllUntil = 0L
 
     fun newPin(): PairingPin = synchronized(lock) {
@@ -40,7 +42,7 @@ class PairingGuard(
     /** New code invalidates the old ones: drops the PIN and the password, clears lockouts. */
     fun reset() = synchronized(lock) {
         pin = null; password = null
-        fails.clear(); lockedUntil.clear(); failsAll = 0; lockedAllUntil = 0
+        fails.clear(); failsSince.clear(); lockedUntil.clear(); failsAll = 0; failsAllSince = 0L; lockedAllUntil = 0
     }
 
     /** The codes that would be accepted now. */
@@ -60,16 +62,24 @@ class PairingGuard(
     fun attempt(source: String, matches: (String) -> Boolean): CodeAttempt = synchronized(lock) {
         val now = clock()
         if (lockedAllUntil > now || (lockedUntil[source] ?: 0L) > now) return CodeAttempt.Locked
+        // Wrong tries count only inside one lock window, so old typos never add up to a lockout; idle sources are forgotten.
+        val windowStart = now - lockMs
+        if (failsAllSince < windowStart) { failsAll = 0; failsAllSince = now }
+        failsSince.entries.removeAll { it.value < windowStart }
+        fails.keys.retainAll(failsSince.keys)
+        lockedUntil.entries.removeAll { it.value <= now }
         val p = pin?.takeIf { it.expiresAt > now }
         val hit = (if (p != null && matches(p.code)) 1 else 0) + (if (password.let { it != null && matches(it) }) 2 else 0)
         if (hit != 0) {
             if (hit and 1 != 0) pin = null
-            fails.remove(source)
+            fails.remove(source); failsSince.remove(source)
+            failsAll = 0
             return CodeAttempt.Ok
         }
         val n = (fails[source] ?: 0) + 1
         fails[source] = n
-        if (n >= maxFails) { lockedUntil[source] = now + lockMs; fails.remove(source) }
+        if (source !in failsSince) failsSince[source] = now
+        if (n >= maxFails) { lockedUntil[source] = now + lockMs; fails.remove(source); failsSince.remove(source) }
         failsAll += 1
         if (failsAll >= maxFailsAll) { lockedAllUntil = now + lockMs; failsAll = 0 }
         return CodeAttempt.Wrong
