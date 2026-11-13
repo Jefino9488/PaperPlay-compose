@@ -34,7 +34,7 @@ Updated 13 Nov 2026, end of session (compiles, mostly not tried on a device; `[x
 - [x] Status toast hides after 20 seconds; swipe threshold lowered
 - [x] Dark Windows title bar that follows the app colours (needs a PC rebuild to see)
 - [x] Windows icon with all sizes (needs a PC rebuild and an icon cache refresh)
-- [ ] Backup does not include the new `bg_*` and `standby_*` prefs
+- [x] Backup carries the `bg_*` and `standby_*` prefs as layout (`bg_image` stays per device); needs the new test run
 
 ### Playback
 - [x] Android (Media3) and desktop (bundled libvlc, no VLC install needed)

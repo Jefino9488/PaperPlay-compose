@@ -150,6 +150,23 @@ class BackupRestorerTest {
     }
 
     @Test
+    fun backgroundAndStandbyFollowTheLayoutChoice() {
+        val prefs = """{"key":"bg_mode","value":"image"},{"key":"bg_image","value":"/other/device/pic.jpg"},{"key":"standby_style","value":"clock"},{"key":"standby_w_weather","value":"true"}"""
+        val layout = """"bg_mode":"image","bg_image":"/other/device/pic.jpg","standby_style":"clock","standby_w_weather":"true""""
+        val bytes = zip(mapOf("library.json" to manifest(prefs = prefs, layout = layout)))
+        val kept = Env()
+        result(run(kept, bytes, RestoreOptions(applyLayout = false)))
+        assertEquals(emptyList(), kept.query("select key from prefs where key like 'bg\\_%' escape '\\' or key like 'standby\\_%' escape '\\'"))
+        val applied = Env()
+        result(run(applied, bytes, RestoreOptions(applyLayout = true)))
+        val got = applied.query("select key, value from prefs").associate { it[0] to it[1] }
+        assertEquals("image", got["bg_mode"])
+        assertEquals("clock", got["standby_style"])
+        assertEquals("true", got["standby_w_weather"])
+        assertFalse("bg_image" in got) // a file path on another device
+    }
+
+    @Test
     fun corruptZip() {
         val env = Env()
         val good = zip(mapOf("library.json" to manifest(), "covers/c.jpg" to ByteArray(5000) { it.toByte() }))
