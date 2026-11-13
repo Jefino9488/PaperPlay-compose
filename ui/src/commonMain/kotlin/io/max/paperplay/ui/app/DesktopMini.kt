@@ -1,5 +1,6 @@
 package io.max.paperplay.ui.app
 
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -115,7 +116,12 @@ internal fun MiniBody(state: PlaybackUiState, controls: PlayerControls?, onClose
         // graphicsLayer clipping keeps the corners anti-aliased against the transparent window; a plain clip left dark fringes.
         Box(Modifier.fillMaxSize().clip(shape).background(MaterialTheme.colorScheme.primaryContainer)) {
             Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
-                if (song != null) CoverImage(song.coverUri, song.id, size = 110.dp, radius = 0.dp)
+                if (song != null) {
+                    val coverScale by androidx.compose.animation.core.animateFloatAsState(if (state.playing) 1f else 0.86f, androidx.compose.animation.core.spring(0.6f, 280f), label = "miniCover")
+                    Box(Modifier.size(110.dp), contentAlignment = Alignment.Center) {
+                        CoverImage(song.coverUri, song.id, Modifier.graphicsLayer { scaleX = coverScale; scaleY = coverScale }, size = 110.dp, radius = 14.dp)
+                    }
+                }
                 Column(Modifier.weight(1f).padding(start = 14.dp, end = 12.dp)) {
                     Text(song?.title ?: "Nothing is playing", Modifier.padding(end = 22.dp), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium, color = ink)
                     if (song != null) Text(song.artist, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = ink.copy(alpha = 0.7f))
@@ -125,7 +131,15 @@ internal fun MiniBody(state: PlaybackUiState, controls: PlayerControls?, onClose
                         FilledIconButton(
                             { controls?.togglePlay() }, Modifier.size(42.dp), enabled = song != null, shape = CircleShape,
                             colors = IconButtonDefaults.filledIconButtonColors(containerColor = ink, contentColor = MaterialTheme.colorScheme.primaryContainer),
-                        ) { AppIcon(if (state.playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (state.playing) "Pause" else "Play", Modifier.size(24.dp)) }
+                        ) {
+                            androidx.compose.animation.AnimatedContent(
+                                state.playing, label = "miniPlayPause",
+                                transitionSpec = {
+                                    (androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(160)) + androidx.compose.animation.scaleIn(androidx.compose.animation.core.tween(160), initialScale = 0.5f))
+                                        .togetherWith(androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(110)) + androidx.compose.animation.scaleOut(androidx.compose.animation.core.tween(110), targetScale = 0.5f))
+                                },
+                            ) { playing -> AppIcon(if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (playing) "Pause" else "Play", Modifier.size(24.dp)) }
+                        }
                         IconButton({ controls?.next() }, Modifier.size(36.dp), enabled = song != null) { AppIcon(Icons.Rounded.SkipNext, "Next", Modifier.size(24.dp), tint = ink) }
                         if (showFormat && song != null) io.max.paperplay.ui.components.AudioBadge(song, Modifier.padding(start = 6.dp), color = ink.copy(alpha = 0.75f), compact = true)
                         // Time on the right, so the card has no dead space beside the controls.
@@ -141,9 +155,12 @@ internal fun MiniBody(state: PlaybackUiState, controls: PlayerControls?, onClose
             }
             val pos = controls?.position?.collectAsState()
             val fill = ink
+            val progress by androidx.compose.animation.core.animateFloatAsState(
+                pos?.value?.progress(state.durationMs) ?: 0f, androidx.compose.animation.core.tween(300, easing = androidx.compose.animation.core.LinearEasing), label = "miniProgress",
+            )
             Box(
                 Modifier.align(Alignment.BottomStart).fillMaxWidth().height(3.dp)
-                    .drawBehind { drawRect(fill, size = Size(size.width * (pos?.value?.progress(state.durationMs) ?: 0f), size.height)) },
+                    .drawBehind { drawRect(fill, size = Size(size.width * progress, size.height)) },
             )
         }
     }
