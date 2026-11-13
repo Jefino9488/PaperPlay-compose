@@ -154,6 +154,8 @@ fun MiniPlayer(
     state: PlaybackUiState, onOpen: () -> Unit, onToggle: () -> Unit, onNext: () -> Unit, onPrevious: () -> Unit,
     progress: () -> Float = { 0f },
     modifier: Modifier = Modifier,
+    /** Opens the app's devices (this phone, Network play, Connect devices); null hides the button. Gets the settings page to open. */
+    onDevices: ((String) -> Unit)? = null,
 ) {
     val song = state.current ?: return
     val cover = coverScheme(song.coverUri)
@@ -170,9 +172,11 @@ fun MiniPlayer(
                     Text(song.title, modifier = Modifier.basicMarquee(), maxLines = 1, style = MaterialTheme.typography.titleSmall, color = ink)
                     Text(song.artist, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = ink.copy(alpha = 0.75f))
                 }
-                // Opens the system audio output chooser (speaker, Bluetooth, cast); only where the platform has one.
-                val switchOutput = io.max.paperplay.ui.rememberOutputSwitcher()
-                if (switchOutput != null) IconButton(switchOutput, Modifier.size(40.dp)) { AppIcon(Icons.Rounded.Devices, "Output devices", Modifier.size(22.dp), tint = ink) }
+                if (onDevices != null) {
+                    var devicesOpen by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+                    IconButton({ devicesOpen = true }, Modifier.size(40.dp)) { AppIcon(Icons.Rounded.Devices, "Devices", Modifier.size(22.dp), tint = ink) }
+                    if (devicesOpen) PhoneDevicesDialog(onDevices, io.max.paperplay.ui.rememberOutputSwitcher()) { devicesOpen = false }
+                }
                 IconButton(onPrevious) { AppIcon(Icons.Rounded.SkipPrevious, "Previous", tint = ink) }
                 IconButton(onToggle) { AppIcon(if (state.playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (state.playing) "Pause" else "Play", Modifier.size(32.dp), tint = ink) }
                 IconButton(onNext) { AppIcon(Icons.Rounded.SkipNext, "Next", tint = ink) }

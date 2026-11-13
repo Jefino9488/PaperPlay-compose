@@ -625,7 +625,7 @@ private fun SleepTimerDialogPreview() = io.max.paperplay.ui.PreviewFrame {
 
 /** Where the song plays and the ways to link other devices; the two links open those settings pages. */
 @Composable
-private fun PhoneDevicesDialog(onOpen: (String) -> Unit, switchOutput: (() -> Unit)?, onDismiss: () -> Unit) {
+internal fun PhoneDevicesDialog(onOpen: (String) -> Unit, switchOutput: (() -> Unit)?, onDismiss: () -> Unit) {
     val scheme = MaterialTheme.colorScheme
     AlertDialog(
         onDismissRequest = onDismiss,
