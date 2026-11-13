@@ -20,3 +20,4 @@ build-and-install.bat
 CLAUDE.md
 .claude/
 build-all.bat
+graphify-out/
