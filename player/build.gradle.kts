@@ -17,7 +17,10 @@ kotlin {
             api(libs.media3.exoplayer)
             api(libs.media3.session)
         }
-        jvmMain.dependencies { implementation(libs.vlcj) }
+        jvmMain.dependencies {
+            implementation(libs.vlcj)
+            implementation(libs.jna)
+        }
         jvmTest.dependencies { implementation(kotlin("test")) }
     }
 }
