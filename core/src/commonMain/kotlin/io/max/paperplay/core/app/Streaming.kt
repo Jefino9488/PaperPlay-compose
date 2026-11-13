@@ -249,6 +249,21 @@ class TdStreamSource(
  */
 const val ACCOUNT_REMOTE = "account"
 
+/**
+ * Songs only an extra bot can read (another bot posted them as itself, so the main bot never sees them) carry the bot's id in
+ * front of their remote id: `bot:<id>:<remote id>`. They are played, downloaded and given covers through that bot's client.
+ */
+const val BOT_REMOTE_PREFIX = "bot:"
+
+fun botRemote(botId: Long, remote: String) = "$BOT_REMOTE_PREFIX$botId:$remote"
+
+/** The bot that owns a song with this remote id, or null for the main bot, the account and the rest. */
+fun botOwnerOf(remote: String): Long? =
+    if (remote.startsWith(BOT_REMOTE_PREFIX)) remote.removePrefix(BOT_REMOTE_PREFIX).substringBefore(':').toLongOrNull() else null
+
+/** The real remote file id, without the owner prefix. */
+fun plainRemote(remote: String): String = if (botOwnerOf(remote) != null) remote.removePrefix(BOT_REMOTE_PREFIX).substringAfter(':') else remote
+
 /** Remote id of songs streamed from a network play host: not in the library, so not counted as listens. */
 const val NETPLAY_REMOTE = "netplay"
 
@@ -256,6 +271,8 @@ class TrackResolver(
     private val td: () -> TdClient?,
     val windowSeconds: Long,
     private val accountTd: () -> TdClient? = { null },
+    /** The client of an extra bot by its id, for songs only that bot can read. */
+    private val botTd: (Long) -> TdClient? = { null },
 ) {
     constructor(td: () -> TdClient?) : this(td, TdStreamSource.DEFAULT_WINDOW_SECONDS)
     constructor(td: () -> TdClient?, accountTd: () -> TdClient?) : this(td, TdStreamSource.DEFAULT_WINDOW_SECONDS, accountTd)
@@ -263,7 +280,13 @@ class TrackResolver(
 
     private fun sourceOf(song: Song): TdStreamSource {
         sources.value[song.unique_id]?.let { return it }
-        val fresh = TdStreamSource(if (song.remote_id == ACCOUNT_REMOTE) accountTd else td, song, windowSeconds)
+        val owner = botOwnerOf(song.remote_id)
+        val client: () -> TdClient? = when {
+            song.remote_id == ACCOUNT_REMOTE -> accountTd
+            owner != null -> ({ botTd(owner) ?: td() })
+            else -> td
+        }
+        val fresh = TdStreamSource(client, if (owner != null) song.copy(remote_id = plainRemote(song.remote_id)) else song, windowSeconds)
         sources.update { it + (song.unique_id to (it[song.unique_id] ?: fresh)) }
         return sources.value.getValue(song.unique_id)
     }

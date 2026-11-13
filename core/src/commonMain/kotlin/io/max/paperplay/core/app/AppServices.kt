@@ -190,7 +190,9 @@ class AppServices(
 
     /** Saves the index to Telegram (Saved Messages) and restores it after a login. */
     val indexCloud: io.max.paperplay.core.account.IndexCloud by lazy { io.max.paperplay.core.account.IndexCloud(account, chatIndex, library) }
-    val resolver = TrackResolver({ client }, { (account as? io.max.paperplay.core.account.UserSession)?.streamClient() })
+    val resolver = TrackResolver(
+        { client }, TdStreamSource.DEFAULT_WINDOW_SECONDS, { (account as? io.max.paperplay.core.account.UserSession)?.streamClient() }, { id -> botPool.clientOf(id) },
+    )
     val covers = CoverService(
         platform.dataDir,
         { if (scanner.progress.value == null) client else null },
@@ -198,6 +200,7 @@ class AppServices(
         defaultHttpFetcher(),
         scope,
         clock,
+        tdFor = { s -> botOwnerOf(s.remote_id)?.let { botPool.clientOf(it) } },
     )
 
     /** Fills title, artist, album and cover from tags inside downloaded files. */
@@ -470,9 +473,11 @@ class AppServices(
 
     /** Starts a full download for every pinned song that is not complete yet. Safe to call again. */
     suspend fun downloadPins() {
-        val c = client ?: return
+        val main = client ?: return
         for (s in library.incompletePins()) {
             runCatching {
+                // A song only an extra bot can read is fetched by that bot.
+                val c = botOwnerOf(s.remote_id)?.let { botPool.clientOf(it) } ?: main
                 val msg = c.call(request("getMessage") { put("chat_id", s.chat_id); put("message_id", s.message_id) })
                 val fileId = fileOfMessage(msg)?.long("id")?.toInt()
                 if (fileId != null && fileId != 0) {

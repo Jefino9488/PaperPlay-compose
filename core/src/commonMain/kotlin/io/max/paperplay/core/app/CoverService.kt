@@ -58,6 +58,8 @@ class CoverService(
     private val backgroundPauseMs: Long = 1500L,
     private val debounceMs: Long = 200L,
     private val startDelayMs: Long = 30_000L,
+    /** The client that can read [song]'s post when it is not the main one (a song only an extra bot can read). */
+    private val tdFor: (Song) -> TdClient? = { null },
 ) {
     private val queueMutex = Mutex()
     private val tdMutex = Mutex()
@@ -371,7 +373,7 @@ class CoverService(
         }
 
         // 2. Embedded Telegram album_cover_thumbnail / thumbnail via TDLib (skipped while Scanner is active).
-        val client = td()
+        val client = botOwnerOf(song.remote_id)?.let { tdFor(song) } ?: td()
         var tdRateLimited = false
         if (client != null && song.chat_id != 0L && song.message_id != 0L) {
             val thumbResult = fetchTelegramThumbnail(client, song)

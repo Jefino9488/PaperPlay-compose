@@ -74,6 +74,13 @@ class BotPool(
     /** Tokens as stored, in order. */
     fun tokens(): List<String> = readTokens()
 
+    /** The logged-in client of extra bot [id], or null when it is not running. */
+    fun clientOf(id: Long): TdClient? =
+        clients[id]?.takeIf { c -> c.auth.value == "authorizationStateReady" && _bots.value.any { it.id == id && it.state == "working" } }
+
+    /** Every extra bot that is logged in, with its client. */
+    fun readyBots(): List<Pair<PoolBot, TdClient>> = _bots.value.mapNotNull { b -> clientOf(b.id)?.let { b to it } }
+
     /** Starts every saved extra bot. Safe to call again; it does nothing the second time. */
     fun load() {
         if (loaded) return
