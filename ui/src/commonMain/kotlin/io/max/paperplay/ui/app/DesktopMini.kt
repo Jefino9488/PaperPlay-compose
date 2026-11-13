@@ -19,6 +19,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.rounded.PictureInPictureAlt
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.FastForward
+import androidx.compose.material.icons.rounded.FastRewind
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
 import androidx.compose.material3.FilledIconButton
@@ -127,20 +129,17 @@ internal fun MiniBody(state: PlaybackUiState, controls: PlayerControls?, onClose
                     if (song != null) Text(song.artist, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = ink.copy(alpha = 0.7f))
                     val posNow = controls?.position?.collectAsState()?.value
                     Row(Modifier.padding(top = 6.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                        IconButton({ controls?.previous() }, Modifier.size(36.dp), enabled = song != null) { AppIcon(Icons.Rounded.SkipPrevious, "Previous", Modifier.size(24.dp), tint = ink) }
-                        FilledIconButton(
-                            { controls?.togglePlay() }, Modifier.size(42.dp), enabled = song != null, shape = CircleShape,
-                            colors = IconButtonDefaults.filledIconButtonColors(containerColor = ink, contentColor = MaterialTheme.colorScheme.primaryContainer),
-                        ) {
+                        IconButton({ controls?.previous() }, Modifier.size(36.dp), enabled = song != null) { AppIcon(Icons.Rounded.FastRewind, "Previous", Modifier.size(26.dp), tint = ink) }
+                        IconButton({ controls?.togglePlay() }, Modifier.size(44.dp), enabled = song != null) {
                             androidx.compose.animation.AnimatedContent(
                                 state.playing, label = "miniPlayPause",
                                 transitionSpec = {
                                     (androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(160)) + androidx.compose.animation.scaleIn(androidx.compose.animation.core.tween(160), initialScale = 0.5f))
                                         .togetherWith(androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(110)) + androidx.compose.animation.scaleOut(androidx.compose.animation.core.tween(110), targetScale = 0.5f))
                                 },
-                            ) { playing -> AppIcon(if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (playing) "Pause" else "Play", Modifier.size(24.dp)) }
+                            ) { playing -> AppIcon(if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (playing) "Pause" else "Play", Modifier.size(34.dp), tint = ink) }
                         }
-                        IconButton({ controls?.next() }, Modifier.size(36.dp), enabled = song != null) { AppIcon(Icons.Rounded.SkipNext, "Next", Modifier.size(24.dp), tint = ink) }
+                        IconButton({ controls?.next() }, Modifier.size(36.dp), enabled = song != null) { AppIcon(Icons.Rounded.FastForward, "Next", Modifier.size(26.dp), tint = ink) }
                         if (showFormat && song != null) io.max.paperplay.ui.components.AudioBadge(song, Modifier.padding(start = 6.dp), color = ink.copy(alpha = 0.75f), compact = true)
                         // Time on the right, so the card has no dead space beside the controls.
                         if (song != null) Text(

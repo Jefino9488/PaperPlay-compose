@@ -59,6 +59,8 @@ import androidx.compose.material.icons.rounded.RepeatOne
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Shuffle
+import androidx.compose.material.icons.rounded.FastForward
+import androidx.compose.material.icons.rounded.FastRewind
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
 import androidx.compose.material.icons.rounded.TaskAlt
@@ -249,12 +251,10 @@ fun PlayerBar(
         Column(Modifier.width(centre), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 IconButton({ backend?.toggleShuffle() }) { AppIcon(Icons.Rounded.Shuffle, "Shuffle", tint = if (state.shuffle) scheme.primary else scheme.onSurface) }
-                IconButton({ backend?.previous() }) { AppIcon(Icons.Rounded.SkipPrevious, "Previous") }
-                FilledIconButton(
-                    { backend?.togglePlay() }, Modifier.size(44.dp), shape = CircleShape,
-                    colors = IconButtonDefaults.filledIconButtonColors(containerColor = scheme.onSurface, contentColor = scheme.surface),
-                ) { AppIcon(if (state.playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (state.playing) "Pause" else "Play") }
-                IconButton({ backend?.next() }) { AppIcon(Icons.Rounded.SkipNext, "Next") }
+                // The same rewind, play and fast-forward glyphs as the phone player, with the play button drawn bare.
+                IconButton({ backend?.previous() }) { AppIcon(Icons.Rounded.FastRewind, "Previous", Modifier.size(28.dp)) }
+                IconButton({ backend?.togglePlay() }, Modifier.size(48.dp)) { AppIcon(if (state.playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (state.playing) "Pause" else "Play", Modifier.size(38.dp)) }
+                IconButton({ backend?.next() }) { AppIcon(Icons.Rounded.FastForward, "Next", Modifier.size(28.dp)) }
                 IconButton({ backend?.cycleRepeat() }) {
                     AppIcon(if (state.repeat == RepeatUi.One) Icons.Rounded.RepeatOne else Icons.Rounded.Repeat, "Repeat", tint = if (state.repeat != RepeatUi.Off) scheme.primary else scheme.onSurface)
                 }
