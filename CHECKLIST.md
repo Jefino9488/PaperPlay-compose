@@ -356,3 +356,10 @@ Updated 13 Nov 2026, end of session (compiles, mostly not tried on a device; `[x
 - [x] Sort order: song lists already saved one shared order; each playlist now also remembers its own "Sort by" (`playlist_sort:<id>`, `UiPrefs.getString` and `putString`)
 - [ ] Try on the phone: standby in portrait and landscape (bars hidden, drift visible), rotate during standby and during playback, the song menu in Glass, search for "udi udi" and a Malayalam word
 - [ ] Not done: sort order of the albums, artists and playlists tabs themselves (only song lists and playlist contents remember theirs); the TDLib thread abort in the older crash log; menus with real blur
+
+## Update 2026-11-13 (player cleanup, cover search, seek touches; compiles not checked, not tried)
+- [x] Seek bar: only touches on the line itself seek (tap, long press, drag); brushing past the bar or the times no longer resets or skips
+- [x] Full player: star and three dot buttons have no background and the title is clipped before them; bottom row is Lyrics, Shuffle, Repeat, Queue and a Tune menu (Sleep timer, Speed, Standby, Devices)
+- [x] Format badge reads "FLAC" or "FLAC Hi-Res" instead of "FLAC Lossless"
+- [x] Change cover starts with title and artist like Find metadata (album text found nothing); cover search no longer asks Deezer and iTunes twice
+- [ ] Try on the phone: tap near the progress bar and times, long titles beside the star, the Tune menu, Change cover search. Deezer returned empty results from the PC, so covers may come from iTunes only
