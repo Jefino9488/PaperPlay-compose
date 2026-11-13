@@ -180,8 +180,8 @@ private fun badgeOf(song: SongUi): Pair<BadgeIcon, String>? {
     val label = song.qualityLabel?.takeIf { it.isNotBlank() } ?: return if (song.lossless) BadgeIcon.Wave to "Lossless" else null
     val codec = label.substringBefore(' ').uppercase()
     DOLBY[codec]?.let { return BadgeIcon.Dolby to it }
-    if (isHiRes(song)) return BadgeIcon.Wave to "$codec Hi-Res Lossless"
-    if (song.lossless) return BadgeIcon.Wave to "$codec Lossless"
+    if (isHiRes(song)) return BadgeIcon.Wave to "$codec Hi-Res"
+    if (song.lossless) return BadgeIcon.Wave to codec
     return BadgeIcon.None to label
 }
 
