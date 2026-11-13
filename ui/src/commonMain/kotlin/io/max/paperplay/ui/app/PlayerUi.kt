@@ -6,6 +6,7 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -31,7 +32,6 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -39,7 +39,6 @@ import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.outlined.Bedtime
 import androidx.compose.material.icons.outlined.Lyrics
 import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material.icons.rounded.Devices
 import androidx.compose.material.icons.rounded.PhoneAndroid
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.Fullscreen
@@ -50,17 +49,13 @@ import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.NightsStay
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
-import androidx.compose.material.icons.rounded.QueueMusic
+import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Repeat
 import androidx.compose.material.icons.rounded.RepeatOne
 import androidx.compose.material.icons.rounded.Shuffle
-import androidx.compose.material.icons.rounded.SkipNext
-import androidx.compose.material.icons.rounded.SkipPrevious
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ColorScheme
-import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -96,8 +91,8 @@ import androidx.compose.material.icons.rounded.FastForward
 import androidx.compose.material.icons.rounded.FastRewind
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.StarBorder
-import androidx.compose.material.icons.rounded.VolumeDown
-import androidx.compose.material.icons.rounded.VolumeUp
+import androidx.compose.material.icons.automirrored.rounded.VolumeDown
+import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import io.max.paperplay.ui.state.PlaybackUiState
 import io.max.paperplay.ui.state.RepeatUi
 import io.max.paperplay.ui.state.SongUi
@@ -213,9 +208,9 @@ private fun PlayerBody(
             Column(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.SpaceEvenly) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f).padding(start = 12.dp)) {
-                        Text(song.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.headlineSmall)
+                        Text(song.title, modifier = Modifier.basicMarquee(), maxLines = 1, style = MaterialTheme.typography.headlineSmall)
                         Text(
-                            song.artist, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            song.artist, modifier = Modifier.basicMarquee(), maxLines = 1,
                             style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium, color = scheme.onSurface.copy(alpha = 0.7f),
                         )
                     }
@@ -244,9 +239,9 @@ private fun PlayerBody(
                 }
                 val volume by backend.volume.collectAsState()
                 Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    AppIcon(Icons.Rounded.VolumeDown, "Quieter", Modifier.size(18.dp), tint = scheme.onSurface.copy(alpha = 0.65f))
+                    AppIcon(Icons.AutoMirrored.Rounded.VolumeDown, "Quieter", Modifier.size(18.dp), tint = scheme.onSurface.copy(alpha = 0.65f))
                     VolumeBar(volume, backend::setVolume, scheme.onSurface, Modifier.weight(1f).padding(horizontal = 10.dp))
-                    AppIcon(Icons.Rounded.VolumeUp, "Louder", Modifier.size(18.dp), tint = scheme.onSurface.copy(alpha = 0.65f))
+                    AppIcon(Icons.AutoMirrored.Rounded.VolumeUp, "Louder", Modifier.size(18.dp), tint = scheme.onSurface.copy(alpha = 0.65f))
                 }
                 // Output device pill, like the AirPods one in Apple Music.
                 val out = io.max.paperplay.ui.rememberOutputDevice()
@@ -291,7 +286,7 @@ private fun PlayerBody(
                         Text(speedLabel(speed), color = if (speed != 1f) scheme.primary else scheme.onSurface, style = MaterialTheme.typography.labelLarge)
                     }
                     if (showSpeed) SpeedDialog(backend) { showSpeed = false }
-                    if (onQueue != null) IconButton(onQueue) { AppIcon(Icons.Rounded.QueueMusic, "Queue") }
+                    if (onQueue != null) IconButton(onQueue) { AppIcon(Icons.AutoMirrored.Rounded.QueueMusic, "Queue") }
                 }
             }
         }
@@ -462,13 +457,6 @@ private val previewPlayerSong = SongUi(
     durationSec = 366, sizeBytes = 14_000_000, qualityLabel = "FLAC 24/96", favorite = true,
 )
 
-private val previewPlayerState = PlaybackUiState(
-    current = previewPlayerSong, playing = true, durationMs = 366000,
-    queue = listOf(previewPlayerSong), queueIndex = 0,
-)
-
-private val previewPlayerActions = ListActions(play = { _, _ -> }, shuffle = {}, setFavorite = { _, _ -> }, addToPlaylist = {}, notice = {})
-
 @Preview
 @Composable
 private fun CoverTintedPreview() {
@@ -515,11 +503,11 @@ internal fun LyricsDialog(id: String, title: String, backend: PlayerControls, on
                 !loaded -> Text("Looking for lyrics", Modifier.padding(24.dp), style = big)
                 text == null -> Text("No lyrics found for this song.", Modifier.padding(24.dp), style = big)
                 lines.isEmpty() -> Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState()).padding(24.dp)) { Text(text.orEmpty(), style = big) }
-                else -> androidx.compose.foundation.lazy.LazyColumn(state = list, modifier = Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 24.dp, vertical = 24.dp)) {
+                else -> LazyColumn(state = list, modifier = Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 24.dp, vertical = 24.dp)) {
                     itemsIndexed(lines) { i, l ->
                         Text(
                             l.text.ifBlank { " " }, Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable { backend.seekToMs(l.timeMs) }.padding(vertical = 10.dp),
-                            style = big.copy(fontWeight = if (i == current) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Medium),
+                            style = big.copy(fontWeight = if (i == current) FontWeight.Bold else FontWeight.Medium),
                             color = if (i == current) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.4f),
                         )
                     }
@@ -558,19 +546,19 @@ internal fun SpeedDialog(backend: PlayerControls, onClose: () -> Unit) {
 @Composable
 internal fun SleepTimerDialog(backend: PlayerControls, onClose: () -> Unit) {
     val sleepAt by backend.sleepAt.collectAsState()
-    androidx.compose.material3.AlertDialog(
+    AlertDialog(
         onDismissRequest = onClose,
         title = { Text("Sleep timer") },
         text = {
             Column {
                 sleepAt?.let { end -> Text("Pauses in about ${maxOf(1L, (end - nowMoment().epochMs + 59_999) / 60_000)} min", Modifier.padding(bottom = 8.dp)) }
                 listOf(15, 30, 45, 60, 90).forEach { m ->
-                    androidx.compose.material3.TextButton({ backend.setSleepTimer(m); onClose() }) { Text("$m minutes") }
+                    TextButton({ backend.setSleepTimer(m); onClose() }) { Text("$m minutes") }
                 }
             }
         },
-        confirmButton = { androidx.compose.material3.TextButton({ backend.setSleepTimer(null); onClose() }) { Text("Turn off") } },
-        dismissButton = { androidx.compose.material3.TextButton(onClose) { Text("Close") } },
+        confirmButton = { TextButton({ backend.setSleepTimer(null); onClose() }) { Text("Turn off") } },
+        dismissButton = { TextButton(onClose) { Text("Close") } },
     )
 }
 

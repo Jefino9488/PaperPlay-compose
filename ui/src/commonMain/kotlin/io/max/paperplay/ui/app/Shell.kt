@@ -361,7 +361,7 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
                             NowPlayingPanel(pb, backend, actions, { showPlayer = true }, { prefs.putNowPlayingPanel(false) }, Modifier.width(320.dp).fillMaxHeight().deskCard())
                         }
                     }
-                    PlayerBar(pb, volume, prefs.nowPlayingPanel, backend, actions, { showPlayer = true }, { prefs.putNowPlayingPanel(!prefs.nowPlayingPanel) },
+                    PlayerBar(pb, volume, backend, actions, { showPlayer = true },
                         onNowPlaying = { showNow = !showNow }, extras = { DevicePickerButton(); MiniPlayerToggle() })
                 }
                 }

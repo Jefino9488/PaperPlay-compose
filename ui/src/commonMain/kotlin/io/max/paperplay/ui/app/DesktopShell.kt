@@ -3,6 +3,7 @@
 import io.max.paperplay.ui.components.AppIcon
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -202,8 +203,8 @@ fun Sidebar(
 @Composable
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 fun PlayerBar(
-    state: PlaybackUiState, volume: Float, panelOn: Boolean, backend: PlayerControls?, actions: ListActions,
-    onOpen: () -> Unit, onTogglePanel: () -> Unit, modifier: Modifier = Modifier,
+    state: PlaybackUiState, volume: Float, backend: PlayerControls?, actions: ListActions,
+    onOpen: () -> Unit, modifier: Modifier = Modifier,
     onNowPlaying: (() -> Unit)? = null, extras: @Composable () -> Unit = {},
 ) {
     val song = state.current
@@ -233,7 +234,7 @@ fun PlayerBar(
             if (song != null) {
                 CoverImage(song.coverUri, song.id, Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick = onNowPlaying ?: onOpen), size = 56.dp, radius = 8.dp)
                 Column(Modifier.weight(1f, fill = false).padding(start = 12.dp)) {
-                    Text(song.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall)
+                    Text(song.title, modifier = Modifier.basicMarquee(), maxLines = 1, style = MaterialTheme.typography.titleSmall)
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         io.max.paperplay.ui.components.formatChipOf(song)?.let { io.max.paperplay.ui.components.FormatChip(it) }
                         Text(song.artist, Modifier.weight(1f, fill = false), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
@@ -263,9 +264,7 @@ fun PlayerBar(
                 Text(formatDuration(state.durationMs / 1000), style = muted)
             }
         }
-        Row(horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
-            val on = scheme.primary
-            if (shown("panel")) IconButton(onTogglePanel) { AppIcon(Icons.Rounded.ViewSidebar, if (panelOn) "Hide the now playing panel" else "Show the now playing panel", sz, tint = if (panelOn) on else off) }
+        Row(Modifier.weight(1f), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
             if (shown("queue")) IconButton(onNowPlaying ?: onOpen) { AppIcon(Icons.Rounded.QueueMusic, "Queue", sz, tint = off) }
             if (!wide) tools()
             if (shown("devices")) extras()
@@ -421,8 +420,8 @@ fun TasksPagePreview() {
 @Composable
 private fun PlayerBarPreviewContent(state: PlaybackUiState, dark: Boolean) = io.max.paperplay.ui.PreviewFrame(dark) {
     PlayerBar(
-        state = state, volume = 0.8f, panelOn = true, backend = io.max.paperplay.ui.FakePlayerControls(),
-        actions = io.max.paperplay.ui.previewActions(), onOpen = {}, onTogglePanel = {},
+        state = state, volume = 0.8f, backend = io.max.paperplay.ui.FakePlayerControls(),
+        actions = io.max.paperplay.ui.previewActions(), onOpen = {},
         modifier = Modifier.background(MaterialTheme.colorScheme.surfaceContainer),
     )
 }
