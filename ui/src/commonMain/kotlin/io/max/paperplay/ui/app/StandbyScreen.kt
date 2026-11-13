@@ -76,12 +76,10 @@ fun StandbyScreen(state: PlaybackUiState, backend: PlayerControls, prefs: Standb
 private fun StandbyContent(state: PlaybackUiState, backend: PlayerControls, p: StandbyPrefs, onClose: () -> Unit) {
     var clock by remember { mutableStateOf(clockNow()) }
     val showClock = p.shows(StandbyWidget.Clock)
-    LaunchedEffect(showClock) { while (true) { clock = clockNow(); delay(if (showClock) 1000L else 20_000L) } }
+    // Once a second also when only the drift needs it, so the shift below is smooth.
+    LaunchedEffect(showClock, p.pixelShift) { while (true) { clock = clockNow(); delay(if (showClock || p.pixelShift) 1000L else 20_000L) } }
     var sheet by remember { mutableStateOf(false) }
     val tone = standbyTone(p, state)
-    // Moves a few dp each minute so no pixel stays lit.
-    val shiftX = if (p.pixelShift) ((clock.minute * 7) % 9 - 4).dp else 0.dp
-    val shiftY = if (p.pixelShift) ((clock.minute * 5) % 9 - 4).dp else 0.dp
     val song = state.current
     val web = backend as? CoreBackend
 
@@ -95,6 +93,12 @@ private fun StandbyContent(state: PlaybackUiState, backend: PlayerControls, p: S
     ) {
         val wide = maxWidth > maxHeight
         val boxHeight = maxHeight
+        // AMOLED burn-in: everything, the settings button included, drifts slowly along a path that never repeats exactly
+        // (periods of 7 and 5 minutes), by up to 6% of the shorter side, so no pixel stays lit.
+        val seconds = clock.hour * 3600 + clock.minute * 60 + clock.second
+        val amp = minOf(maxWidth, maxHeight) * 0.06f
+        val shiftX = if (p.pixelShift) amp * kotlin.math.sin(2.0 * kotlin.math.PI * seconds / 420.0).toFloat() else 0.dp
+        val shiftY = if (p.pixelShift) amp * kotlin.math.sin(2.0 * kotlin.math.PI * seconds / 300.0 + 1.0).toFloat() else 0.dp
         val scale = p.clockSize
         val body: @Composable (Modifier) -> Unit = { m ->
             Column(m, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterVertically)) {
@@ -147,7 +151,7 @@ private fun StandbyContent(state: PlaybackUiState, backend: PlayerControls, p: S
                 visual(Modifier.fillMaxWidth().height(boxHeight * 0.28f))
             }
         }
-        IconButton({ sheet = true }, Modifier.align(Alignment.TopEnd).padding(8.dp)) {
+        IconButton({ sheet = true }, Modifier.align(Alignment.TopEnd).offset(shiftX, shiftY).padding(8.dp)) {
             AppIcon(Icons.Rounded.Settings, "Customise standby", tint = tone.copy(alpha = 0.35f))
         }
         if (sheet) StandbyCustomiseSheet(p) { sheet = false }
