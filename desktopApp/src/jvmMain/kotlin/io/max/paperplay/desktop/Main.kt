@@ -289,11 +289,15 @@ fun main() {
             App(env)
         }
         val miniVisible by io.max.paperplay.ui.app.DesktopMini.visible.collectAsState()
+        // The mini window is as wide as its song text needs (see rememberMiniWidth).
+        val miniWidth = io.max.paperplay.ui.app.rememberMiniWidth()
+        val miniState = rememberWindowState(width = miniWidth, height = 110.dp)
+        androidx.compose.runtime.LaunchedEffect(miniWidth) { miniState.size = androidx.compose.ui.unit.DpSize(miniWidth, 110.dp) }
         if (miniVisible) {
             Window(
                 onCloseRequest = { io.max.paperplay.ui.app.DesktopMini.visible.value = false },
-                title = "Paper Play mini", state = rememberWindowState(width = 380.dp, height = 110.dp),
-                undecorated = true, transparent = true,
+                title = "Paper Play mini", state = miniState,
+                undecorated = true,
                 alwaysOnTop = true, resizable = false, icon = androidx.compose.ui.res.painterResource("icon.png"),
             ) {
                 // No title bar: the whole card drags the window, and the close button sits on the card. Windows rounds the corners.

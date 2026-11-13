@@ -52,6 +52,7 @@ import org.jetbrains.compose.ui.tooling.preview.Preview
  */
 object DesktopMini {
     val visible = MutableStateFlow(false)
+    internal val showFormat = MutableStateFlow(true)
     internal val state = MutableStateFlow(PlaybackUiState())
     internal val controls = MutableStateFlow<PlayerControls?>(null)
     fun toggle() { visible.value = !visible.value }
@@ -59,7 +60,8 @@ object DesktopMini {
 
 /** Keeps the mini window in step with the main window's playback. Place once in the desktop shell. */
 @Composable
-fun PublishMiniState(state: PlaybackUiState, backend: PlayerControls) {
+fun PublishMiniState(state: PlaybackUiState, backend: PlayerControls, showFormat: Boolean = true) {
+    LaunchedEffect(showFormat) { DesktopMini.showFormat.value = showFormat }
     LaunchedEffect(state) { DesktopMini.state.value = state }
     LaunchedEffect(backend) { DesktopMini.controls.value = backend }
 }
@@ -74,20 +76,37 @@ fun MiniPlayerToggle(modifier: Modifier = Modifier) {
 }
 
 /** Content of the mini window: cover, title and the transport controls, tinted by the cover. */
+/**
+ * Width the mini window wants: the cover, then the longer of the song text and the controls row (with the format badge when
+ * shown). Short titles give a compact window, long ones widen it up to a limit and are cut with an ellipsis beyond that.
+ */
+@Composable
+fun rememberMiniWidth(): androidx.compose.ui.unit.Dp {
+    val state by DesktopMini.state.collectAsState()
+    val showFormat by DesktopMini.showFormat.collectAsState()
+    val song = state.current
+    val title = (song?.title?.length ?: "Nothing is playing".length) * 9.0 + 24       // titleMedium, bold; room for the close button
+    val artist = (song?.artist?.length ?: 0) * 6.6
+    val badge = if (showFormat && song != null && io.max.paperplay.ui.components.formatChipOf(song) != null) 76 else 0
+    val controls = 36 + 42 + 36 + 8 + badge + 84                                    // buttons, gaps, badge, "0:10 / 4:04"
+    return (110 + 14 + maxOf(title, artist, controls.toDouble()) + 12).coerceIn(340.0, 560.0).dp
+}
+
 @Composable
 fun DesktopMiniContent(onClose: (() -> Unit)? = null) {
     val loader = SharedCovers.loader
     val state by DesktopMini.state.collectAsState()
     val controls by DesktopMini.controls.collectAsState()
+    val showFormat by DesktopMini.showFormat.collectAsState()
     PaperPlayTheme(dark = true, dynamic = false) {
         CompositionLocalProvider(LocalCoverLoader provides loader) {
-            MiniBody(state, controls, onClose)
+            MiniBody(state, controls, onClose, showFormat)
         }
     }
 }
 
 @Composable
-internal fun MiniBody(state: PlaybackUiState, controls: PlayerControls?, onClose: (() -> Unit)? = null) {
+internal fun MiniBody(state: PlaybackUiState, controls: PlayerControls?, onClose: (() -> Unit)? = null, showFormat: Boolean = true) {
     val song = state.current
     CoverTinted(song?.coverUri) {
         val ink = MaterialTheme.colorScheme.onPrimaryContainer
@@ -108,6 +127,7 @@ internal fun MiniBody(state: PlaybackUiState, controls: PlayerControls?, onClose
                             colors = IconButtonDefaults.filledIconButtonColors(containerColor = ink, contentColor = MaterialTheme.colorScheme.primaryContainer),
                         ) { AppIcon(if (state.playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (state.playing) "Pause" else "Play", Modifier.size(24.dp)) }
                         IconButton({ controls?.next() }, Modifier.size(36.dp), enabled = song != null) { AppIcon(Icons.Rounded.SkipNext, "Next", Modifier.size(24.dp), tint = ink) }
+                        if (showFormat && song != null) io.max.paperplay.ui.components.AudioBadge(song, Modifier.padding(start = 6.dp), color = ink.copy(alpha = 0.75f), compact = true)
                         // Time on the right, so the card has no dead space beside the controls.
                         if (song != null) Text(
                             io.max.paperplay.ui.logic.formatDuration((posNow?.positionMs ?: 0) / 1000) + " / " + io.max.paperplay.ui.logic.formatDuration(((if (state.durationMs > 0) state.durationMs else song.durationSec * 1000L)) / 1000),
