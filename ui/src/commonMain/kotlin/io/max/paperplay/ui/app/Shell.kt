@@ -364,7 +364,7 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
                         }
                     }
                     PlayerBar(pb, volume, backend, actions, { showPlayer = true },
-                        onNowPlaying = { showNow = !showNow }, extras = { DevicePickerButton(); MiniPlayerToggle() })
+                        onNowPlaying = { showNow = !showNow }, extras = { DevicePickerButton(onOpen = { id -> navigate { settings = true; settingsDeep = true; settingsStack.clear(); settingsStack.add(id) } }); MiniPlayerToggle() })
                 }
                 }
                 if (nowSong != null) CoverTinted(nowSong.coverUri) {

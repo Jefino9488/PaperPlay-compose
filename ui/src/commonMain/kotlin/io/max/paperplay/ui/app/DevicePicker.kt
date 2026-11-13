@@ -36,13 +36,13 @@ class DeviceUi(val id: String, val name: String, val active: Boolean)
 
 /** The Devices button for the desktop player bar, with its popup. */
 @Composable
-fun DevicePickerButton(devices: List<DeviceUi> = listOf(DeviceUi("this", "This PC", true)), modifier: Modifier = Modifier) {
+fun DevicePickerButton(devices: List<DeviceUi> = listOf(DeviceUi("this", "This PC", true)), modifier: Modifier = Modifier, onOpen: ((String) -> Unit)? = null) {
     var open by remember { mutableStateOf(false) }
     Box(modifier) {
         IconButton({ open = !open }) {
             AppIcon(Icons.Rounded.Devices, "Devices", Modifier.size(22.dp), tint = if (open) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        if (open) DevicePickerPopup(devices) { open = false }
+        if (open) DevicePickerPopup(devices, onOpen) { open = false }
     }
 }
 
@@ -52,7 +52,7 @@ private val aboveAnchor = object : PopupPositionProvider {
 }
 
 @Composable
-fun DevicePickerPopup(devices: List<DeviceUi>, onDismiss: () -> Unit) {
+fun DevicePickerPopup(devices: List<DeviceUi>, onOpen: ((String) -> Unit)? = null, onDismiss: () -> Unit) {
     Popup(popupPositionProvider = aboveAnchor, onDismissRequest = onDismiss) {
         Surface(shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh, shadowElevation = 8.dp) {
             Column(Modifier.width(300.dp).padding(16.dp)) {
@@ -68,6 +68,7 @@ fun DevicePickerPopup(devices: List<DeviceUi>, onDismiss: () -> Unit) {
                     }
                 }
                 LanDevicesSection(Modifier.padding(top = 16.dp))
+                DevicesActions(onOpen, null, onDismiss, Modifier.padding(top = 16.dp))
             }
         }
     }
