@@ -1,6 +1,6 @@
 # PaperPlay Compose: what's done and what's left
 
-Updated 13 Nov 2026 (audit: keyword and file checks in main tree, no builds; `[x]` in section 1 not individually re-checked)
+Updated 13 Nov 2026, evening (fixes round at the end; compiles, not tried; `[x]` in section 1 not individually re-checked)
 
 **Marks:** `[x]` done and written, `[~]` half done, `[ ]` not done.
 "Compiles, not tried" means the Android release and desktop release built on 12 Nov (night) but the feature has not been tried on a device.
@@ -38,7 +38,7 @@ Updated 13 Nov 2026 (audit: keyword and file checks in main tree, no builds; `[x
 
 ### Playback
 - [x] Android (Media3) and desktop (bundled libvlc, no VLC install needed)
-- [x] Shuffle, repeat, saved volume, play next, sleep timer, 5 band equalizer
+- [x] Shuffle, repeat, saved volume, play next, sleep timer, 10 band equalizer with response graph (compiles, not tried)
 - [x] Media notification, keep-alive service with scan progress
 - [x] Lyrics with synced lines, tap a line to jump there
 - [x] Playback speed 0.5x to 2x from the full player (compiles, not tried)
@@ -194,7 +194,7 @@ Updated 13 Nov 2026 (audit: keyword and file checks in main tree, no builds; `[x
       lyrics run, duplicates delete
 
 ### Playback
-- [ ] Audio output choice
+- [~] Audio output choice: Android system output switcher from the player (compiles, not tried); desktop follows the Windows default output
 - [ ] Remote and group playback
 
 ### Library
@@ -261,7 +261,7 @@ Updated 13 Nov 2026 (audit: keyword and file checks in main tree, no builds; `[x
 ## 4b. Added 2026-11-12 late (edit-only, not built)
 
 - [~] Onboarding: animated logo, auto-advance after the bot connects, optional Spotify page, permission shows allowed
-- [~] Desktop: native dialogs (check the folder picker), frameless mini player, adaptive player bar, song menu, cover-gradient now playing
+- [~] Desktop: native Explorer-style dialogs for open, save and folder (compiles, not tried), frameless mini player, adaptive player bar, song menu, cover-gradient now playing
 - [~] Cover colours and sharper covers
 - [x] Settings: merged Appearance page, All parts incl. sidebar, bold transport icons
 - [ ] Android: one AppServices per process (sync port, crash), notification icon
@@ -291,6 +291,26 @@ Updated 13 Nov 2026 (audit: keyword and file checks in main tree, no builds; `[x
 - [x] Cover search dedupe and ranking; sort label width; pinned list bar colour
 - [x] Desktop glass blur off by default (switch on the Glass page); covers mipmapped
 - [ ] Try on screen: player bar settings, glass without blur, covers, volume bar, full screen
-- [ ] Custom title bar (reverted: no drag, laggy); Esc exits full screen
+- [ ] Custom title bar (reverted: no drag, laggy)
+- [x] Esc exits full screen (borderless full screen, compiles, not tried)
 - [ ] Lag check; "Wrong remote file identifier" on the phone; prefs missing from backups
 
+## Update 2026-11-13 (fixes round; desktop and Android release Kotlin compile, nothing tried on screen)
+- [x] Tray: left click opens the app (press/release plus action listener, stronger raise); right click opens a themed menu window (`TrayMenu.kt`)
+- [x] One copy only: a second launch shows the running window (`app.lock`, `app.port` in `%APPDATA%\PaperPlay`)
+- [x] Full screen on Windows is borderless over the monitor (`BorderlessFullscreen.kt`); Esc leaves it; the player layout uses the width better
+- [x] Panel toggle hides while the panel or full player is open and comes back when closed
+- [x] Mini player: graphicsLayer clip for the corner artifacts, time readout fills the right side
+- [x] "Song info left" icon is the checklist icon
+- [x] File dialogs: Explorer-style open and save on Windows (WinForms through PowerShell), COM folder picker kept, zenity or kdialog on Linux, AWT fallback
+- [x] Desktop app icon art enlarged (`icon.png`, `app.ico`; Windows may need an icon cache refresh)
+- [x] Memory: JVM limits (`-Xmx448m`, SerialGC, metaspace 160m), one shared cover cache (32 MB), covers decoded at the size shown with shrunk copies in `~/.paperplay/thumbs`
+- [x] Equalizer: 10 bands, 13 presets, draggable response curve that glides between presets; old 5 band saves are stretched to 10
+- [x] Desktop audio: WASAPI (`--aout=mmdevice`), soxr resampler, EQ preamp against clipping, EQ re-applied for each track, normalise ceiling 1.0, 500 ms buffering. The cause of the "weird noise" is not confirmed
+- [x] Output info dialog (opens from the format badge and the player three-dot menu) on both platforms: source, rate, depth, output, effects, bit-perfect or not
+- [x] Android: Devices button in the player tools row (Network play, Connect devices, Audio output) and the device pill opens the system output switcher
+- [x] Channels page: songs, topics, size, duration, lossless, offline, pinned, favourites and copied counts per channel
+- [x] `scripts/release.ps1`: Android release build and install, then the desktop installer to Downloads (`-SkipAndroid`, `-SkipDesktop`)
+- [ ] Try all of the above on screen and on the phone; check tray click, full screen click-to-minimise, the noise, file dialogs
+- [ ] RAM: earlier build used about 450 MB (heap 40 MB, metaspace 67 MB, Intel D3D12 driver files about 175 MB, TDLib and libvlc about 100 MB). Not a Rust problem. Test `-Dskiko.renderApi=OPENGL` and `SOFTWARE`, lazy libvlc, fewer classes
+- [ ] Not done: live level meter in the equalizer (curve only), channel last-scanned time, panel toggle also hidden in the now playing view, VLC output rate not shown on desktop

@@ -27,6 +27,8 @@ if (-not $SkipAndroid) {
     Write-Host 'Android release...'
     Gradle ':androidApp:assembleRelease'
     $apk = 'androidApp\build\outputs\apk\release\androidApp-release.apk'
+    $appVersion = (Select-String -Path 'desktopApp\installer\PaperPlay.iss' -Pattern '#define AppVersion "(.+)"').Matches[0].Groups[1].Value
+    Copy-Item $apk (Join-Path $downloads "PaperPlay-$appVersion.apk") -Force
     $devices = @(& $adb devices | Select-String "`tdevice$" | ForEach-Object { ($_ -split "`t")[0] })
     if ($devices.Count -eq 1) {
         Write-Host (& $adb -s $devices[0] install -r $apk)

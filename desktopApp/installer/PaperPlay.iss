@@ -6,7 +6,7 @@
 #ifndef OutDir
   #define OutDir "..\build\installer"
 #endif
-#define AppVersion "1.1.0"
+#define AppVersion "1.2.0"
 
 [Setup]
 AppId={{6D0C7E52-5A5B-4C47-9D8E-3B7A1F2C9E10}
