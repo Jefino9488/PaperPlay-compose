@@ -41,6 +41,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -230,15 +231,23 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
                 val navHeight = if (prefs.navLayout == NavLayout.Labels || prefs.navLayout == NavLayout.Dock) 76.dp else 64.dp
                 val barsHeight = (if (pb.current != null) 70.dp + 8.dp else 0.dp) + navHeight + (if (prefs.floatingNav) 24.dp else 0.dp) + bottomInset + 40.dp // extra scroll room so the last item clears the bar
                 Box((if (navGlass) Modifier.fillMaxSize().layerBackdrop(backdrop) else Modifier.fillMaxSize()).padding(top = top)) {
-                    val d = detail
+                    // Each page is drawn from its own key, so the page that is leaving keeps showing what it showed.
+                    val reduceMotion = io.max.paperplay.ui.theme.LocalReduceMotion.current
+                    AnimatedContent(
+                        targetState = PageKey(settings, detail, tab, tab == 3 && profilePage == "tasks"),
+                        modifier = Modifier.fillMaxSize(),
+                        transitionSpec = { pageTransition(navMove(initialState.level, targetState.level), reduceMotion) },
+                        label = "page",
+                    ) { k ->
+                    val d = k.detail
                     when {
-                        settings -> SettingsHost(settingsStack, prefs, conn, songs.size, backend, onRestore, ::goBack, barsHeight, deep = settingsDeep)
+                        k.settings -> SettingsHost(settingsStack, prefs, conn, songs.size, backend, onRestore, ::goBack, barsHeight, deep = settingsDeep)
                         d != null -> DetailScreen(d, backend, currentId, actions, ::goBack, barsHeight)
-                        tab == 0 -> HomeScreen(lib, home, favorites, currentId, conn, scan, actions, { d2 -> navigate { detail = d2 } }, barsHeight, name = prefs.profileName)
-                        tab == 1 -> SearchScreen(backend::search, songs, currentId, actions, { d2 -> navigate { detail = d2 } }, barsHeight)
-                        tab == 2 -> LibraryScreen(lib, favorites, currentId, actions, { d2 -> navigate { detail = d2 } }, { newPlaylist = true }, barsHeight, selectedTab = libraryTab,
+                        k.tab == 0 -> HomeScreen(lib, home, favorites, currentId, conn, scan, actions, { d2 -> navigate { detail = d2 } }, barsHeight, name = prefs.profileName)
+                        k.tab == 1 -> SearchScreen(backend::search, songs, currentId, actions, { d2 -> navigate { detail = d2 } }, barsHeight)
+                        k.tab == 2 -> LibraryScreen(lib, favorites, currentId, actions, { d2 -> navigate { detail = d2 } }, { newPlaylist = true }, barsHeight, selectedTab = libraryTab,
                             recents = recents, onImportSpotify = { navigate { settings = true; settingsDeep = true; settingsStack.clear(); settingsStack.add("spotify") } })
-                        tab == 3 && profilePage == "tasks" -> TasksScreen(backend.tasks, Modifier.fillMaxSize().padding(bottom = barsHeight), onBack = ::goBack)
+                        k.tasks -> TasksScreen(backend.tasks, Modifier.fillMaxSize().padding(bottom = barsHeight), onBack = ::goBack)
                         else -> ProfileScreen(
                             songs.size, favorites.size, lib.playlists.size, conn, prefs,
                             mainChatTitle,
@@ -261,6 +270,7 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
                             barsHeight,
                             scan = scan,
                         )
+                    }
                     }
                 }
                 Column(
@@ -321,15 +331,22 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
                         )
                         Spacer(Modifier.width(12.dp))
                         Box(Modifier.weight(1f).fillMaxHeight().deskCard()) {
-                            val d = detail
                             val pad = 16.dp
+                            val reduceMotion = io.max.paperplay.ui.theme.LocalReduceMotion.current
+                            AnimatedContent(
+                                targetState = DeskKey(showNow && pb.current != null, settings, detail, page),
+                                modifier = Modifier.fillMaxSize(),
+                                transitionSpec = { pageTransition(navMove(initialState.level, targetState.level), reduceMotion) },
+                                label = "page",
+                            ) { k ->
+                            val d = k.detail
                             when {
-                                showNow && pb.current != null -> DesktopNowPlayingView(pb, backend, actions, { showNow = false }, Modifier.fillMaxSize())
-                                settings -> DesktopSettings(settingsStack, prefs, conn, songs.size, backend, onRestore, ::goBack, Modifier.fillMaxSize())
+                                k.now -> DesktopNowPlayingView(pb, backend, actions, { showNow = false }, Modifier.fillMaxSize())
+                                k.settings -> DesktopSettings(settingsStack, prefs, conn, songs.size, backend, onRestore, ::goBack, Modifier.fillMaxSize())
                                 d != null -> DetailScreen(d, backend, currentId, actions, ::goBack, pad)
-                                page == "home" -> HomeScreen(lib, home, favorites, currentId, conn, scan, actions, { d2 -> navigate { detail = d2 } }, pad, name = prefs.profileName)
-                                page == "search" -> SearchScreen(backend::search, songs, currentId, actions, { d2 -> navigate { detail = d2 } }, pad)
-                                page == "profile" -> ProfileScreen(
+                                k.page == "home" -> HomeScreen(lib, home, favorites, currentId, conn, scan, actions, { d2 -> navigate { detail = d2 } }, pad, name = prefs.profileName)
+                                k.page == "search" -> SearchScreen(backend::search, songs, currentId, actions, { d2 -> navigate { detail = d2 } }, pad)
+                                k.page == "profile" -> ProfileScreen(
                                     songs.size, favorites.size, lib.playlists.size, conn, prefs,
                                     mainChatTitle,
                                     onSettings = { id ->
@@ -353,18 +370,19 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
                                     pad,
                                     scan = scan,
                                 )
-                                page == "tasks" -> TasksScreen(backend.tasks, onBack = ::goBack)
-                                page == "upload" -> Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState())) { TopBar("Upload"); UploadsPage(backend); androidx.compose.foundation.layout.Spacer(Modifier.height(120.dp)) }
-                                page == "songs" -> Column { TopBar("Songs"); SongList(songs, currentId, actions, Modifier.fillMaxSize(), pad, empty = "No songs yet. Add a chat in Settings.") }
-                                page == "playlists" -> Column {
+                                k.page == "tasks" -> TasksScreen(backend.tasks, onBack = ::goBack)
+                                k.page == "upload" -> Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState())) { TopBar("Upload"); UploadsPage(backend); androidx.compose.foundation.layout.Spacer(Modifier.height(120.dp)) }
+                                k.page == "songs" -> Column { TopBar("Songs"); SongList(songs, currentId, actions, Modifier.fillMaxSize(), pad, empty = "No songs yet. Add a chat in Settings.") }
+                                k.page == "playlists" -> Column {
                                     TopBar("Playlists")
                                     PlaylistsTab(lib.playlists, favorites, recents, pad, { d2 -> navigate { detail = d2 } }, { newPlaylist = true },
                                         { navigate { settings = true; settingsDeep = true; settingsStack.clear(); settingsStack.add("spotify") } })
                                 }
-                                page == "albums" -> Column { TopBar("Albums"); GroupGrid(lib.albums, pad, "No albums yet.") { g -> navigate { detail = Detail.Album(g.name, g.owner) } } }
-                                page == "artists" -> Column { TopBar("Artists"); GroupList(lib.artists, pad, "No artists yet.", circle = true) { g -> navigate { detail = Detail.Artist(g.name) } } }
-                                page == "favorites" -> Column { TopBar("Favorites"); SongList(favorites, currentId, actions, Modifier.fillMaxSize(), pad, empty = "No favorites yet.") }
+                                k.page == "albums" -> Column { TopBar("Albums"); GroupGrid(lib.albums, pad, "No albums yet.") { g -> navigate { detail = Detail.Album(g.name, g.owner) } } }
+                                k.page == "artists" -> Column { TopBar("Artists"); GroupList(lib.artists, pad, "No artists yet.", circle = true) { g -> navigate { detail = Detail.Artist(g.name) } } }
+                                k.page == "favorites" -> Column { TopBar("Favorites"); SongList(favorites, currentId, actions, Modifier.fillMaxSize(), pad, empty = "No favorites yet.") }
                                 else -> Column { TopBar("Recently played"); SongList(recents, currentId, actions, Modifier.fillMaxSize(), pad, sortable = false, empty = "Nothing played yet.") }
+                            }
                             }
                         }
                         if (panel) {
