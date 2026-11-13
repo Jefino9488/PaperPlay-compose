@@ -34,6 +34,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -92,23 +93,30 @@ internal fun MiniBody(state: PlaybackUiState, controls: PlayerControls?, onClose
         val ink = MaterialTheme.colorScheme.onPrimaryContainer
         // Frameless: rounded card, cover running the full height on the left, a small close button on the right.
         val shape = RoundedCornerShape(20.dp)
-        Box(Modifier.fillMaxSize().clip(shape).background(MaterialTheme.colorScheme.primaryContainer)) {
+        // graphicsLayer clipping keeps the corners anti-aliased against the transparent window; a plain clip left dark fringes.
+        Box(Modifier.fillMaxSize().graphicsLayer { this.shape = shape; clip = true }.background(MaterialTheme.colorScheme.primaryContainer)) {
             Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
                 if (song != null) CoverImage(song.coverUri, song.id, size = 110.dp, radius = 0.dp)
-                Column(Modifier.weight(1f).padding(start = 14.dp, end = 36.dp)) {
-                    Text(song?.title ?: "Nothing is playing", maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium, color = ink)
+                Column(Modifier.weight(1f).padding(start = 14.dp, end = 12.dp)) {
+                    Text(song?.title ?: "Nothing is playing", Modifier.padding(end = 22.dp), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium, color = ink)
                     if (song != null) Text(song.artist, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = ink.copy(alpha = 0.7f))
-                    Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                    val posNow = controls?.position?.collectAsState()?.value
+                    Row(Modifier.padding(top = 6.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                         IconButton({ controls?.previous() }, Modifier.size(36.dp), enabled = song != null) { AppIcon(Icons.Rounded.SkipPrevious, "Previous", Modifier.size(24.dp), tint = ink) }
                         FilledIconButton(
                             { controls?.togglePlay() }, Modifier.size(42.dp), enabled = song != null, shape = CircleShape,
                             colors = IconButtonDefaults.filledIconButtonColors(containerColor = ink, contentColor = MaterialTheme.colorScheme.primaryContainer),
                         ) { AppIcon(if (state.playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (state.playing) "Pause" else "Play", Modifier.size(24.dp)) }
                         IconButton({ controls?.next() }, Modifier.size(36.dp), enabled = song != null) { AppIcon(Icons.Rounded.SkipNext, "Next", Modifier.size(24.dp), tint = ink) }
+                        // Time on the right, so the card has no dead space beside the controls.
+                        if (song != null) Text(
+                            io.max.paperplay.ui.logic.formatDuration((posNow?.positionMs ?: 0) / 1000) + " / " + io.max.paperplay.ui.logic.formatDuration(((if (state.durationMs > 0) state.durationMs else song.durationSec * 1000L)) / 1000),
+                            Modifier.weight(1f).padding(end = 4.dp), style = MaterialTheme.typography.labelSmall, color = ink.copy(alpha = 0.7f), textAlign = androidx.compose.ui.text.style.TextAlign.End, maxLines = 1,
+                        )
                     }
                 }
             }
-            if (onClose != null) IconButton(onClose, Modifier.align(Alignment.TopEnd).padding(4.dp).size(28.dp)) {
+            if (onClose != null) IconButton(onClose, Modifier.align(Alignment.TopEnd).padding(2.dp).size(26.dp)) {
                 AppIcon(Icons.Rounded.Close, "Close mini player", Modifier.size(16.dp), tint = ink.copy(alpha = 0.7f))
             }
             val pos = controls?.position?.collectAsState()
