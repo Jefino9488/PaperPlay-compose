@@ -109,12 +109,13 @@ class DeleteQueue(
 
     /** Permanently deletes a song from Telegram: its post and any repeats of the file. Returns how many posts went. */
     suspend fun deleteSong(s: Song): Int {
+        // Only the main chat is ever changed in Telegram, so without one nothing could be deleted there.
+        val main = mainChat() ?: throw TdError(0, "Choose a main chat in Settings first; songs are deleted from it.")
         val copies = store.postCopiesOf(s.unique_id)
         beforeDelete(s)
         val byChat = linkedMapOf(s.chat_id to mutableListOf(s.message_id))
         for (c in copies) byChat.getOrPut(c.chat_id) { mutableListOf() }.add(c.message_id)
-        // Only the main chat is ever changed in Telegram. Posts elsewhere stay and only leave the library.
-        val main = mainChat()
+        // Posts in other chats stay in Telegram and only leave the library.
         for ((chat, ids) in byChat) if (chat == main) deletePosts(chat, ids)
         for (c in copies) store.removePost(c.chat_id, c.message_id)
         store.removePost(s.chat_id, s.message_id)

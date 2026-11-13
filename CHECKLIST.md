@@ -190,7 +190,7 @@ Updated 13 Nov 2026, code audit (section 6 lists what the code does and does not
 ## 3. Not started
 
 ### Fix first
-- [ ] Android crash after the merge (error text is in Settings > Telegram > Activity log). The 16:29 crash was the volume poller and is fixed; the older TDLib "Receive must not be called simultaneously" aborts are not fixed. See also audit finding R1 in section 6 (restore while connected)
+- [ ] Android crash after the merge (error text is in Settings > Telegram > Activity log). The 16:29 crash was the volume poller and is fixed. The older TDLib "Receive must not be called simultaneously" aborts most likely came from a restore starting a second receive loop while the old one still ran; that is fixed in `AppServices.shutdown` (13 Nov audit, R1, not tried on a device; other causes are not ruled out)
 - [ ] Check everything on the phone: login, QR, indexing, copying, refresh, cloud restore, uploads,
       lyrics run, duplicates delete
 
@@ -267,7 +267,7 @@ Updated 13 Nov 2026, code audit (section 6 lists what the code does and does not
 - [~] Desktop: native Explorer-style dialogs for open, save and folder (compiles, not tried), frameless mini player, adaptive player bar, song menu, cover-gradient now playing
 - [~] Cover colours and sharper covers
 - [x] Settings: merged Appearance page, All parts incl. sidebar, bold transport icons
-- [x] Android: one AppServices per process (`MainActivity.shared`; found in the 13 Nov audit). Notification icon not checked. A restore from Settings still closes the services badly while connected (audit finding R1)
+- [x] Android: one AppServices per process (`MainActivity.shared`; found in the 13 Nov audit). Notification icon not checked. A restore from Settings now shuts the services down properly first (R1, fixed, not tried on a device)
 - [ ] Background fill of info and lyrics
 - [~] Playlists: From Telegram, starred channels; duplicates covers
 - [x] Installer asks to delete data on uninstall
@@ -414,9 +414,8 @@ code" means the code exists, not that it works.
 - [x] CI: the workflow builds only the Android debug APK on `main` and `beta` with a 30 minute timeout (13 Nov). The tests, release APK, Windows, Linux and release jobs are switched off with `if: false`
 
 ### 6d. Dead or empty code (written, never used)
+Removed on 13 Nov: `account/Stubs.kt` (`NoAccount`, `NoIndex`) and the empty `library/Placeholder.kt`.
 - `desktopApp/.../AppTitleBar.kt`: the custom title bar that was reverted; nothing calls it
-- `core/.../account/Stubs.kt`: `NoAccount` and `NoIndex`; nothing uses them
-- `core/.../library/Placeholder.kt`: one line, a package statement
 - `core/.../recs/Suggestions.kt`: written, never called
 - `core/.../sync/WorkOwner.kt`: written, never called
 
@@ -424,8 +423,8 @@ code" means the code exists, not that it works.
 - [ ] Find the test that hangs `:core:jvmTest` on CI (one run ran 6 hours, run 31 ran 53 minutes), then put the tests back in the workflow
 - [ ] Windows CI job fails every time at the "Get libvlc" step (2 seconds)
 - [ ] Turn the Linux, Windows and release jobs back on (remove `if: false`; on the release job remove the leading `false &&`)
-- [ ] README says JDK 17; `gradle/gradle-daemon-jvm.properties` asks for a JDK 25 daemon that Gradle downloads. A machine that cannot reach the download cannot build
-- [ ] The new test `backgroundAndStandbyFollowTheLayoutChoice` (backup prefs) has never been run
+- [x] README now says Gradle runs on a JDK 25 daemon it downloads on first use. A machine that cannot reach the download (or the Google Maven repository for the Android plugin) cannot build
+- [ ] The new tests have never been run: `backgroundAndStandbyFollowTheLayoutChoice` (backup prefs), `oldWrongTriesDoNotAddUpToALockout` and `aSuccessClearsTheOverallCount` (pairing)
 
 ### 6f. Bugs found in the audit
 Fixed and pushed to `beta` (compiled by CI except where noted):
@@ -437,12 +436,12 @@ Fixed and pushed to `beta` (compiled by CI except where noted):
 - [x] Backup: `bg_*` and `standby_*` prefs now follow the "apply layout" choice; `bg_image` stays per device
 - [x] `StreamHttpServer.parseRange` threw on huge numbers (desktop source, not compiled by CI)
 - [x] Desktop Spotify login could stall on an idle connection; reads now time out after 5 s (desktop source, not compiled by CI)
+- [x] R1 Restore while connected: `AppServices.shutdown()` stops LAN sync (keeping the `lan_on` choice), netplay, playback, the main and extra bots and the account, waits for TDLib's receive loop (`TdRuntime.stop()`), then closes the database; `App.kt` calls it behind a spinner before the restore screen, and Android never reuses services that were shut down. Not tried on a device
+- [x] R2 Upload retries now wait: a failed job carries a retry time that every worker honours, so Telegram's flood wait is respected (the Uploads page already shows "Retrying, attempt N")
+- [x] R3 "Listened" time now adds up normal forward playback steps; a seek no longer counts as listening (`PlaybackController`)
+- [x] R4 Deleting a song with no main chat set now fails with a clear message instead of removing it only locally (`DeleteQueue.deleteSong`)
 
 Open:
-- [ ] R1 Restore from Settings while connected closes the database without stopping Telegram, LAN sync and netplay (`App.kt` calls `services.close()`, whose own comment says to disconnect first; LAN sync runs in its own scope). May be the Android crash. Needs a device
-- [ ] R2 Upload retries ignore Telegram's back-off: a failed job goes back to `Queued` before its delay, so another worker retries it at once (`Uploader.send`)
-- [ ] R3 "Listened" time is the highest position reached, so seeking to 95% counts as a finished listen (`PlaybackController`)
-- [ ] R4 Deleting a song with no main chat set removes it from the library and records it as gone, but deletes nothing in Telegram (`DeleteQueue.deleteSong`)
-- [ ] R5 Many empty `catch` blocks, for example in `JavaNetplay.kt` (the poll loop swallows every `tick` failure); they need logging
-- [ ] R6 Local stream server: if a read returns nothing mid-body the response is cut short of its length
+- [ ] R5 Many empty `catch` blocks, for example in `JavaNetplay.kt` (the poll loop swallows every `tick` failure). They need a logger passed in (netplay has none, only a notice flow); not changed without one
+- Not a bug (R6): the local stream server cutting a response short when a read comes back empty ends the connection, and the player sees the short body; nothing to fix
 
