@@ -34,7 +34,9 @@ class LoopbackAuth : AuthRedirect {
                 ensureActive()
                 val socket = try { server.accept() } catch (_: SocketTimeoutException) { continue }
                 socket.use { s ->
-                    val line = s.getInputStream().bufferedReader().readLine() ?: return@use
+                    // A connection that sends nothing (a browser's spare one) must not hold up the real redirect.
+                    s.soTimeout = 5_000
+                    val line = try { s.getInputStream().bufferedReader().readLine() } catch (_: SocketTimeoutException) { null } ?: return@use
                     val target = line.split(' ').getOrNull(1) ?: return@use
                     val u = URI(target)
                     val out = s.getOutputStream()
