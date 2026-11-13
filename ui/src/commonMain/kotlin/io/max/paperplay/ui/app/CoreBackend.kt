@@ -652,23 +652,6 @@ class CoreBackend(val services: AppServices) : PlayerControls {
     override val volume = kotlinx.coroutines.flow.MutableStateFlow(repo.pref("player_volume")?.toFloatOrNull()?.coerceIn(0f, 1f) ?: 1f)
     @Volatile private var systemVolume = false
 
-    init {
-        scope.launch(Dispatchers.Default) {
-            var first = true
-            while (true) {
-                val level = io.max.paperplay.player.SystemVolume.get()
-                if (level == null) { if (first) return@launch else { delay(1000); continue } }
-                if (first) {
-                    first = false
-                    systemVolume = true
-                    // The engine plays at full level; the system volume is the only one.
-                    if (playerStarted.value) player.setVolume(1f)
-                }
-                if (kotlin.math.abs(level - volume.value) > 0.004f) volume.value = level
-                delay(1000)
-            }
-        }
-    }
 
     override val speed = MutableStateFlow(repo.pref("player_speed")?.toFloatOrNull()?.coerceIn(0.5f, 2f) ?: 1f)
 
@@ -720,6 +703,25 @@ class CoreBackend(val services: AppServices) : PlayerControls {
                     val ok = runCatching { listenBrainz.submit(token, song, (nowMoment().epochMs - ms) / 1000) }.getOrDefault(false)
                     if (!ok) addLog("ListenBrainz", "Could not send \"${song.title}\".", error = true)
                 }
+            }
+        }
+    }
+
+    // Started only here, after playerStarted and the player are initialised: a coroutine started earlier could reach them while they were still null (it crashed the app).
+    init {
+        scope.launch(Dispatchers.Default) {
+            var first = true
+            while (true) {
+                val level = io.max.paperplay.player.SystemVolume.get()
+                if (level == null) { if (first) return@launch else { delay(1000); continue } }
+                if (first) {
+                    first = false
+                    systemVolume = true
+                    // The engine plays at full level; the system volume is the only one.
+                    if (playerStarted.value) player.setVolume(1f)
+                }
+                if (kotlin.math.abs(level - volume.value) > 0.004f) volume.value = level
+                delay(1000)
             }
         }
     }
