@@ -120,6 +120,12 @@ class BotPool(
         lock.withLock { clients.remove(id) }?.let { runCatching { it.shutdown() } }
     }
 
+    /** Shuts every extra bot's session down without forgetting its token. */
+    suspend fun stopAll() {
+        val all = lock.withLock { clients.values.toList().also { clients.clear() } }
+        for (c in all) c.shutdown()
+    }
+
     /** Asks the Bot API who the token belongs to. Returns `@name`, or null when it is refused or unreachable. */
     suspend fun validate(token: String): String? {
         val body = http.post("https://api.telegram.org/bot$token/getMe", emptyMap()) ?: return null

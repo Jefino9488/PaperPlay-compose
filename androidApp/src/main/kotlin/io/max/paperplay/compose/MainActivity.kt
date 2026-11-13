@@ -30,6 +30,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -274,7 +275,8 @@ class MainActivity : ComponentActivity() {
                     // one beside the first: two Telegram clients on one database and two sockets on the sync port.
                     createServices = {
                         val old = shared
-                        if (old != null) {
+                        // Services shut down for a restore are dead (their scope is cancelled) and are never reused.
+                        if (old != null && old.scope.isActive) {
                             services = old
                             auth.onLateReturn { q -> old.scope.launch { runCatching { old.spotify.resume(q) } } }
                             old
