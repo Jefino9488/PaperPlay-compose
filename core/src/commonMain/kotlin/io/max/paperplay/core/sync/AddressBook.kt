@@ -72,11 +72,29 @@ class AddressBook(
     /** The addresses to try for [deviceId], newest first. */
     fun forDevice(deviceId: String): List<KnownAddress> = state.value.filter { it.deviceId == deviceId }
 
-    /** Adds an address by hand (kept if already there). False when [text] is not an address. */
-    fun add(text: String, label: String? = null): Boolean {
+    /**
+     * Adds an address by hand (kept if already there). False when [text] is not an address. With [deviceId] the address belongs
+     * to that device, so one device can hold several addresses (home, office, a new router).
+     */
+    fun add(text: String, label: String? = null, deviceId: String? = null): Boolean {
         val p = parseAddress(text, label) ?: return false
-        if (state.value.any { it.key == p.key }) return true
-        set(state.value + KnownAddress(p.host, p.port, p.label, null, 0, null, clock()))
+        val old = state.value.firstOrNull { it.key == p.key }
+        if (old != null) {
+            if (deviceId != null && old.deviceId == null) set(state.value.map { if (it.key == p.key) it.copy(deviceId = deviceId) else it })
+            return true
+        }
+        val name = deviceId?.let { id -> state.value.firstOrNull { it.deviceId == id }?.name } ?: p.label
+        set(state.value + KnownAddress(p.host, p.port, name, deviceId, 0, null, clock()))
+        return true
+    }
+
+    /** Changes the host or port of a saved address, keeping its device and name. False when [text] is not an address. */
+    fun edit(oldKey: String, text: String): Boolean {
+        val p = parseAddress(text) ?: return false
+        val old = state.value.firstOrNull { it.key == oldKey } ?: return false
+        if (p.key == oldKey) return true
+        // An address already saved under the new text is replaced by the edited one.
+        set(state.value.filter { it.key != oldKey && it.key != p.key } + old.copy(host = p.host, port = p.port, lastResult = null))
         return true
     }
 

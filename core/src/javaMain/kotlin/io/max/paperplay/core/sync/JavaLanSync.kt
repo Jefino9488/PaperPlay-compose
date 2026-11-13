@@ -605,7 +605,9 @@ internal class JavaLanSync(private val env: LanEnv) : LanSync {
 
     // Addresses and settings
 
-    override suspend fun addAddress(text: String, label: String?): Boolean = bk { add(text, label) }
+    override suspend fun addAddress(text: String, label: String?, deviceId: String?): Boolean = bk { add(text, label, deviceId) }
+
+    override suspend fun editAddress(oldKey: String, text: String): Boolean = bk { edit(oldKey, text) }
 
     override suspend fun removeAddress(key: String) = bk { remove(key) }
 

@@ -144,8 +144,13 @@ interface LanSync {
     suspend fun unpair(deviceId: String)
     suspend fun unpairAll()
 
-    /** Adds an address like `192.168.1.5` or `192.168.1.5:47872`. False when it is not an address. */
-    suspend fun addAddress(text: String, label: String? = null): Boolean
+    /**
+     * Adds an address like `192.168.1.5` or `192.168.1.5:47872`. False when it is not an address. With [deviceId] it is one more
+     * address of that device (a device moves between networks and keeps one entry).
+     */
+    suspend fun addAddress(text: String, label: String? = null, deviceId: String? = null): Boolean
+    /** Changes a saved address ([KnownAddress.key]) to [text], keeping its device. False when [text] is not an address. */
+    suspend fun editAddress(oldKey: String, text: String): Boolean
     /** Removes a saved address by [KnownAddress.key]. */
     suspend fun removeAddress(key: String)
     /** Tries every address of this network's /24 once on the port, asks who answers, and returns them. */
