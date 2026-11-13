@@ -29,10 +29,13 @@ class QueueItem(
     source: StreamSource? = null,
     private val sourceFactory: (() -> StreamSource)? = null,
 ) {
-    private val lazySource: StreamSource? by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
-        source ?: sourceFactory?.invoke()
-    }
-    val source: StreamSource? get() = lazySource
+    private val given: StreamSource? = source
+
+    /**
+     * Not kept here: the factory (the track resolver) holds the sources it needs and drops the ones it does not. Caching one per
+     * queue item kept the read buffer of every song ever played alive for as long as the queue lived.
+     */
+    val source: StreamSource? get() = given ?: sourceFactory?.invoke()
 }
 
 /** Centre frequencies of the ten equalizer bands, one octave apart. Devices with fewer bands read the curve between them. */
