@@ -28,8 +28,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.derivedStateOf
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.derivedStateOfimport androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -96,7 +95,7 @@ private fun StandbyContent(state: PlaybackUiState, backend: PlayerControls, p: S
         // AMOLED burn-in: everything, the settings button included, drifts slowly along a path that never repeats exactly
         // (periods of 7 and 5 minutes), by up to 6% of the shorter side, so no pixel stays lit.
         val seconds = clock.hour * 3600 + clock.minute * 60 + clock.second
-        val amp = minOf(maxWidth, maxHeight) * 0.06f
+        val amp = minOf(maxWidth, maxHeight) * 0.015f
         val shiftX = if (p.pixelShift) amp * kotlin.math.sin(2.0 * kotlin.math.PI * seconds / 420.0).toFloat() else 0.dp
         val shiftY = if (p.pixelShift) amp * kotlin.math.sin(2.0 * kotlin.math.PI * seconds / 300.0 + 1.0).toFloat() else 0.dp
         val scale = p.clockSize
@@ -151,8 +150,12 @@ private fun StandbyContent(state: PlaybackUiState, backend: PlayerControls, p: S
                 visual(Modifier.fillMaxWidth().height(boxHeight * 0.28f))
             }
         }
-        IconButton({ sheet = true }, Modifier.align(Alignment.TopEnd).offset(shiftX, shiftY).padding(8.dp)) {
-            AppIcon(Icons.Rounded.Settings, "Customise standby", tint = tone.copy(alpha = 0.35f))
+        // Shown briefly on entry, then fades to invisible; it still works where it was.
+        var hint by remember { mutableStateOf(true) }
+        LaunchedEffect(Unit) { delay(3000); hint = false }
+        val hintAlpha by androidx.compose.animation.core.animateFloatAsState(if (hint) 0.35f else 0f, androidx.compose.animation.core.tween(1500))
+        IconButton({ sheet = true }, Modifier.align(Alignment.TopEnd).padding(8.dp)) {
+            AppIcon(Icons.Rounded.Settings, "Customise standby", tint = tone.copy(alpha = hintAlpha))
         }
         if (sheet) StandbyCustomiseSheet(p) { sheet = false }
     }

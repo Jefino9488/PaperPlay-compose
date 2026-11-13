@@ -127,7 +127,12 @@ fun FullPlayer(
                 .background(Brush.verticalGradient(0f to top, 0.6f to mid, 1f to Color.Black))
                 .padding(top = insets, bottom = bottom),
         ) {
-            val wide = maxWidth >= 900.dp
+            val wide = maxWidth >= 900.dp && !(io.max.paperplay.ui.isPhone && maxWidth > maxHeight)
+            // Held here so turning the phone does not close it.
+            val standbyPrefs = if (io.max.paperplay.ui.isPhone) LocalUiPrefs.current?.standby else null
+            var standby by remember { mutableStateOf(false) }
+            val openStandby: (() -> Unit)? = if (standbyPrefs != null) ({ standby = true }) else null
+            if (standby && standbyPrefs != null) StandbyScreen(state, backend, standbyPrefs) { standby = false }
             when {
                 wide -> Row(Modifier.fillMaxSize()) {
                     // The song gets the larger share and sits a little right of centre; the queue and lyrics take the rest.
@@ -168,7 +173,7 @@ fun FullPlayer(
                     }
                     QueueList(state, backend, Modifier.weight(1f))
                 }
-                else -> PlayerBody(song, state, error, backend, actions, onClose, grabber = true, Modifier.fillMaxSize(), onQueue = { showQueue = true }, onDevices = onOpenSettings?.let { open -> { id: String -> onClose(); open(id) } })
+                else -> PlayerBody(song, state, error, backend, actions, onClose, grabber = true, Modifier.fillMaxSize(), onQueue = { showQueue = true }, onStandby = openStandby, onDevices = onOpenSettings?.let { open -> { id: String -> onClose(); open(id) } })
             }
         }
     }
@@ -178,17 +183,19 @@ fun FullPlayer(
 private fun PlayerBody(
     song: SongUi, state: PlaybackUiState, error: String?, backend: PlayerControls, actions: ListActions, onClose: () -> Unit,
     grabber: Boolean, modifier: Modifier = Modifier, onQueue: (() -> Unit)? = null, onDevices: ((String) -> Unit)? = null,
-    contentMax: androidx.compose.ui.unit.Dp = 560.dp,
+    contentMax: androidx.compose.ui.unit.Dp = 560.dp, onStandby: (() -> Unit)? = null,
 ) {
     val scheme = MaterialTheme.colorScheme
     var outputInfoOpen by remember { mutableStateOf(false) }
     BoxWithConstraints(modifier, contentAlignment = Alignment.TopCenter) {
+        // A phone on its side: cover left, controls scroll on the right.
+        val short = io.max.paperplay.ui.isPhone && maxWidth > maxHeight
         // Room the controls need, so short screens shrink the cover, not them.
-        val art = minOf(maxWidth - 48.dp, maxHeight - 25.dp - 410.dp).coerceAtLeast(120.dp)
-        Column(Modifier.widthIn(max = contentMax).fillMaxHeight().padding(horizontal = 12.dp)) {
+        val art = if (short) (maxHeight - 40.dp).coerceAtLeast(120.dp) else minOf(maxWidth - 48.dp, maxHeight - 25.dp - 410.dp).coerceAtLeast(120.dp)
+        val cover: @Composable (Modifier) -> Unit = { cm ->
             // Drag down on the cover to close, sideways to change song.
             Column(
-                Modifier.fillMaxWidth().pointerInput(Unit) {
+                cm.pointerInput(Unit) {
                     var dx = 0f; var dy = 0f
                     detectDragGestures(
                         onDragStart = { dx = 0f; dy = 0f },
@@ -208,8 +215,10 @@ private fun PlayerBody(
                 else Spacer(Modifier.height(8.dp))
                 Artwork(song, state.playing, art)
             }
-            // Everything below shares the leftover height evenly.
-            Column(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.SpaceEvenly) {
+        }
+        // Everything below shares the leftover height evenly.
+        val lower: @Composable (Modifier) -> Unit = { lm ->
+            Column(lm.fillMaxWidth(), verticalArrangement = if (short) Arrangement.spacedBy(8.dp) else Arrangement.SpaceEvenly) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f).padding(start = 12.dp)) {
                         Text(song.title, modifier = Modifier.basicMarquee(), maxLines = 1, style = MaterialTheme.typography.headlineSmall)
@@ -264,12 +273,7 @@ private fun PlayerBody(
                 }
                 if (devicesOpen && onDevices != null) PhoneDevicesDialog(onDevices, switchOutput, song) { devicesOpen = false }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    val standbyPrefs = if (io.max.paperplay.ui.isPhone) LocalUiPrefs.current?.standby else null
-                    if (standbyPrefs != null) {
-                        var standby by remember { mutableStateOf(false) }
-                        IconButton({ standby = true }) { AppIcon(Icons.Rounded.NightsStay, "Standby mode") }
-                        if (standby) StandbyScreen(state, backend, standbyPrefs) { standby = false }
-                    }
+                    if (onStandby != null) IconButton(onStandby) { AppIcon(Icons.Rounded.NightsStay, "Standby mode") }
                     if (onDevices != null) {
                         IconButton({ devicesOpen = true }) { AppIcon(Icons.Rounded.Devices, "Devices") }
                     }
@@ -298,6 +302,13 @@ private fun PlayerBody(
                     if (onQueue != null) IconButton(onQueue) { AppIcon(Icons.AutoMirrored.Rounded.QueueMusic, "Queue") }
                 }
             }
+        }
+        if (short) Row(Modifier.fillMaxSize().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(20.dp), verticalAlignment = Alignment.CenterVertically) {
+            cover(Modifier.width(art))
+            lower(Modifier.weight(1f).fillMaxHeight().verticalScroll(androidx.compose.foundation.rememberScrollState()))
+        } else Column(Modifier.widthIn(max = contentMax).fillMaxHeight().padding(horizontal = 12.dp)) {
+            cover(Modifier.fillMaxWidth())
+            lower(Modifier.weight(1f))
         }
     }
 }
