@@ -36,7 +36,19 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.max.paperplay.ui.components.AppIcon
 
-internal data class ChannelUi(val id: Long, val title: String)
+/** What one channel holds, for its card on the Channels page. */
+data class ChannelStats(
+    val songs: Int = 0, val topics: Int = 0, val bytes: Long = 0, val seconds: Long = 0, val lossless: Int = 0,
+    val offline: Int = 0, val pinned: Int = 0, val favorites: Int = 0, val copies: Int = 0,
+)
+
+internal data class ChannelUi(val id: Long, val title: String, val stats: ChannelStats? = null)
+
+private fun size(bytes: Long) = if (bytes >= 1_000_000_000) "${bytes / 100_000_000 / 10.0} GB" else "${bytes / 1_000_000} MB"
+private fun span(seconds: Long): String {
+    val h = seconds / 3600; val m = seconds % 3600 / 60
+    return if (h >= 24) "${h / 24} d ${h % 24} h" else if (h > 0) "$h h $m min" else "$m min"
+}
 
 /** Settings > Telegram > Channels: what is connected, the main chat, and the other chats in the library. */
 @Composable
@@ -47,7 +59,11 @@ internal fun ChannelsPage(conn: ConnectionUi, backend: CoreBackend, stack: Mutab
     val loggedIn by backend.account.loggedIn.collectAsState()
     val copyOn = remember { mutableStateMapOf<Long, Boolean>() }
     val starOn = remember { mutableStateMapOf<Long, Boolean>() }
-    val all = conn.chats.map { ChannelUi(it.id, it.title) }
+    // Totals come from the songs in memory; recomputed when the chat list or a scan finishes, not on every progress tick.
+    val stats by androidx.compose.runtime.produceState(emptyMap<Long, ChannelStats>(), conn.chats, scan == null) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { backend.channelStats(conn.chats.map { it.id }) }
+    }
+    val all = conn.chats.map { ChannelUi(it.id, it.title, stats[it.id]) }
     ChannelsContent(
         status = when {
             conn.ready -> "Connected as your bot"
@@ -166,6 +182,17 @@ private fun ChannelCard(chat: ChannelUi, note: String, highlighted: Boolean, bel
                 Text(chat.title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(chat.id.toString(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
+                chat.stats?.let { st ->
+                    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+                    val first = listOf("${st.songs} songs", "${st.topics} topics", size(st.bytes), span(st.seconds))
+                    val second = listOfNotNull(
+                        if (st.lossless > 0) "${st.lossless} lossless" else null, if (st.offline > 0) "${st.offline} offline" else null,
+                        if (st.pinned > 0) "${st.pinned} pinned" else null, if (st.favorites > 0) "${st.favorites} favourites" else null,
+                        if (st.copies > 0) "${st.copies} copied to main" else null,
+                    )
+                    Text(first.joinToString(" · "), Modifier.padding(top = 6.dp), style = MaterialTheme.typography.bodySmall, color = muted)
+                    if (second.isNotEmpty()) Text(second.joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = muted)
+                }
             }
             trailing()
         }
@@ -179,8 +206,8 @@ private fun ChannelCard(chat: ChannelUi, note: String, highlighted: Boolean, bel
 private fun ChannelsPreview() = io.max.paperplay.ui.PreviewFrame(dark = true) {
     Column {
         ChannelsContent(
-            "Connected as your bot", null, true, ChannelUi(-1002491394780, "Somg Playlist"),
-            listOf(ChannelUi(-1001234567890, "Old library")), null, null, {}, {}, {}, {}, {},
+            "Connected as your bot", null, true, ChannelUi(-1002491394780, "Somg Playlist", ChannelStats(1280, 6, 9_400_000_000, 310_000, 420, 30, 12, 55, 0)),
+            listOf(ChannelUi(-1001234567890, "Old library", ChannelStats(340, 0, 1_900_000_000, 80_000, 0, 0, 0, 3, 12))), null, null, {}, {}, {}, {}, {},
         )
     }
 }

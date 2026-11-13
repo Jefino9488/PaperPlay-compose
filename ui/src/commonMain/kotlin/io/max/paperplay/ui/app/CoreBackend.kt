@@ -409,6 +409,22 @@ class CoreBackend(val services: AppServices) : PlayerControls {
     }
 
     /** Bytes of songs stored on this device: (pinned, other). */
+    /** Per-chat totals for the Channels page, from the songs already in memory plus the topic and copy tables. */
+    fun channelStats(chatIds: Collection<Long>): Map<Long, ChannelStats> {
+        val topics = repo.topicCountsByChat()
+        val copies = repo.copyCountsByChat()
+        val bySongs = byId.values.groupBy { it.chat_id }
+        return chatIds.associateWith { id ->
+            val list = bySongs[id].orEmpty()
+            ChannelStats(
+                songs = list.size, topics = topics[id] ?: 0, bytes = list.sumOf { it.size }, seconds = list.sumOf { it.duration_sec },
+                lossless = list.count { (it.codec ?: it.file_name.substringAfterLast('.', "")).lowercase().trim() in LOSSLESS },
+                offline = list.count { it.size > 0 && it.cached_bytes >= it.size }, pinned = list.count { it.pinned },
+                favorites = list.count { it.favorite }, copies = copies[id] ?: 0,
+            )
+        }
+    }
+
     fun cacheUsed(): Pair<Long, Long> {
         val rows = repo.cachedSongs()
         return rows.filter { it.pinned }.sumOf { it.cached_bytes } to rows.filter { !it.pinned }.sumOf { it.cached_bytes }
@@ -463,6 +479,8 @@ class CoreBackend(val services: AppServices) : PlayerControls {
     val eqGains = MutableStateFlow(
         io.max.paperplay.player.migrateEqGains(repo.pref("eq_gains")?.trim('[', ']', ' ')?.split(',')?.mapNotNull { it.trim().toFloatOrNull() }),
     )
+    private val _outputInfo = MutableStateFlow<io.max.paperplay.player.OutputInfo?>(null)
+    override val outputInfo: StateFlow<io.max.paperplay.player.OutputInfo?> = _outputInfo
 
     fun setEqualizer(on: Boolean = eqOn.value, gains: List<Float> = eqGains.value) {
         eqOn.value = on
@@ -479,8 +497,6 @@ class CoreBackend(val services: AppServices) : PlayerControls {
         else repo.pref("listenbrainz_user")?.takeIf { it.isNotEmpty() } ?: "your account",
     )
 
-    private val _outputInfo = MutableStateFlow<io.max.paperplay.player.OutputInfo?>(null)
-    override val outputInfo: StateFlow<io.max.paperplay.player.OutputInfo?> = _outputInfo
 
     /** Checks the token with ListenBrainz and keeps it. Returns a problem as text, or null when it worked. */
     suspend fun connectListenBrainz(token: String): String? {
@@ -668,6 +684,7 @@ class CoreBackend(val services: AppServices) : PlayerControls {
 
     private val playerLazy = lazy {
         services.playback.also { p ->
+            scope.launch { p.outputInfo.collect { _outputInfo.value = it } }
             if (eqOn.value) p.setEqualizer(eqGains.value)
             if (volume.value != 1f) p.setVolume(volume.value)
             if (speed.value != 1f) p.setSpeed(speed.value)
@@ -684,7 +701,6 @@ class CoreBackend(val services: AppServices) : PlayerControls {
             }
         }
     }
-            scope.launch { p.outputInfo.collect { _outputInfo.value = it } }
 
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     /** Puts the last queue back, paused, once the connection is up (or after 20 seconds) and nothing has been played. */
