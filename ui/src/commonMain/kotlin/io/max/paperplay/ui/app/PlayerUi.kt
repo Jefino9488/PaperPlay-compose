@@ -129,7 +129,8 @@ fun FullPlayer(
             val wide = maxWidth >= 900.dp
             when {
                 wide -> Row(Modifier.fillMaxSize()) {
-                    Column(Modifier.weight(1f).fillMaxHeight()) {
+                    // The song gets the larger share and sits a little right of centre; the queue and lyrics take the rest.
+                    Column(Modifier.weight(1.2f).fillMaxHeight().padding(start = 40.dp)) {
                         Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                             IconButton(onClose) { AppIcon(Icons.Rounded.KeyboardArrowDown, "Close player", Modifier.size(32.dp)) }
                             Spacer(Modifier.weight(1f))
@@ -137,7 +138,7 @@ fun FullPlayer(
                                 AppIcon(if (fullscreen) Icons.Rounded.FullscreenExit else Icons.Rounded.Fullscreen, if (fullscreen) "Exit full screen" else "Full screen", Modifier.size(28.dp))
                             }
                         }
-                        PlayerBody(song, state, error, backend, actions, onClose, grabber = false, Modifier.weight(1f))
+                        PlayerBody(song, state, error, backend, actions, onClose, grabber = false, Modifier.weight(1f), contentMax = 720.dp)
                     }
                     Column(Modifier.weight(1f).fillMaxHeight().padding(end = 16.dp)) {
                         Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -177,11 +178,12 @@ private fun PlayerBody(
     song: SongUi, state: PlaybackUiState, error: String?, backend: PlayerControls, actions: ListActions, onClose: () -> Unit,
     grabber: Boolean, modifier: Modifier = Modifier, onQueue: (() -> Unit)? = null, onDevices: ((String) -> Unit)? = null,
 ) {
+    contentMax: androidx.compose.ui.unit.Dp = 560.dp,
     val scheme = MaterialTheme.colorScheme
     BoxWithConstraints(modifier, contentAlignment = Alignment.TopCenter) {
         // Room the controls need, so short screens shrink the cover, not them.
         val art = minOf(maxWidth - 48.dp, maxHeight - 25.dp - 410.dp).coerceAtLeast(120.dp)
-        Column(Modifier.widthIn(max = 560.dp).fillMaxHeight().padding(horizontal = 12.dp)) {
+        Column(Modifier.widthIn(max = contentMax).fillMaxHeight().padding(horizontal = 12.dp)) {
             // Drag down on the cover to close, sideways to change song.
             Column(
                 Modifier.fillMaxWidth().pointerInput(Unit) {
