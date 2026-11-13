@@ -294,9 +294,15 @@ class Scanner(
         return if (calm) maxOf(base, 1500.milliseconds) else base
     }
 
-    suspend fun scanChat(chat: LibraryChat, full: Boolean = false, endHint: Long = 0): Set<Long>? {
-        val client = td ?: return null
+    /**
+     * [via] reads through another client (an extra bot) and [owner] is that bot's id: it adds only songs the library lacks,
+     * marks them as that bot's (see [botRemote]) and never changes the saved scan position.
+     */
+    suspend fun scanChat(chat: LibraryChat, full: Boolean = false, endHint: Long = 0, via: TdClient? = null, owner: Long = 0L): Set<Long>? {
+        val client = via ?: td ?: return null
+        val persist = owner == 0L
         val rows = repo.songsInChat(chat.id)
+        val have = if (persist) emptySet() else rows.map { it.message_id }.toSet()
         val last = chat.last_scanned_message_id
         var next = if (full || last == null) MESSAGE_ID_STEP else last + MESSAGE_ID_STEP
         var newest = last ?: 0
@@ -325,7 +331,7 @@ class Scanner(
             var lastShown = lastWrite
             while (true) {
                 if (stopGen != gen) {
-                    if (!full) repo.setScan(chat.id, newest, chat.walk_done)
+                    if (!full && persist) repo.setScan(chat.id, newest, chat.walk_done)
                     return null
                 }
                 // The chat row is looked up again only every 10 s; removal is rare.
@@ -377,12 +383,13 @@ class Scanner(
                         saveTopicName(m)
                         val song = songFromMessage(m) ?: continue
                         seen += song.message_id
-                        if (repo.repo.upsertBotSong(song)) added++
+                        if (persist) { if (repo.repo.upsertBotSong(song)) added++ }
+                        else if (song.message_id !in have && repo.repo.upsertBotSong(song.copy(remote_id = botRemote(owner, song.remote_id)))) added++
                     }
                 }
                 repo.invalidate()
                 // Saved about once a second, so a closed app continues near here; only real message ids, or later posts could be skipped.
-                if (!full) {
+                if (!full && persist) {
                     if (lastWrite.elapsedNow() >= 1.seconds) { repo.setScan(chat.id, newest, chat.walk_done); lastWrite = clockMark.markNow() }
                 }
                 next += WALK_BATCH * MESSAGE_ID_STEP
@@ -400,9 +407,9 @@ class Scanner(
                 if (messages.isNotEmpty() || next <= knownEnd) empties = 0 else if (++empties >= emptyLimit) break
                 if (window.isEmpty()) delay(pause)
             }
-            repo.setScan(chat.id, newest, true)
-            _report.value = "${chat.title}: ${seen.size} song posts read up to message ${newest / MESSAGE_ID_STEP}, $added new, $recovered found on a second ask, $holes ids held nothing"
-            if (!full) caughtUp.update { it + chat.id }
+            if (persist) repo.setScan(chat.id, newest, true)
+            _report.value = "${chat.title}${if (persist) "" else " (extra bot)"}: ${seen.size} song posts read up to message ${newest / MESSAGE_ID_STEP}, $added new, $recovered found on a second ask, $holes ids held nothing"
+            if (!full && persist) caughtUp.update { it + chat.id }
             return seen
         } catch (e: TdError) {
             _error.value = "$chatTitle: scan failed, ${e.message}"
