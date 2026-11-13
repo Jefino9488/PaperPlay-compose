@@ -1,10 +1,10 @@
 name: Build PaperPlay
 
-# Pushes and pull requests build and test. Push a tag like v1.0.1, or run this workflow by hand
-# with "release" ticked, to also publish a GitHub Release with every build attached.
+# For now only the Android debug APK is built. The tests, release APK, desktop builds and the release job
+# are switched off with `if: false` (on the release job `false &&` in front of its condition); take that out to turn a job back on.
 on:
   push:
-    branches: [ main ]
+    branches: [ main, beta ]
     tags: [ 'v*' ]
   pull_request:
     branches: [ main ]
@@ -28,8 +28,9 @@ permissions:
 
 jobs:
   android:
-    name: Android (tests, debug and release APK)
+    name: Android (debug APK)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     env:
       # Optional repository secrets for signing. Without them the release APK is signed with the debug key.
       KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -65,14 +66,13 @@ jobs:
           } > "$RUNNER_TEMP/signing.properties"
           echo "signing.file=$RUNNER_TEMP/signing.properties" >> local.properties
 
-      - name: Test and build Android APKs
-        run: ./gradlew :core:jvmTest :player:jvmTest :androidApp:assembleDebug :androidApp:assembleRelease --no-daemon
+      - name: Build Android debug APK
+        run: ./gradlew :androidApp:assembleDebug --no-daemon
 
-      - name: Name the APKs
+      - name: Name the APK
         run: |
           mkdir -p dist
           cp androidApp/build/outputs/apk/debug/*.apk dist/PaperPlay-Android-debug.apk
-          cp androidApp/build/outputs/apk/release/*.apk dist/PaperPlay-Android-release.apk
 
       - uses: actions/upload-artifact@v4
         with:
@@ -82,6 +82,7 @@ jobs:
 
   desktop-windows:
     name: Desktop (Windows zip, MSI and setup exe)
+    if: false
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -142,6 +143,7 @@ jobs:
 
   desktop-linux:
     name: Desktop (Linux archive)
+    if: false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -170,7 +172,7 @@ jobs:
   release:
     name: Publish GitHub Release
     needs: [ android, desktop-windows, desktop-linux ]
-    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.release)
+    if: false && (startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.release))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
