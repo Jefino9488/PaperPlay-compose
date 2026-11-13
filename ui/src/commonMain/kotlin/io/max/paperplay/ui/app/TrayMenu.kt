@@ -34,7 +34,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.foundation.border
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
@@ -44,7 +45,7 @@ import io.max.paperplay.ui.components.CoverImage
 import io.max.paperplay.ui.components.LocalCoverLoader
 import io.max.paperplay.ui.theme.PaperPlayTheme
 
-/** Size of the tray menu window: the card plus room for its shadow. Shared so the desktop entry point can place it. */
+/** Size of the tray menu window: the card plus a small transparent margin. Shared so the desktop entry point can place it. */
 val TrayMenuWidth = 256.dp
 val TrayMenuHeight = 352.dp
 
@@ -65,9 +66,9 @@ fun TrayMenuContent(
             CoverTinted(song?.coverUri) {
                 val ink = MaterialTheme.colorScheme.onPrimaryContainer
                 val card = MaterialTheme.colorScheme.primaryContainer
-                val shape = RoundedCornerShape(18.dp)
-                Box(Modifier.fillMaxSize().padding(8.dp)) {
-                    Column(Modifier.fillMaxSize().shadow(10.dp, shape).clip(shape).background(card).padding(vertical = 8.dp)) {
+                val shape = androidx.compose.ui.graphics.RectangleShape // the window itself is rounded by Windows
+                Box(Modifier.fillMaxSize()) {
+                    Column(Modifier.fillMaxSize().background(card).padding(vertical = 8.dp)) {
                         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                             if (song != null) CoverImage(song.coverUri, song.id, size = 44.dp, radius = 10.dp)
                             Column(Modifier.weight(1f).padding(start = if (song != null) 10.dp else 0.dp)) {

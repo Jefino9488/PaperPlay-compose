@@ -92,9 +92,9 @@ internal fun MiniBody(state: PlaybackUiState, controls: PlayerControls?, onClose
     CoverTinted(song?.coverUri) {
         val ink = MaterialTheme.colorScheme.onPrimaryContainer
         // Frameless: rounded card, cover running the full height on the left, a small close button on the right.
-        val shape = RoundedCornerShape(20.dp)
+        val shape = androidx.compose.ui.graphics.RectangleShape // Windows rounds the window
         // graphicsLayer clipping keeps the corners anti-aliased against the transparent window; a plain clip left dark fringes.
-        Box(Modifier.fillMaxSize().graphicsLayer { this.shape = shape; clip = true }.background(MaterialTheme.colorScheme.primaryContainer)) {
+        Box(Modifier.fillMaxSize().clip(shape).background(MaterialTheme.colorScheme.primaryContainer)) {
             Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
                 if (song != null) CoverImage(song.coverUri, song.id, size = 110.dp, radius = 0.dp)
                 Column(Modifier.weight(1f).padding(start = 14.dp, end = 12.dp)) {

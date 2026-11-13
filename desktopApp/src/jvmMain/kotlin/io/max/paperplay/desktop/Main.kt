@@ -239,7 +239,7 @@ fun main() {
                         position = androidx.compose.ui.window.WindowPosition(x.dp, y.dp),
                         size = androidx.compose.ui.unit.DpSize(io.max.paperplay.ui.app.TrayMenuWidth, io.max.paperplay.ui.app.TrayMenuHeight),
                     ),
-                    title = "Paper Play menu", undecorated = true, transparent = true, resizable = false, alwaysOnTop = true,
+                    title = "Paper Play menu", undecorated = true, resizable = false, alwaysOnTop = true,
                     onKeyEvent = {
                         if (it.key == androidx.compose.ui.input.key.Key.Escape && it.type == androidx.compose.ui.input.key.KeyEventType.KeyDown) { trayMenuAt = null; true } else false
                     },
@@ -249,6 +249,7 @@ fun main() {
                         window.addWindowFocusListener(object : java.awt.event.WindowAdapter() {
                             override fun windowLostFocus(e: java.awt.event.WindowEvent?) { trayMenuAt = null }
                         })
+                        WindowsTitleBar.roundCorners(window)
                         window.toFront(); window.requestFocus()
                     }
                     io.max.paperplay.ui.app.TrayMenuContent(
@@ -295,7 +296,8 @@ fun main() {
                 undecorated = true, transparent = true,
                 alwaysOnTop = true, resizable = false, icon = androidx.compose.ui.res.painterResource("icon.png"),
             ) {
-                // No title bar: the whole card drags the window, and the close button sits on the card.
+                // No title bar: the whole card drags the window, and the close button sits on the card. Windows rounds the corners.
+                androidx.compose.runtime.LaunchedEffect(Unit) { WindowsTitleBar.roundCorners(window) }
                 WindowDraggableArea {
                     io.max.paperplay.ui.app.DesktopMiniContent(onClose = { io.max.paperplay.ui.app.DesktopMini.visible.value = false })
                 }

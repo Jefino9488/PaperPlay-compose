@@ -12,6 +12,13 @@ internal object WindowsTitleBar {
         fun DwmSetWindowAttribute(hwnd: Pointer, attr: Int, value: IntByReference, size: Int): Int
     }
 
+    /** Windows 11 rounds the corners of an undecorated window itself, cleanly anti-aliased; a transparent window clipped by Compose left dark fringes. Older Windows ignores it. */
+    fun roundCorners(window: Window?) {
+        val api = dwm ?: return
+        val w = window ?: return
+        runCatching { Native.getComponentPointer(w)?.let { api.DwmSetWindowAttribute(it, 33, IntByReference(2), 4) } } // DWMWA_WINDOW_CORNER_PREFERENCE = DWMWCP_ROUND
+    }
+
     private val dwm: Dwm? = runCatching {
         if (System.getProperty("os.name").orEmpty().startsWith("Windows")) Native.load("dwmapi", Dwm::class.java) else null
     }.getOrNull()
