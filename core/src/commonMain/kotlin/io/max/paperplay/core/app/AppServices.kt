@@ -109,7 +109,8 @@ class AppServices(
                         rt,
                         TdConfig(
                             apiId, apiHash, token, "${platform.dataDir}/td_extra_$id", "${platform.dataDir}/td_extra_files_$id", key,
-                            deviceModel = platform.deviceModel, appVersion = platform.appVersion,
+                            // Extra bots only upload and read posts by id from the server, so they keep no message database in memory.
+                            deviceModel = platform.deviceModel, appVersion = platform.appVersion, useMessageDatabase = false,
                         ),
                     )
                 }
