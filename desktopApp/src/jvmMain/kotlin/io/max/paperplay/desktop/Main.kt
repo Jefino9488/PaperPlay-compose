@@ -197,23 +197,66 @@ fun main() {
             liveServices?.releasePlayback()
             exitApplication()
         }
+        // The tray menu is the app's own themed window (TrayMenuContent) rather than the native Windows menu.
+        var trayMenuAt by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<java.awt.Point?>(null) }
+        val control = { f: (io.max.paperplay.core.app.PlaybackController) -> Unit -> liveServices?.takeIf { it.playbackStarted }?.let { f(it.playback) } }
         if (trayOk) {
-            val icon = androidx.compose.ui.res.painterResource("icon.png")
-            val control = { f: (io.max.paperplay.core.app.PlaybackController) -> Unit -> liveServices?.takeIf { it.playbackStarted }?.let { f(it.playback) } }
-            Tray(
-                icon = icon, tooltip = "Paper Play",
-                onAction = { mainVisible = true; mainState.isMinimized = false },
-                menu = {
-                    Item("Open Paper Play", onClick = { mainVisible = true; mainState.isMinimized = false })
-                    Separator()
-                    Item("Play / Pause", onClick = { control { p -> if (p.nowPlayingStatic.value.isPlaying) p.pause() else p.play() } })
-                    Item("Next", onClick = { control { it.next() } })
-                    Item("Previous", onClick = { control { it.previous() } })
-                    Item("Mini player", onClick = { io.max.paperplay.ui.app.DesktopMini.visible.value = !io.max.paperplay.ui.app.DesktopMini.visible.value })
-                    Separator()
-                    Item("Quit", onClick = quit)
-                },
-            )
+            androidx.compose.runtime.DisposableEffect(Unit) {
+                val image = javax.imageio.ImageIO.read(Thread.currentThread().contextClassLoader.getResource("icon.png"))
+                val trayIcon = java.awt.TrayIcon(image, "Paper Play").apply {
+                    isImageAutoSize = true
+                    addMouseListener(object : java.awt.event.MouseAdapter() {
+                        override fun mouseReleased(e: java.awt.event.MouseEvent) {
+                            if (e.isPopupTrigger || e.button == java.awt.event.MouseEvent.BUTTON3) trayMenuAt = e.point
+                        }
+                        override fun mouseClicked(e: java.awt.event.MouseEvent) {
+                            if (e.button == java.awt.event.MouseEvent.BUTTON1) { mainVisible = true; mainState.isMinimized = false; raise++ }
+                        }
+                    })
+                }
+                java.awt.SystemTray.getSystemTray().add(trayIcon)
+                onDispose { java.awt.SystemTray.getSystemTray().remove(trayIcon) }
+            }
+        }
+        trayMenuAt?.let { at ->
+            val screens = java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment()
+            val gc = screens.screenDevices.map { it.defaultConfiguration }.firstOrNull { it.bounds.contains(at) } ?: screens.defaultScreenDevice.defaultConfiguration
+            val b = gc.bounds
+            val insets = java.awt.Toolkit.getDefaultToolkit().getScreenInsets(gc)
+            val w = io.max.paperplay.ui.app.TrayMenuWidth.value.toInt(); val h = io.max.paperplay.ui.app.TrayMenuHeight.value.toInt()
+            val x = (at.x - w / 2).coerceIn(b.x, maxOf(b.x, b.x + b.width - w))
+            // Taskbar at the bottom: sit just above it; otherwise start at the click.
+            val y = if (at.y > b.y + b.height / 2) b.y + b.height - insets.bottom - h else at.y
+            androidx.compose.runtime.key(at) {
+                androidx.compose.ui.window.DialogWindow(
+                    onCloseRequest = { trayMenuAt = null },
+                    state = androidx.compose.ui.window.rememberDialogState(
+                        position = androidx.compose.ui.window.WindowPosition(x.dp, y.dp),
+                        size = androidx.compose.ui.unit.DpSize(io.max.paperplay.ui.app.TrayMenuWidth, io.max.paperplay.ui.app.TrayMenuHeight),
+                    ),
+                    title = "Paper Play menu", undecorated = true, transparent = true, resizable = false, alwaysOnTop = true,
+                    onKeyEvent = {
+                        if (it.key == androidx.compose.ui.input.key.Key.Escape && it.type == androidx.compose.ui.input.key.KeyEventType.KeyDown) { trayMenuAt = null; true } else false
+                    },
+                ) {
+                    androidx.compose.runtime.LaunchedEffect(Unit) {
+                        // Closes when the user clicks anywhere else.
+                        window.addWindowFocusListener(object : java.awt.event.WindowAdapter() {
+                            override fun windowLostFocus(e: java.awt.event.WindowEvent?) { trayMenuAt = null }
+                        })
+                        window.toFront(); window.requestFocus()
+                    }
+                    io.max.paperplay.ui.app.TrayMenuContent(
+                        onOpen = { mainVisible = true; mainState.isMinimized = false; raise++ },
+                        onPlayPause = { control { p -> if (p.nowPlayingStatic.value.isPlaying) p.pause() else p.play() } },
+                        onNext = { control { it.next() } },
+                        onPrevious = { control { it.previous() } },
+                        onMini = { io.max.paperplay.ui.app.DesktopMini.visible.value = !io.max.paperplay.ui.app.DesktopMini.visible.value },
+                        onQuit = quit,
+                        dismiss = { trayMenuAt = null },
+                    )
+                }
+            }
         }
         Window(
             onCloseRequest = { if (trayOk) mainVisible = false else quit() },
