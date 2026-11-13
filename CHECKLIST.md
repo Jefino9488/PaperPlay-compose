@@ -411,7 +411,7 @@ code" means the code exists, not that it works.
 - [x] Android Keystore secret store (`core/.../AndroidSecretStore.kt`) and Windows DPAPI store (`DesktopSecretStore.kt`)
 - [x] Desktop loopback stream server for libvlc with range support (`player/.../StreamHttpServer.kt`, has a test)
 - [x] Home shelves (`recs/HomeShelves.kt`: rows of albums and artists, each cover used once on the page)
-- [x] CI: the workflow builds only the Android debug APK on `main` and `beta` with a 30 minute timeout (13 Nov). The tests, release APK, Windows, Linux and release jobs are switched off with `if: false`
+- [x] CI (14 Nov): the workflow builds the Android debug and release APKs (signed with the repository keystore secrets `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`) and the Windows and Linux desktop apps on `main` and `beta`, 30 minute timeout per job. The tests and the GitHub Release job are switched off with `if: false`
 
 ### 6d. Dead or empty code (written, never used)
 Removed on 13 Nov: `account/Stubs.kt` (`NoAccount`, `NoIndex`) and the empty `library/Placeholder.kt`.
@@ -421,8 +421,8 @@ Removed on 13 Nov: `account/Stubs.kt` (`NoAccount`, `NoIndex`) and the empty `li
 
 ### 6e. Build and CI to do
 - [ ] Find the test that hangs `:core:jvmTest` on CI (one run ran 6 hours, run 31 ran 53 minutes), then put the tests back in the workflow
-- [ ] Windows CI job fails every time at the "Get libvlc" step (2 seconds)
-- [ ] Turn the Linux, Windows and release jobs back on (remove `if: false`; on the release job remove the leading `false &&`)
+- [x] Windows CI job failed every time at the "Get libvlc" step: it now downloads with `curl --fail` from download.videolan.org and unzips with 7-Zip; the TDLib step no longer fails when the `deps` release is missing (14 Nov; the MSI step was still running when this was written)
+- [~] Linux and Windows jobs are back on; the release-publishing job is still off (remove the leading `false &&` from its condition)
 - [x] README now says Gradle runs on a JDK 25 daemon it downloads on first use. A machine that cannot reach the download (or the Google Maven repository for the Android plugin) cannot build
 - [ ] The new tests have never been run: `backgroundAndStandbyFollowTheLayoutChoice` (backup prefs), `oldWrongTriesDoNotAddUpToALockout` and `aSuccessClearsTheOverallCount` (pairing)
 
@@ -444,4 +444,15 @@ Fixed and pushed to `beta` (compiled by CI except where noted):
 Open:
 - [ ] R5 Many empty `catch` blocks, for example in `JavaNetplay.kt` (the poll loop swallows every `tick` failure). They need a logger passed in (netplay has none, only a notice flow); not changed without one
 - Not a bug (R6): the local stream server cutting a response short when a read comes back empty ends the connection, and the player sees the short body; nothing to fix
+
+## Update 2026-11-14 (device toast, player sheet, motion; compiles in CI, not tried on a device)
+- [x] Device toast: "Connecting to X" is shown once per device per run. `JavaLanSync.autoConnect` dials an offline paired device every 20 seconds and the old toast appeared each time (`Shell.kt`). "Connected to X" still shows on every real link
+- [x] Full player is a slide-up sheet (`PlayerSheet.kt`): it follows your finger when you drag the cover down, settles open or closed with the fling speed, and shrinks with Android's back swipe (cancel puts it back). It moves with `graphicsLayer`, so it does not recompose per frame. The mini player fades as it rises; the queue and song views crossfade
+- [x] Pages slide and fade (`PageTransitions.kt`): going deeper (detail page, Tasks, Settings page) slides in over the old page, going back reverses it, switching tabs fades through. On the phone page area, the desktop page card and the Settings pages
+- [x] Song list and queue rows glide when they move (`animateItem`); a cover that loads late fades in over the mosaic; the nav pill uses the shared spring; the dead constant scale animation is gone
+- [x] Motion tokens (`theme/Motion.kt`) and a Settings > Style > Reduce motion switch (pref `reduce_motion`, per device, carried as layout in backups); everything above becomes instant with it on
+- [ ] Try on the phone: drag the player down slowly, fling it, drag half way and release, back swipe and cancel, open it from the notification and the mini player quickly, rotate while it is open, switch the four tabs, open an album and go back, walk through Settings pages, scroll long lists with the glass nav on and off, reduce motion on
+- [ ] Not done: sidebar width animation on desktop (it would recompose all of `Shell` every frame), press-scale on the mini player and nav items, `animateItem` on the library grids and search groups, a "moving" flag to drop blur while the sheet moves (add it only if the drag stutters on glass)
+- [ ] The signed debug APK from CI failed to install on the phone with INSTALL_FAILED_NO_MATCHING_ABIS although the phone reports `arm64-v8a` and the bundled `libtdjson.so` is a valid AArch64 library. Cause unknown; waiting for the list of `lib/` folders inside the APK (`unzip -l`)
+- [ ] The Windows and Linux builds have no TDLib (no `deps` release with `tdlib-windows.zip`), so those apps cannot reach Telegram yet
 

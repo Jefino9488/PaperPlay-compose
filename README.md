@@ -239,8 +239,9 @@ not upload this configuration to another service.
 - **Previews**: pages that still take `CoreBackend` cannot be previewed yet.
 - **Secrets on Linux and macOS**: the Android Keystore and Windows DPAPI protect the bot token and the other secrets;
   on Linux and macOS the desktop app stores them as plain files in its data folder.
-- **Continuous integration** builds only the Android debug APK for now (on `main` and `beta`). The tests, the release
-  APK and the desktop jobs are switched off in `.github/workflows/build.yml`: a test in `:core:jvmTest` hangs on the
-  runner and the Windows job fails fetching libvlc.
+- **Continuous integration** builds the Android debug and release APKs (signed with the keystore stored as repository
+  secrets) and the Windows and Linux apps on `main` and `beta`. The tests are switched off in
+  `.github/workflows/build.yml` because a test in `:core:jvmTest` hangs on the runner. The Windows and Linux builds do not
+  include TDLib until a release named `deps` with `tdlib-windows.zip` exists, so they cannot reach Telegram yet.
 - **Written but not wired up**: `sync/WorkOwner.kt` (splitting background work between linked devices) and
   `recs/Suggestions.kt` (the Neighbours view) have no caller yet.
