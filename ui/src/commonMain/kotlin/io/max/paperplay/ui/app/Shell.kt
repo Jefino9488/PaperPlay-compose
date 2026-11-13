@@ -396,7 +396,7 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
                     Spacer(Modifier.width(8.dp))
                     androidx.compose.material3.Surface(
                         shape = androidx.compose.foundation.shape.CircleShape,
-                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        color = androidx.compose.ui.graphics.Color.Transparent,
                         modifier = Modifier.clickable { prefs.putNowPlayingPanel(!prefs.nowPlayingPanel) }
                     ) {
                         io.max.paperplay.ui.components.AppIcon(
