@@ -275,9 +275,21 @@ class Scanner(
      * Returns ids of all song messages seen, or null if the scan failed. [endHint] is a message id known
      * to exist, for a first read.
      */
+    /**
+     * How many batches are asked for at once. With a reading speed set, a slow speed means one at a time (so the speed is the
+     * real number of requests a minute); only a fast one reads in several lanes. One lane after a flood wait.
+     */
+    private fun lanes(): Int {
+        val most = parallelBatches.coerceIn(1, 6)
+        if (calm) return 1
+        val rpm = repo.pref("rate_reading")?.toLongOrNull()?.coerceIn(1L, 1200L) ?: return most
+        return (rpm / 30).toInt().coerceIn(1, most)
+    }
+
     private fun effectiveMinPause(): Duration {
         val rpm = repo.pref("rate_reading")?.toLongOrNull()?.coerceIn(1L, 1200L)
-        val base = if (rpm != null) (60_000L / rpm).milliseconds else minPause
+        // The pause is per round of requests, so it grows with the lanes and the total stays at the chosen speed.
+        val base = if (rpm != null) (60_000L * lanes() / rpm).milliseconds else minPause
         // After a flood wait the rest of this scan goes one batch at a time with a longer pause.
         return if (calm) maxOf(base, 1500.milliseconds) else base
     }
@@ -323,7 +335,7 @@ class Scanner(
                 }
                 if (window.isEmpty()) {
                     // Several batches are asked for at once; they are used in order below.
-                    val starts = List(if (calm) 1 else parallelBatches.coerceIn(1, 6)) { next + it * WALK_BATCH * MESSAGE_ID_STEP }
+                    val starts = List(lanes()) { next + it * WALK_BATCH * MESSAGE_ID_STEP }
                     window.addAll(
                         coroutineScope {
                             starts.map { st ->
