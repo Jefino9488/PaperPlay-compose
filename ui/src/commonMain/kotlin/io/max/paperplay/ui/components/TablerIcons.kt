@@ -461,7 +461,7 @@ internal fun tablerIconForMaterial(name: String): ImageVector? = when (name) {
     "BarChart" -> TablerIcons.chart_bar
     "Cloud" -> TablerIcons.cloud
     "HourglassBottom" -> TablerIcons.hourglass
-    "Rule" -> TablerIcons.scale
+    "Rule" -> TablerIcons.list_check
     "ContentCopy" -> TablerIcons.copy
     "Sync" -> TablerIcons.refresh
     "Send" -> TablerIcons.send
