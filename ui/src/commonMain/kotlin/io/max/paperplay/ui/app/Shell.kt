@@ -388,7 +388,8 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
                 NetplayIndicator(
                     backend, Modifier,
                 ) { navigate { settings = true; settingsDeep = true; settingsStack.clear(); settingsStack.add("netplay") } }
-                if (!isPhone && pb.current != null) {
+                // Only a way to open the panel: hidden while the panel, the now playing view or the full player is up, back once the panel is closed.
+                if (!isPhone && pb.current != null && !prefs.nowPlayingPanel && !showPlayer) {
                     val panelOn = prefs.nowPlayingPanel
                     val on = MaterialTheme.colorScheme.primary
                     val off = MaterialTheme.colorScheme.onSurfaceVariant
