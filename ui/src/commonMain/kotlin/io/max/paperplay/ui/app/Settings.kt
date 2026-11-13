@@ -491,6 +491,7 @@ private fun SettingsListDesktopPreview() = io.max.paperplay.ui.PreviewFrame(dark
 private fun PlayerBarSettings(prefs: UiPrefs) {
     SectionLabel("Player bar")
     SwitchRow("Bar background", prefs.playerCard, prefs::putPlayerCard, null, "A solid card behind the bar; Glass always has one")
+    SwitchRow("Format in mini player", prefs.miniFormat, prefs::putMiniFormat, null, "Shows FLAC, Hi-Res or Dolby next to the controls")
     SliderRow("Bar corners: ${prefs.playerRadius.toInt()}%", prefs.playerRadius, 0f..100f, { prefs.putPlayerRadius(it) })
     listOf(
         "favorite" to "Favorite", "sleep" to "Sleep timer", "panel" to "Now playing panel", "queue" to "Queue",

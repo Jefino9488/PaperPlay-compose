@@ -283,7 +283,7 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
                 var showNow by remember { mutableStateOf(false) }
                 LaunchedEffect(page, detail, settings) { showNow = false }
                 val keys = rememberPlayerKeys(backend, volume)
-                PublishMiniState(pb, backend)
+                PublishMiniState(pb, backend, prefs.miniFormat)
                 val panel = prefs.nowPlayingPanel && pb.current != null && !showNow
                 var sidebarExpanded by remember { mutableStateOf(true) }
                 WindowTint(g0.value)

@@ -158,6 +158,9 @@ class UiPrefs(private val read: (String) -> String?, private val write: (String,
     var playerRadius by mutableStateOf(read("player_radius")?.toFloatOrNull()?.coerceIn(0f, 100f) ?: 40f)
         private set
     fun putPlayerRadius(v: Float) { playerRadius = v; write("player_radius", "$v") }
+    /** Format badge (FLAC, Hi-Res, Dolby) on the desktop mini player. */
+    var miniFormat by mutableStateOf(read("mini_format") != "false")
+    fun putMiniFormat(v: Boolean) { miniFormat = v; write("mini_format", "$v") }
     var playerCard by mutableStateOf(read("player_card") == "true")
         private set
     fun putPlayerCard(v: Boolean) { playerCard = v; write("player_card", "$v") }

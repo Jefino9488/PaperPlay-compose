@@ -187,8 +187,17 @@ private fun badgeOf(song: SongUi): Pair<BadgeIcon, String>? {
 
 /** Format badge in the style of Apple's "Dolby Atmos" line: a small glyph then the name, no box. */
 @Composable
-fun AudioBadge(song: SongUi, modifier: Modifier = Modifier, color: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f)) {
-    val (icon, text) = badgeOf(song) ?: return
+fun AudioBadge(
+    song: SongUi, modifier: Modifier = Modifier, color: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
+    /** Short words for tight places: Dolby, Hi-Res, or just the format name. */
+    compact: Boolean = false,
+) {
+    val (icon, full) = badgeOf(song) ?: return
+    val text = if (!compact) full else when {
+        icon == BadgeIcon.Dolby -> "Dolby"
+        full.contains("Hi-Res") -> "Hi-Res"
+        else -> full.substringBefore(' ')
+    }
     Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         when (icon) {
             BadgeIcon.Dolby -> androidx.compose.foundation.Canvas(Modifier.size(14.dp, 10.dp)) {
