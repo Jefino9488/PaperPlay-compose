@@ -92,7 +92,7 @@ class LibraryRepository(val repo: LibraryRepo, private val clock: () -> Long) {
     fun playlists(): Flow<List<Playlist>> = watch { lists.livePlaylists().executeAsList() }
     fun chats(): Flow<List<LibraryChat>> = watch { misc.chats().executeAsList() }
 
-    /** Songs where every word of [query] occurs in the title, artist, album or genre (any case). */
+    /** Songs where every word of [query] occurs in the title, artist, album (the film, for film songs), genre or year (any case). */
     fun search(query: String): Flow<List<Song>> {
         val words = query.lowercase().split(' ', '\t').filter { it.isNotEmpty() }
         if (words.isEmpty()) return kotlinx.coroutines.flow.flowOf(emptyList())
@@ -227,7 +227,7 @@ data class PlaylistSummary(val id: Long, val uuid: String, val name: String, val
 private const val SOFT_GAP_MS = 2_000L
 
 private fun Song.matches(words: List<String>): Boolean {
-    val hay = "$title $artist $album ${genre.orEmpty()}".lowercase()
+    val hay = "$title $artist $album ${genre.orEmpty()} ${year ?: ""}".lowercase()
     return words.all { it in hay }
 }
 

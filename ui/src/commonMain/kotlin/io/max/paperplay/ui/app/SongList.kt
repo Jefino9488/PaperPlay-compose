@@ -193,7 +193,7 @@ fun SongList(
             PillField(
                 value = query,
                 onChange = { query = it },
-                hint = "Search songs, artists, albums",
+                hint = "Search songs, artists, albums, years",
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
             )
         }

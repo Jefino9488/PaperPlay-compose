@@ -5,10 +5,10 @@ import io.max.paperplay.ui.state.SongUi
 /** Words of a search query, lowercased; blank query gives none. */
 fun searchWords(query: String): List<String> = query.lowercase().split(Regex("\\s+")).filter { it.isNotEmpty() }
 
-/** True when title, artist, album or genre together hold every word, in any order. */
+/** True when title, artist, album (the film, for film songs), genre or year together hold every word, in any order. */
 fun SongUi.matches(words: List<String>): Boolean {
     if (words.isEmpty()) return true
-    val text = "$title $artist $album ${genre ?: ""}".lowercase()
+    val text = "$title $artist $album ${genre ?: ""} ${year ?: ""}".lowercase()
     return words.all { text.contains(it) }
 }
 
