@@ -15,3 +15,6 @@ actual fun rememberBatteryPercent(): Int? = null
 
 @Composable
 actual fun rememberOutputDevice(): OutputDevice = OutputDevice("This computer", external = false)
+
+@Composable
+actual fun rememberOutputSwitcher(): (() -> Unit)? = null

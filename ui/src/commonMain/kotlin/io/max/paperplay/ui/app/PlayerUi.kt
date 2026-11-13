@@ -87,6 +87,7 @@ import io.max.paperplay.ui.components.SongMenu
 import io.max.paperplay.ui.components.WavySeek
 import io.max.paperplay.ui.logic.formatDuration
 import androidx.compose.material.icons.rounded.Headphones
+import androidx.compose.material.icons.rounded.Devices
 import androidx.compose.material.icons.rounded.FastForward
 import androidx.compose.material.icons.rounded.FastRewind
 import androidx.compose.material.icons.rounded.Star
@@ -177,9 +178,10 @@ fun FullPlayer(
 private fun PlayerBody(
     song: SongUi, state: PlaybackUiState, error: String?, backend: PlayerControls, actions: ListActions, onClose: () -> Unit,
     grabber: Boolean, modifier: Modifier = Modifier, onQueue: (() -> Unit)? = null, onDevices: ((String) -> Unit)? = null,
-) {
     contentMax: androidx.compose.ui.unit.Dp = 560.dp,
+) {
     val scheme = MaterialTheme.colorScheme
+    var outputInfoOpen by remember { mutableStateOf(false) }
     BoxWithConstraints(modifier, contentAlignment = Alignment.TopCenter) {
         // Room the controls need, so short screens shrink the cover, not them.
         val art = minOf(maxWidth - 48.dp, maxHeight - 25.dp - 410.dp).coerceAtLeast(120.dp)
@@ -227,13 +229,14 @@ private fun PlayerBody(
                         )
                     }
                     Spacer(Modifier.width(12.dp))
-                    Box(disc, contentAlignment = Alignment.Center) { SongMenu(song, actions.rowActions(), Icons.Rounded.MoreHoriz) }
+                    Box(disc, contentAlignment = Alignment.Center) { SongMenu(song, actions.rowActions(), Icons.Rounded.MoreHoriz, onOutputInfo = { outputInfoOpen = true }) }
                     Spacer(Modifier.width(8.dp))
                 }
                 Column(Modifier.padding(horizontal = 12.dp)) {
                     if (error != null) Text(error, color = scheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(bottom = 4.dp))
-                    Progress(song, state, backend)
+                    Progress(song, state, backend, onBadge = { outputInfoOpen = true })
                 }
+                if (outputInfoOpen) OutputInfoDialog(song, backend) { outputInfoOpen = false }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
                     IconButton(backend::previous, Modifier.size(72.dp)) { AppIcon(Icons.Rounded.FastRewind, "Previous", Modifier.size(48.dp)) }
                     PlayPauseButton(state.playing, backend::togglePlay)
@@ -248,23 +251,27 @@ private fun PlayerBody(
                 // Output device pill, like the AirPods one in Apple Music.
                 val out = io.max.paperplay.ui.rememberOutputDevice()
                 var devicesOpen by remember { mutableStateOf(false) }
+                val switchOutput = io.max.paperplay.ui.rememberOutputSwitcher()
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
                     Row(
                         Modifier.clip(RoundedCornerShape(50)).background(scheme.onSurface.copy(alpha = 0.14f))
-                            .clickable(enabled = onDevices != null) { devicesOpen = true }.padding(horizontal = 18.dp, vertical = 10.dp),
+                            .clickable(enabled = switchOutput != null || onDevices != null) { if (switchOutput != null) switchOutput() else devicesOpen = true }.padding(horizontal = 18.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         AppIcon(if (out.external) Icons.Rounded.Headphones else Icons.Rounded.PhoneAndroid, null, Modifier.size(20.dp))
                         Text(out.name, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall, modifier = Modifier.widthIn(max = 200.dp))
                     }
                 }
-                if (devicesOpen && onDevices != null) PhoneDevicesDialog(onDevices) { devicesOpen = false }
+                if (devicesOpen && onDevices != null) PhoneDevicesDialog(onDevices, switchOutput) { devicesOpen = false }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     val standbyPrefs = if (io.max.paperplay.ui.isPhone) LocalUiPrefs.current?.standby else null
                     if (standbyPrefs != null) {
                         var standby by remember { mutableStateOf(false) }
                         IconButton({ standby = true }) { AppIcon(Icons.Rounded.NightsStay, "Standby mode") }
                         if (standby) StandbyScreen(state, backend, standbyPrefs) { standby = false }
+                    }
+                    if (onDevices != null) {
+                        IconButton({ devicesOpen = true }) { AppIcon(Icons.Rounded.Devices, "Devices") }
                     }
                     var showLyrics by remember { mutableStateOf(false) }
                     IconButton({ showLyrics = true }, enabled = state.current != null) { AppIcon(Icons.Outlined.Lyrics, "Lyrics") }
@@ -312,10 +319,9 @@ private fun PlayPauseButton(playing: Boolean, onToggle: () -> Unit) {
 }
 
 @Composable
-private fun Progress(song: SongUi, state: PlaybackUiState, backend: PlayerControls) {
+private fun Progress(song: SongUi, state: PlaybackUiState, backend: PlayerControls, onBadge: () -> Unit) {
     val scheme = MaterialTheme.colorScheme
     val muted = MaterialTheme.typography.labelMedium.copy(color = scheme.onSurface.copy(alpha = 0.65f))
-    var info by remember { mutableStateOf(false) }
     val total = if (state.durationMs > 0) state.durationMs else song.durationSec * 1000L
     val pos by backend.position.collectAsState()
     WavySeek(
@@ -328,10 +334,9 @@ private fun Progress(song: SongUi, state: PlaybackUiState, backend: PlayerContro
     Spacer(Modifier.height(8.dp))
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(formatDuration(pos.positionMs / 1000), Modifier.weight(1f), style = muted)
-        io.max.paperplay.ui.components.AudioBadge(song, Modifier.clip(RoundedCornerShape(8.dp)).background(scheme.onSurface.copy(alpha = 0.12f)).clickable { info = true }.padding(horizontal = 10.dp, vertical = 4.dp))
+        io.max.paperplay.ui.components.AudioBadge(song, Modifier.clip(RoundedCornerShape(8.dp)).background(scheme.onSurface.copy(alpha = 0.12f)).clickable(onClick = onBadge).padding(horizontal = 10.dp, vertical = 4.dp))
         Text("-" + formatDuration(((total - pos.positionMs) / 1000).coerceAtLeast(0)), Modifier.weight(1f), style = muted, textAlign = TextAlign.End)
     }
-    if (info) SongInfoDialog(song) { info = false }
 }
 
 @Composable
@@ -591,7 +596,7 @@ private fun FullPlayerDesktopPreview() = io.max.paperplay.ui.PreviewFrame(dark =
 @Preview(name = "Progress", widthDp = 390, showBackground = true)
 @Composable
 private fun ProgressPreview() = io.max.paperplay.ui.PreviewFrame {
-    Column(Modifier.padding(16.dp)) { Progress(io.max.paperplay.ui.previewSongs[0], io.max.paperplay.ui.previewPlayback(), io.max.paperplay.ui.FakePlayerControls()) }
+    Column(Modifier.padding(16.dp)) { Progress(io.max.paperplay.ui.previewSongs[0], io.max.paperplay.ui.previewPlayback(), io.max.paperplay.ui.FakePlayerControls(), onBadge = {}) }
 }
 
 @Preview(name = "Queue", widthDp = 390, heightDp = 500, showBackground = true)
@@ -620,7 +625,7 @@ private fun SleepTimerDialogPreview() = io.max.paperplay.ui.PreviewFrame {
 
 /** Where the song plays and the ways to link other devices; the two links open those settings pages. */
 @Composable
-private fun PhoneDevicesDialog(onOpen: (String) -> Unit, onDismiss: () -> Unit) {
+private fun PhoneDevicesDialog(onOpen: (String) -> Unit, switchOutput: (() -> Unit)?, onDismiss: () -> Unit) {
     val scheme = MaterialTheme.colorScheme
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -634,6 +639,10 @@ private fun PhoneDevicesDialog(onOpen: (String) -> Unit, onDismiss: () -> Unit) 
                         Text("Playing here", color = scheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                     }
                 }
+                if (switchOutput != null) Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { onDismiss(); switchOutput() }.padding(vertical = 8.dp, horizontal = 4.dp)) {
+                    Text("Audio output", style = MaterialTheme.typography.bodyLarge)
+                    Text("Speaker, Bluetooth or cast", color = scheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                }
                 listOf(
                     Triple("netplay", "Network play", "Listen together with people on the same network"),
                     Triple("devices", "Connect devices", "Link other PaperPlay devices and keep running"),
@@ -642,6 +651,52 @@ private fun PhoneDevicesDialog(onOpen: (String) -> Unit, onDismiss: () -> Unit) 
                         Text(title, style = MaterialTheme.typography.bodyLarge)
                         Text(hint, color = scheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                     }
+                }
+            }
+        },
+        confirmButton = { TextButton(onDismiss) { Text("Close") } },
+    )
+}
+
+/** What the song is, what the output does to it and whether it arrives untouched. Answers "is this playing at full quality?". */
+@Composable
+internal fun OutputInfoDialog(song: SongUi, backend: PlayerControls, onDismiss: () -> Unit) {
+    val info by backend.outputInfo.collectAsState()
+    val scheme = MaterialTheme.colorScheme
+    // The file's own depth and rate come from its label ("ALAC 24/96") when the engine does not know them.
+    val fromLabel = Regex("""(\d+)/([\d.]+)""").find(song.qualityLabel.orEmpty())
+    fun khz(hz: Int) = (hz / 1000.0).toString().removeSuffix(".0") + " kHz"
+    val rows = listOfNotNull(
+        "File" to (song.qualityLabel ?: if (song.lossless) "Lossless" else "Lossy"),
+        info?.codec?.let { "Decoded as" to it },
+        (info?.bitDepth?.toString() ?: fromLabel?.groupValues?.get(1))?.let { "Bit depth" to "$it bit" },
+        (info?.sampleRateHz?.let(::khz) ?: fromLabel?.groupValues?.get(2)?.toDoubleOrNull()?.let { khz((it * 1000).toInt()) })?.let { "Sample rate" to it },
+        info?.channels?.let { "Channels" to if (it == 2) "Stereo" else if (it == 1) "Mono" else "$it" },
+        info?.bitrateKbps?.let { "Bitrate" to "$it kbps" },
+        info?.device?.let { "Output" to it },
+        info?.outputRateHz?.let { "Output rate" to khz(it) },
+        "Effects" to (info?.effects?.takeIf { it.isNotEmpty() }?.joinToString(", ") ?: "None"),
+    )
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Output info") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(song.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall)
+                rows.forEach { (k, v) ->
+                    Row {
+                        Text(k, Modifier.width(104.dp), color = scheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+                        Text(v, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+                if (info == null) Text("Play the song to see how it is decoded and sent to the output.", color = scheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                else {
+                    Text(
+                        if (info?.bitPerfect == true) "Bit-perfect: the samples reach the output unchanged." else "Not bit-perfect.",
+                        Modifier.padding(top = 6.dp), style = MaterialTheme.typography.titleSmall,
+                        color = if (info?.bitPerfect == true) scheme.primary else scheme.onSurface,
+                    )
+                    info?.note?.let { Text(it, color = scheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall) }
                 }
             }
         },

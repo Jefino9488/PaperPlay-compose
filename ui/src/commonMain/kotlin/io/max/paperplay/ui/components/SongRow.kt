@@ -240,7 +240,7 @@ internal fun FormatChip(text: String) {
 }
 
 @Composable
-fun SongMenu(song: SongUi, actions: SongActions, icon: ImageVector = Icons.Rounded.MoreVert) {
+fun SongMenu(song: SongUi, actions: SongActions, icon: ImageVector = Icons.Rounded.MoreVert, onOutputInfo: (() -> Unit)? = null) {
     var open by remember { mutableStateOf(false) }
     var info by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
@@ -295,6 +295,7 @@ fun SongMenu(song: SongUi, actions: SongActions, icon: ImageVector = Icons.Round
             actions.telegramLink(song)?.let { link ->
                 item("Open in Telegram") { runCatching { uri.openUri(link) }.onFailure { actions.notice("Could not open Telegram.") } }
             }
+            onOutputInfo?.let { show -> item("Output info") { show() } }
             item("Song info") { info = true }
             item("Find metadata") { actions.findMetadata(song) }
             item("Edit tags") { actions.editTags(song) }

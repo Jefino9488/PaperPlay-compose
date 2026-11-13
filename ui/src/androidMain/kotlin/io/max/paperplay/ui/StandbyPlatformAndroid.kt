@@ -90,3 +90,21 @@ actual fun rememberOutputDevice(): OutputDevice {
     }
     return device
 }
+
+@Composable
+actual fun rememberOutputSwitcher(): (() -> Unit)? {
+    val ctx = LocalContext.current
+    return remember(ctx) {
+        {
+            // Android 14 has a proper call; older versions have the Settings panel, then plain Bluetooth settings.
+            val shown = android.os.Build.VERSION.SDK_INT >= 34 && runCatching { android.media.MediaRouter2.getInstance(ctx).showSystemOutputSwitcher() }.getOrDefault(false)
+            if (!shown) {
+                val panel = Intent("com.android.settings.panel.action.MEDIA_OUTPUT")
+                    .putExtra("com.android.settings.panel.extra.PACKAGE_NAME", ctx.packageName).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                runCatching { ctx.startActivity(panel) }.onFailure {
+                    runCatching { ctx.startActivity(Intent(android.provider.Settings.ACTION_BLUETOOTH_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                }
+            }
+        }
+    }
+}

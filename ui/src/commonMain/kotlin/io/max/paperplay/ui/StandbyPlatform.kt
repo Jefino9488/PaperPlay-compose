@@ -20,3 +20,7 @@ data class OutputDevice(val name: String, val external: Boolean)
 
 @Composable
 expect fun rememberOutputDevice(): OutputDevice
+
+/** Opens the system's audio output chooser (speaker, Bluetooth, cast), or null where the platform has none. */
+@Composable
+expect fun rememberOutputSwitcher(): (() -> Unit)?
