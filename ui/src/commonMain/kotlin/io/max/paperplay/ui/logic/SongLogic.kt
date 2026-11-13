@@ -2,19 +2,38 @@ package io.max.paperplay.ui.logic
 
 import io.max.paperplay.ui.state.SongUi
 
-/** Words of a search query, lowercased; blank query gives none. */
-fun searchWords(query: String): List<String> = query.lowercase().split(Regex("\\s+")).filter { it.isNotEmpty() }
+private val NON_WORD = Regex("[^\\p{L}\\p{N}\\p{M}]+")
 
-/** True when title, artist, album (the film, for film songs), genre or year together hold every word, in any order. */
-fun SongUi.matches(words: List<String>): Boolean {
-    if (words.isEmpty()) return true
-    val text = "$title $artist $album ${genre ?: ""} ${year ?: ""}".lowercase()
-    return words.all { text.contains(it) }
+/** Lowercase words of a search query; punctuation separates them, combining marks of Indian scripts stay inside a word. */
+fun searchWords(query: String): List<String> = query.lowercase().split(NON_WORD).filter { it.isNotEmpty() }
+
+/** 0 when some word of the query starts no word of the song; otherwise higher is a better match (title, then artist, album, genre or year). */
+fun SongUi.searchScore(words: List<String>): Int {
+    if (words.isEmpty()) return 1
+    val t = searchWords(title); val a = searchWords(artist); val al = searchWords(album)
+    val g = searchWords(genre ?: ""); val y = year?.toString()
+    var total = 0
+    for (w in words) {
+        total += when {
+            t.any { it.startsWith(w) } -> 40
+            a.any { it.startsWith(w) } -> 30
+            al.any { it.startsWith(w) } -> 20
+            g.any { it.startsWith(w) } || y == w -> 10
+            else -> return 0
+        }
+    }
+    if (t.joinToString(" ") == words.joinToString(" ")) total += 100
+    return total
 }
 
+/** True when every word of the query starts a word of the song's title, artist, album, genre or year. */
+fun SongUi.matches(words: List<String>): Boolean = searchScore(words) > 0
+
+/** The songs that match [query], best match first; all of them, in their order, for a blank query. */
 fun filterSongs(songs: List<SongUi>, query: String): List<SongUi> {
     val words = searchWords(query)
-    return if (words.isEmpty()) songs else songs.filter { it.matches(words) }
+    if (words.isEmpty()) return songs
+    return songs.mapNotNull { s -> s.searchScore(words).takeIf { it > 0 }?.let { s to it } }.sortedByDescending { it.second }.map { it.first }
 }
 
 /** Ways to sort a song list. Each puts the most useful end first. */

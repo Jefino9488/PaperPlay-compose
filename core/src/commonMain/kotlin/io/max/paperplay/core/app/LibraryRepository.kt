@@ -92,11 +92,19 @@ class LibraryRepository(val repo: LibraryRepo, private val clock: () -> Long) {
     fun playlists(): Flow<List<Playlist>> = watch { lists.livePlaylists().executeAsList() }
     fun chats(): Flow<List<LibraryChat>> = watch { misc.chats().executeAsList() }
 
-    /** Songs where every word of [query] occurs in the title, artist, album (the film, for film songs), genre or year (any case). */
+    /**
+     * Songs where every word of [query] starts a word of the title, artist, album (the film, for film songs), genre or year,
+     * best first: a title hit beats an artist hit beats an album hit, and a title equal to the whole query comes first.
+     * Words are matched from their start ("udi" finds "Udi Udi" but not "Studio"); letters and combining marks of any script count.
+     */
     fun search(query: String): Flow<List<Song>> {
-        val words = query.lowercase().split(' ', '\t').filter { it.isNotEmpty() }
+        val words = searchTokens(query)
         if (words.isEmpty()) return kotlinx.coroutines.flow.flowOf(emptyList())
-        return allShared.map { l -> l.filter { it.matches(words) } }.distinctUntilChanged().flowOn(Dispatchers.Default)
+        val whole = words.joinToString(" ")
+        return allShared.map { l ->
+            l.mapNotNull { s -> s.searchScore(words, whole).takeIf { it > 0 }?.let { s to it } }
+                .sortedByDescending { it.second }.map { it.first }
+        }.distinctUntilChanged().flowOn(Dispatchers.Default)
     }
 
     /** Playlists with song count and up to four cover links each, from one query (no per-playlist song lists). */
@@ -226,9 +234,27 @@ data class PlaylistSummary(val id: Long, val uuid: String, val name: String, val
 
 private const val SOFT_GAP_MS = 2_000L
 
-private fun Song.matches(words: List<String>): Boolean {
-    val hay = "$title $artist $album ${genre.orEmpty()} ${year ?: ""}".lowercase()
-    return words.all { it in hay }
+private val NON_WORD = Regex("[^\\p{L}\\p{N}\\p{M}]+")
+
+/** Lowercase words of [text]; punctuation separates them, combining marks (Malayalam, Hindi, Tamil vowel signs) stay inside. */
+internal fun searchTokens(text: String): List<String> = text.lowercase().split(NON_WORD).filter { it.isNotEmpty() }
+
+/** 0 when some word of the query starts no word of the song; otherwise higher is a better match. */
+internal fun Song.searchScore(words: List<String>, whole: String): Int {
+    val t = searchTokens(title); val a = searchTokens(artist); val al = searchTokens(album)
+    val g = searchTokens(genre.orEmpty()); val y = year?.toString()
+    var total = 0
+    for (w in words) {
+        total += when {
+            t.any { it.startsWith(w) } -> 40
+            a.any { it.startsWith(w) } -> 30
+            al.any { it.startsWith(w) } -> 20
+            g.any { it.startsWith(w) } || y == w -> 10
+            else -> return 0
+        }
+    }
+    if (t.joinToString(" ") == whole) total += 100
+    return total
 }
 
 /** UTC calendar day of [millis] as yyyy-MM-dd. */
