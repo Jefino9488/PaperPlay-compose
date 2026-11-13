@@ -42,6 +42,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.animation.AnimatedContent
+import io.max.paperplay.ui.theme.animatedWidth
+import io.max.paperplay.ui.theme.panelEnter
+import io.max.paperplay.ui.theme.panelExit
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -327,7 +330,7 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
                             },
                             onPlaylist = { g -> navigate { detail = Detail.Playlist(g.id, g.name); settings = false } },
                             onNewPlaylist = { newPlaylist = true },
-                            modifier = Modifier.width(if (sidebarExpanded) prefs.sidebarWidth.dp else 72.dp).fillMaxHeight(),
+                            modifier = Modifier.animatedWidth(if (sidebarExpanded) prefs.sidebarWidth.dp else 72.dp).fillMaxHeight(),
                         )
                         Spacer(Modifier.width(12.dp))
                         Box(Modifier.weight(1f).fillMaxHeight().deskCard()) {
@@ -385,9 +388,11 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
                             }
                             }
                         }
-                        if (panel) {
-                            Spacer(Modifier.width(12.dp))
-                            NowPlayingPanel(pb, backend, actions, { showPlayer = true }, { prefs.putNowPlayingPanel(false) }, Modifier.width(320.dp).fillMaxHeight().deskCard())
+                        androidx.compose.animation.AnimatedVisibility(panel, enter = panelEnter(), exit = panelExit()) {
+                            Row {
+                                Spacer(Modifier.width(12.dp))
+                                NowPlayingPanel(pb, backend, actions, { showPlayer = true }, { prefs.putNowPlayingPanel(false) }, Modifier.width(320.dp).fillMaxHeight().deskCard())
+                            }
                         }
                     }
                     PlayerBar(pb, volume, backend, actions, { showPlayer = true },
