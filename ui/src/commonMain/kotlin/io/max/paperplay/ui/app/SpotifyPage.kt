@@ -130,6 +130,7 @@ internal fun SpotifyAccountSection(backend: CoreBackend) {
     var user by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
+    var showId by remember { mutableStateOf(false) }
     val redirect = env?.authRedirect
     val redirectUri = env?.authRedirectUri.orEmpty()
 
@@ -147,6 +148,13 @@ internal fun SpotifyAccountSection(backend: CoreBackend) {
         OutlinedTextField(
             clientId, { clientId = it; account.clientId = it }, Modifier.fillMaxWidth(),
             label = { Text("Client id") }, singleLine = true, enabled = !connected,
+            // Hidden by default so it is not read off the screen; the eye shows it.
+            visualTransformation = if (showId) androidx.compose.ui.text.input.VisualTransformation.None else androidx.compose.ui.text.input.PasswordVisualTransformation(),
+            trailingIcon = {
+                androidx.compose.material3.IconButton({ showId = !showId }) {
+                    androidx.compose.material3.Icon(if (showId) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility, if (showId) "Hide client id" else "Show client id")
+                }
+            },
         )
         if (connected) {
             Text(if (user != null) "Logged in as $user" else "Logged in", color = MaterialTheme.colorScheme.onSurface)
