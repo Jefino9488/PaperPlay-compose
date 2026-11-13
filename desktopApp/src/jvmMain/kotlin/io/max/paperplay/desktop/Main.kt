@@ -86,10 +86,35 @@ private fun installFileDrop(window: java.awt.Window) {
     apply(window)
 }
 
+/** Held for the life of the process so the file lock is never collected and released early. */
+private var instanceLock: Any? = null
+private val showMain = kotlinx.coroutines.flow.MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+
 fun main() {
     val logDir = File(System.getenv("APPDATA") ?: System.getProperty("user.home"), "PaperPlay")
     runCatching { File(logDir, "startup.log").takeIf { it.length() > 64_000 }?.delete() }
     mark(logDir, "main start")
+    // One copy only: a second launch asks the running copy to show its window, then exits. The OS drops the lock if the process dies.
+    val lock = runCatching {
+        logDir.mkdirs()
+        java.io.RandomAccessFile(File(logDir, "app.lock"), "rw").channel.tryLock()
+    }
+    if (lock.isSuccess && lock.getOrNull() == null) {
+        mark(logDir, "another copy is running, asking it to show")
+        runCatching {
+            val port = File(logDir, "app.port").readText().trim().toInt()
+            java.net.Socket(java.net.InetAddress.getLoopbackAddress(), port).use { it.getOutputStream().write(1) }
+        }
+        return
+    }
+    if (lock.isSuccess) runCatching {
+        instanceLock = lock.getOrNull()
+        val server = java.net.ServerSocket(0, 5, java.net.InetAddress.getLoopbackAddress())
+        File(logDir, "app.port").writeText(server.localPort.toString())
+        Thread {
+            while (true) runCatching { server.accept().use { it.getInputStream().read(); showMain.tryEmit(Unit) } }
+        }.apply { isDaemon = true; name = "single-instance" }.start()
+    }
     // Set jna.library.path for TDLib only. VlcLoader will append the VLC path
     // automatically when the first JvmPlayerEngine is created.
     tdlibDir()?.let { System.setProperty("jna.library.path", it) }
@@ -159,6 +184,8 @@ fun main() {
         // The close button hides the window to the tray and music keeps playing; Quit in the tray menu ends the app.
         var mainVisible by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(true) }
         val mainState = rememberWindowState(width = 1320.dp, height = 840.dp)
+        var raise by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(0) }
+        androidx.compose.runtime.LaunchedEffect(Unit) { showMain.collect { mainVisible = true; mainState.isMinimized = false; raise++ } }
         val trayOk = androidx.compose.ui.window.isTraySupported
         val fullscreen by io.max.paperplay.ui.app.WindowFullscreen.on.collectAsState()
         androidx.compose.runtime.LaunchedEffect(Unit) { io.max.paperplay.ui.app.WindowFullscreen.supported.value = true }
@@ -193,7 +220,7 @@ fun main() {
             visible = mainVisible, title = "Paper Play", state = mainState, icon = androidx.compose.ui.res.painterResource("icon.png"),
         ) {
             titleBarWindow = window
-            androidx.compose.runtime.LaunchedEffect(mainVisible) { if (mainVisible) window.toFront() }
+            androidx.compose.runtime.LaunchedEffect(mainVisible, raise) { if (mainVisible) window.toFront() }
             androidx.compose.runtime.LaunchedEffect(Unit) { installFileDrop(window) }
             androidx.compose.runtime.LaunchedEffect(Unit) { mark(dir, "window first composition") }
             App(env)

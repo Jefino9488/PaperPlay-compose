@@ -18,13 +18,23 @@ import kotlinx.coroutines.async
 
 /**
  * Covers are image files on disk (restored from a backup or saved by the scanner). They are decoded off the main thread,
- * at most six at a time, once per (file, size), and kept in a small least-recently-used cache.
+ * at most six at a time, once per (file, size), and kept in a least-recently-used cache capped by memory.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
-class FileCoverLoader(private val limit: Int = 200) : CoverLoader {
-    // Touched on the main thread only, since compose runs producers there.
-    private val cache = object : LinkedHashMap<String, ImageBitmap>(64, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, ImageBitmap>?) = size > limit
+class FileCoverLoader(private val budgetBytes: Long = 48L * 1024 * 1024) : CoverLoader {
+    // Touched on the main thread only, since compose runs producers there. Bounded by pixel memory, not count: one 1280 px cover is 6 MB.
+    private val cache = LinkedHashMap<String, ImageBitmap>(64, 0.75f, true)
+    private var cached = 0L
+    private fun keep(key: String, bmp: ImageBitmap) {
+        cache.put(key, bmp)?.let { cached -= it.width.toLong() * it.height * 4 }
+        cached += bmp.width.toLong() * bmp.height * 4
+        val iter = cache.entries.iterator()
+        while (cached > budgetBytes && cache.size > 1 && iter.hasNext()) {
+            val e = iter.next()
+            if (e.key == key) continue
+            cached -= e.value.width.toLong() * e.value.height * 4
+            iter.remove()
+        }
     }
     private val inFlight = HashMap<String, Deferred<ImageBitmap?>>()
     private val decoder = CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(6))
@@ -38,7 +48,7 @@ class FileCoverLoader(private val limit: Int = 200) : CoverLoader {
             val job = inFlight.getOrPut(key) { decoder.async { decodeImageFile(uri, maxSide) } }
             val decoded = job.await()
             inFlight.remove(key)
-            if (decoded != null) cache[key] = decoded
+            if (decoded != null) keep(key, decoded)
             value = decoded
         }
         // Medium filtering mipmaps the downscale; the default shimmers and shows jagged edges on small covers.

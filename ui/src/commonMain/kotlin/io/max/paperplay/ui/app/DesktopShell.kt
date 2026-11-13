@@ -245,7 +245,7 @@ fun PlayerBar(
             }
             if (wide) tools()
         }
-        Column(Modifier.width(centre), horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(Modifier.width(centre), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 IconButton({ backend?.toggleShuffle() }) { AppIcon(Icons.Rounded.Shuffle, "Shuffle", tint = if (state.shuffle) scheme.primary else scheme.onSurface) }
                 IconButton({ backend?.previous() }) { AppIcon(Icons.Rounded.SkipPrevious, "Previous") }
@@ -441,7 +441,7 @@ fun PlayerBarIdlePreview() = PlayerBarPreviewContent(PlaybackUiState(), dark = f
 
 /** Volume slider drawn in one canvas so the track and thumb always share a centre line. */
 @Composable
-private fun VolumeBar(value: Float, onChange: (Float) -> Unit, color: Color, modifier: Modifier = Modifier) {
+internal fun VolumeBar(value: Float, onChange: (Float) -> Unit, color: Color, modifier: Modifier = Modifier) {
     var drag by remember { mutableStateOf<Float?>(null) }
     val shown = drag ?: value
     var widthPx by remember { mutableStateOf(1f) }

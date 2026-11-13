@@ -168,6 +168,55 @@ private fun isHiRes(song: SongUi): Boolean {
     return m.groupValues[1].toInt() > 16 || (m.groupValues[2].toDoubleOrNull() ?: 0.0) > 48
 }
 
+private val DOLBY = mapOf(
+    "AC3" to "Dolby Digital", "EAC3" to "Dolby Digital Plus", "EC3" to "Dolby Digital Plus",
+    "AC4" to "Dolby AC-4", "TRUEHD" to "Dolby TrueHD", "MLP" to "Dolby TrueHD",
+)
+
+private enum class BadgeIcon { Dolby, Wave, None }
+
+/** The icon and words for a song's format: Dolby, lossless and hi-res get a glyph, lossy formats just their label. */
+private fun badgeOf(song: SongUi): Pair<BadgeIcon, String>? {
+    val label = song.qualityLabel?.takeIf { it.isNotBlank() } ?: return if (song.lossless) BadgeIcon.Wave to "Lossless" else null
+    val codec = label.substringBefore(' ').uppercase()
+    DOLBY[codec]?.let { return BadgeIcon.Dolby to it }
+    if (isHiRes(song)) return BadgeIcon.Wave to "$codec Hi-Res Lossless"
+    if (song.lossless) return BadgeIcon.Wave to "$codec Lossless"
+    return BadgeIcon.None to label
+}
+
+/** Format badge in the style of Apple's "Dolby Atmos" line: a small glyph then the name, no box. */
+@Composable
+fun AudioBadge(song: SongUi, modifier: Modifier = Modifier, color: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f)) {
+    val (icon, text) = badgeOf(song) ?: return
+    Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        when (icon) {
+            BadgeIcon.Dolby -> androidx.compose.foundation.Canvas(Modifier.size(14.dp, 10.dp)) {
+                val w = size.width; val h = size.height; val gap = w * 0.06f; val half = (w - gap) / 2
+                fun d(left: Boolean) = androidx.compose.ui.graphics.Path().apply {
+                    val x0 = if (left) 0f else half + gap
+                    val flat = if (left) x0 + half else x0
+                    val curve = if (left) x0 else x0 + half
+                    moveTo(flat, 0f)
+                    cubicTo(curve, 0f, curve, h, flat, h)
+                    close()
+                }
+                drawPath(d(true), color); drawPath(d(false), color)
+            }
+            BadgeIcon.Wave -> androidx.compose.foundation.Canvas(Modifier.size(14.dp, 10.dp)) {
+                val bars = floatArrayOf(0.4f, 0.8f, 1f, 0.65f, 0.35f)
+                val bw = size.width / (bars.size * 2 - 1)
+                bars.forEachIndexed { i, f ->
+                    val bh = size.height * f
+                    drawRoundRect(color, androidx.compose.ui.geometry.Offset(i * 2 * bw, (size.height - bh) / 2), androidx.compose.ui.geometry.Size(bw, bh), androidx.compose.ui.geometry.CornerRadius(bw / 2))
+                }
+            }
+            BadgeIcon.None -> {}
+        }
+        Text(text, style = MaterialTheme.typography.labelMedium, color = color, maxLines = 1, softWrap = false)
+    }
+}
+
 @Composable
 internal fun FormatChip(text: String) {
     Box(

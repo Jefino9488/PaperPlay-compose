@@ -78,6 +78,8 @@ data class ScanUi(val text: String, val fraction: Double?)
 interface PlayerControls {
     val position: StateFlow<PositionUi>
     val sleepAt: StateFlow<Long?>
+    /** Output volume, 0 to 1. */
+    val volume: StateFlow<Float>
     /** Playback speed, 1 is normal. */
     val speed: StateFlow<Float>
     fun setSpeed(speed: Float)
@@ -624,7 +626,7 @@ class CoreBackend(val services: AppServices) : PlayerControls {
 
     /** The player is created here on first use, on a background thread, so startup does not wait for it. */
     /** Output volume, 0 to 1; kept here since the engines do not report it. */
-    val volume = kotlinx.coroutines.flow.MutableStateFlow(repo.pref("player_volume")?.toFloatOrNull()?.coerceIn(0f, 1f) ?: 1f)
+    override val volume = kotlinx.coroutines.flow.MutableStateFlow(repo.pref("player_volume")?.toFloatOrNull()?.coerceIn(0f, 1f) ?: 1f)
 
     override val speed = MutableStateFlow(repo.pref("player_speed")?.toFloatOrNull()?.coerceIn(0.5f, 2f) ?: 1f)
 

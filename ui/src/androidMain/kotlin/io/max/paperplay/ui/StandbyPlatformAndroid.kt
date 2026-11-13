@@ -62,3 +62,31 @@ actual fun rememberBatteryPercent(): Int? {
     }
     return pct
 }
+
+@Composable
+actual fun rememberOutputDevice(): OutputDevice {
+    val ctx = LocalContext.current
+    val am = remember(ctx) { ctx.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager }
+    fun read(): OutputDevice {
+        val outs = am.getDevices(android.media.AudioManager.GET_DEVICES_OUTPUTS)
+        val ext = outs.firstOrNull {
+            it.type in setOf(
+                android.media.AudioDeviceInfo.TYPE_BLUETOOTH_A2DP, android.media.AudioDeviceInfo.TYPE_BLE_HEADSET,
+                android.media.AudioDeviceInfo.TYPE_WIRED_HEADPHONES, android.media.AudioDeviceInfo.TYPE_WIRED_HEADSET,
+                android.media.AudioDeviceInfo.TYPE_USB_HEADSET, android.media.AudioDeviceInfo.TYPE_USB_DEVICE,
+            )
+        }
+        return if (ext != null) OutputDevice(ext.productName?.toString()?.takeIf { it.isNotBlank() } ?: "Headphones", true)
+        else OutputDevice(android.os.Build.MODEL ?: "This phone", false)
+    }
+    var device by remember { mutableStateOf(read()) }
+    DisposableEffect(am) {
+        val cb = object : android.media.AudioDeviceCallback() {
+            override fun onAudioDevicesAdded(added: Array<out android.media.AudioDeviceInfo>?) { device = read() }
+            override fun onAudioDevicesRemoved(removed: Array<out android.media.AudioDeviceInfo>?) { device = read() }
+        }
+        am.registerAudioDeviceCallback(cb, null)
+        onDispose { am.unregisterAudioDeviceCallback(cb) }
+    }
+    return device
+}

@@ -91,6 +91,13 @@ import io.max.paperplay.ui.components.CoverImage
 import io.max.paperplay.ui.components.SongMenu
 import io.max.paperplay.ui.components.WavySeek
 import io.max.paperplay.ui.logic.formatDuration
+import androidx.compose.material.icons.rounded.Headphones
+import androidx.compose.material.icons.rounded.FastForward
+import androidx.compose.material.icons.rounded.FastRewind
+import androidx.compose.material.icons.rounded.Star
+import androidx.compose.material.icons.rounded.StarBorder
+import androidx.compose.material.icons.rounded.VolumeDown
+import androidx.compose.material.icons.rounded.VolumeUp
 import io.max.paperplay.ui.state.PlaybackUiState
 import io.max.paperplay.ui.state.RepeatUi
 import io.max.paperplay.ui.state.SongUi
@@ -178,7 +185,7 @@ private fun PlayerBody(
     val scheme = MaterialTheme.colorScheme
     BoxWithConstraints(modifier, contentAlignment = Alignment.TopCenter) {
         // Room the controls need, so short screens shrink the cover, not them.
-        val art = minOf(maxWidth - 48.dp, maxHeight - 25.dp - 300.dp).coerceAtLeast(120.dp)
+        val art = minOf(maxWidth - 48.dp, maxHeight - 25.dp - 410.dp).coerceAtLeast(120.dp)
         Column(Modifier.widthIn(max = 560.dp).fillMaxHeight().padding(horizontal = 12.dp)) {
             // Drag down on the cover to close, sideways to change song.
             Column(
@@ -212,36 +219,56 @@ private fun PlayerBody(
                             style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium, color = scheme.onSurface.copy(alpha = 0.7f),
                         )
                     }
-                    if (onDevices != null) {
-                        var devicesOpen by remember { mutableStateOf(false) }
-                        IconButton({ devicesOpen = true }) { AppIcon(Icons.Rounded.Devices, "Devices") }
-                        if (devicesOpen) PhoneDevicesDialog(onDevices) { devicesOpen = false }
-                    }
-                    val standbyPrefs = if (io.max.paperplay.ui.isPhone) LocalUiPrefs.current?.standby else null
-                    if (standbyPrefs != null) {
-                        var standby by remember { mutableStateOf(false) }
-                        IconButton({ standby = true }) { AppIcon(Icons.Rounded.NightsStay, "Standby mode") }
-                        if (standby) StandbyScreen(state, backend, standbyPrefs) { standby = false }
-                    }
-                    IconButton({ actions.setFavorite(song, !song.favorite) }) {
+                    // Round translucent buttons, as in Apple Music.
+                    val disc = Modifier.size(36.dp).clip(CircleShape).background(scheme.onSurface.copy(alpha = 0.18f))
+                    IconButton({ actions.setFavorite(song, !song.favorite) }, disc) {
                         AppIcon(
-                            if (song.favorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
+                            if (song.favorite) Icons.Rounded.Star else Icons.Rounded.StarBorder,
                             if (song.favorite) "Remove from favorites" else "Add to favorites",
+                            Modifier.size(20.dp),
                             tint = if (song.favorite) scheme.primary else scheme.onSurface,
                         )
                     }
-                    SongMenu(song, actions.rowActions(), Icons.Rounded.MoreHoriz)
+                    Spacer(Modifier.width(12.dp))
+                    Box(disc, contentAlignment = Alignment.Center) { SongMenu(song, actions.rowActions(), Icons.Rounded.MoreHoriz) }
+                    Spacer(Modifier.width(8.dp))
                 }
                 Column(Modifier.padding(horizontal = 12.dp)) {
                     if (error != null) Text(error, color = scheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(bottom = 4.dp))
                     Progress(song, state, backend)
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(backend::previous, Modifier.size(64.dp)) { AppIcon(Icons.Rounded.SkipPrevious, "Previous", Modifier.size(44.dp)) }
+                    IconButton(backend::previous, Modifier.size(72.dp)) { AppIcon(Icons.Rounded.FastRewind, "Previous", Modifier.size(48.dp)) }
                     PlayPauseButton(state.playing, backend::togglePlay)
-                    IconButton(backend::next, Modifier.size(64.dp)) { AppIcon(Icons.Rounded.SkipNext, "Next", Modifier.size(44.dp)) }
+                    IconButton(backend::next, Modifier.size(72.dp)) { AppIcon(Icons.Rounded.FastForward, "Next", Modifier.size(48.dp)) }
                 }
+                val volume by backend.volume.collectAsState()
+                Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    AppIcon(Icons.Rounded.VolumeDown, "Quieter", Modifier.size(18.dp), tint = scheme.onSurface.copy(alpha = 0.65f))
+                    VolumeBar(volume, backend::setVolume, scheme.onSurface, Modifier.weight(1f).padding(horizontal = 10.dp))
+                    AppIcon(Icons.Rounded.VolumeUp, "Louder", Modifier.size(18.dp), tint = scheme.onSurface.copy(alpha = 0.65f))
+                }
+                // Output device pill, like the AirPods one in Apple Music.
+                val out = io.max.paperplay.ui.rememberOutputDevice()
+                var devicesOpen by remember { mutableStateOf(false) }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                    Row(
+                        Modifier.clip(RoundedCornerShape(50)).background(scheme.onSurface.copy(alpha = 0.14f))
+                            .clickable(enabled = onDevices != null) { devicesOpen = true }.padding(horizontal = 18.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        AppIcon(if (out.external) Icons.Rounded.Headphones else Icons.Rounded.PhoneAndroid, null, Modifier.size(20.dp))
+                        Text(out.name, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall, modifier = Modifier.widthIn(max = 200.dp))
+                    }
+                }
+                if (devicesOpen && onDevices != null) PhoneDevicesDialog(onDevices) { devicesOpen = false }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    val standbyPrefs = if (io.max.paperplay.ui.isPhone) LocalUiPrefs.current?.standby else null
+                    if (standbyPrefs != null) {
+                        var standby by remember { mutableStateOf(false) }
+                        IconButton({ standby = true }) { AppIcon(Icons.Rounded.NightsStay, "Standby mode") }
+                        if (standby) StandbyScreen(state, backend, standbyPrefs) { standby = false }
+                    }
                     var showLyrics by remember { mutableStateOf(false) }
                     IconButton({ showLyrics = true }, enabled = state.current != null) { AppIcon(Icons.Outlined.Lyrics, "Lyrics") }
                     if (showLyrics) state.current?.let { LyricsDialog(it.id, it.title, backend) { showLyrics = false } }
@@ -282,11 +309,8 @@ private fun Artwork(song: SongUi, playing: Boolean, size: androidx.compose.ui.un
 
 @Composable
 private fun PlayPauseButton(playing: Boolean, onToggle: () -> Unit) {
-    FilledIconButton(
-        onToggle, Modifier.size(72.dp), shape = CircleShape,
-        colors = IconButtonDefaults.filledIconButtonColors(containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary),
-    ) {
-        AppIcon(if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (playing) "Pause" else "Play", Modifier.size(36.dp))
+    IconButton(onToggle, Modifier.size(88.dp)) {
+        AppIcon(if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (playing) "Pause" else "Play", Modifier.size(64.dp))
     }
 }
 
@@ -307,13 +331,7 @@ private fun Progress(song: SongUi, state: PlaybackUiState, backend: PlayerContro
     Spacer(Modifier.height(8.dp))
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(formatDuration(pos.positionMs / 1000), Modifier.weight(1f), style = muted)
-        Box(
-            Modifier.clip(RoundedCornerShape(12.dp)).background(scheme.onSurface.copy(alpha = 0.12f)).clickable { info = true }
-                .height(24.dp).padding(horizontal = 10.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(song.qualityLabel ?: if (song.lossless) "Lossless" else "Lossy", style = muted)
-        }
+        io.max.paperplay.ui.components.AudioBadge(song, Modifier.clip(RoundedCornerShape(8.dp)).background(scheme.onSurface.copy(alpha = 0.12f)).clickable { info = true }.padding(horizontal = 10.dp, vertical = 4.dp))
         Text("-" + formatDuration(((total - pos.positionMs) / 1000).coerceAtLeast(0)), Modifier.weight(1f), style = muted, textAlign = TextAlign.End)
     }
     if (info) SongInfoDialog(song) { info = false }
@@ -416,8 +434,8 @@ fun NowPlayingPanel(state: PlaybackUiState, backend: PlayerControls, actions: Li
                 }
                 SongMenu(song, actions.rowActions(), Icons.Rounded.MoreHoriz)
             }
-            // Format, bitrate, year and genre as chips; "FLAC 24/96" becomes FLAC and 24/96.
-            val facts = (song.qualityLabel?.split(' ').orEmpty() + listOfNotNull(song.year?.toString(), song.genre)).filter { it.isNotBlank() }
+            io.max.paperplay.ui.components.AudioBadge(song, Modifier.padding(top = 8.dp))
+            val facts = listOfNotNull(song.qualityLabel?.takeIf { it.contains(' ') }?.substringAfter(' '), song.year?.toString(), song.genre).filter { it.isNotBlank() }
             if (facts.isNotEmpty()) androidx.compose.foundation.layout.FlowRow(
                 Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp),
             ) { facts.forEach { io.max.paperplay.ui.components.FormatChip(it) } }

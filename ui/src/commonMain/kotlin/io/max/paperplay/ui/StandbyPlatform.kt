@@ -14,3 +14,9 @@ expect fun StandbyWindowEffect(brightness: Float)
 /** Battery level 0..100, or null where unknown (desktop). */
 @Composable
 expect fun rememberBatteryPercent(): Int?
+
+/** Where sound is going now: the device's name and whether it is headphones, earbuds or a speaker set apart from the phone. */
+data class OutputDevice(val name: String, val external: Boolean)
+
+@Composable
+expect fun rememberOutputDevice(): OutputDevice

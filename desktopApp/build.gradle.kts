@@ -102,6 +102,9 @@ afterEvaluate {
 compose.desktop {
     application {
         mainClass = "io.max.paperplay.desktop.MainKt"
+        // Without limits the JVM grows its heap to a quarter of the machine's RAM and keeps it. Serial GC needs no extra GC threads or
+        // regions, and the free-ratio flags hand unused heap back to the OS.
+        jvmArgs += listOf("-Xms32m", "-Xmx640m", "-XX:+UseSerialGC", "-XX:MinHeapFreeRatio=10", "-XX:MaxHeapFreeRatio=30", "-Xss512k", "-XX:ReservedCodeCacheSize=64m")
         buildTypes.release.proguard {
             isEnabled.set(true)
             obfuscate.set(false)

@@ -40,6 +40,7 @@ internal class FakePlayerControls(
     override val position: StateFlow<PositionUi> = MutableStateFlow(position)
     override val sleepAt: StateFlow<Long?> = MutableStateFlow(sleepAt)
     override val speed: StateFlow<Float> = MutableStateFlow(1f)
+    override val volume: StateFlow<Float> = MutableStateFlow(0.8f)
     override fun setSpeed(speed: Float) {}
     override fun removeFromQueue(index: Int) {}
     override fun moveInQueue(from: Int, to: Int) {}

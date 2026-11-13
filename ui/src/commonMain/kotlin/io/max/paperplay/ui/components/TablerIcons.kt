@@ -152,6 +152,12 @@ internal object TablerIcons {
             addPath(pathData = PathParser().parsePathString("M15 9h.01").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
         }.build()
     }
+    val layout_sidebar: ImageVector by lazy {
+        ImageVector.Builder(name = "Tabler_layout_sidebar", defaultWidth = 24.dp, defaultHeight = 24.dp, viewportWidth = 24f, viewportHeight = 24f).apply {
+            addPath(pathData = PathParser().parsePathString("M4 6a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2l0 -12").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+            addPath(pathData = PathParser().parsePathString("M9 4l0 16").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+        }.build()
+    }
     val layout_sidebar_right: ImageVector by lazy {
         ImageVector.Builder(name = "Tabler_layout_sidebar_right", defaultWidth = 24.dp, defaultHeight = 24.dp, viewportWidth = 24f, viewportHeight = 24f).apply {
             addPath(pathData = PathParser().parsePathString("M4 6a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2l0 -12").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
@@ -435,6 +441,7 @@ internal fun tablerIconForMaterial(name: String): ImageVector? = when (name) {
     "Shuffle" -> TablerIcons.arrows_shuffle
     "Repeat" -> TablerIcons.repeat
     "RepeatOne" -> TablerIcons.repeat_once
+    "Menu" -> TablerIcons.layout_sidebar
     "ViewSidebar" -> TablerIcons.layout_sidebar_right
     "QueueMusic", "PlaylistPlay", "PlaylistAdd" -> TablerIcons.playlist
     "Devices" -> TablerIcons.devices

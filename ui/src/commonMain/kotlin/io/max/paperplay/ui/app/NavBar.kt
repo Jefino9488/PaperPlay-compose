@@ -7,6 +7,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
@@ -165,7 +166,7 @@ fun MiniPlayer(
             Row(Modifier.padding(start = 8.dp, top = 8.dp, end = 4.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 CoverImage(song.coverUri, song.id, size = 44.dp, radius = 8.dp)
                 Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
-                    Text(song.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall, color = ink)
+                    Text(song.title, modifier = Modifier.basicMarquee(), maxLines = 1, style = MaterialTheme.typography.titleSmall, color = ink)
                     Text(song.artist, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = ink.copy(alpha = 0.75f))
                 }
                 IconButton(onPrevious) { AppIcon(Icons.Rounded.SkipPrevious, "Previous", tint = ink) }

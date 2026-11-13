@@ -16,7 +16,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ViewSidebar
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -378,9 +381,32 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
                 SnackbarHost(snack, Modifier.align(Alignment.BottomCenter).padding(bottom = 96.dp))
                 ShortcutsOverlay(keys, Modifier.fillMaxSize())
             }
-            NetplayIndicator(
-                backend, Modifier.align(Alignment.TopEnd).padding(top = if (isPhone) WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 8.dp else 16.dp, end = 12.dp),
-            ) { navigate { settings = true; settingsDeep = true; settingsStack.clear(); settingsStack.add("netplay") } }
+            Row(
+                Modifier.align(Alignment.TopEnd).padding(top = if (isPhone) WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 8.dp else 16.dp, end = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                NetplayIndicator(
+                    backend, Modifier,
+                ) { navigate { settings = true; settingsDeep = true; settingsStack.clear(); settingsStack.add("netplay") } }
+                if (!isPhone && pb.current != null) {
+                    val panelOn = prefs.nowPlayingPanel
+                    val on = MaterialTheme.colorScheme.primary
+                    val off = MaterialTheme.colorScheme.onSurfaceVariant
+                    Spacer(Modifier.width(8.dp))
+                    androidx.compose.material3.Surface(
+                        shape = androidx.compose.foundation.shape.CircleShape,
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        modifier = Modifier.clickable { prefs.putNowPlayingPanel(!prefs.nowPlayingPanel) }
+                    ) {
+                        io.max.paperplay.ui.components.AppIcon(
+                            Icons.AutoMirrored.Rounded.ViewSidebar,
+                            if (panelOn) "Hide the now playing panel" else "Show the now playing panel",
+                            Modifier.padding(10.dp).size(20.dp),
+                            tint = if (panelOn) on else off
+                        )
+                    }
+                }
+            }
             StatusToast(
                 conn, scan, if (lib.songs is Load.Ready) songs.size else 1, g0.value,
                 Modifier.align(Alignment.TopCenter).padding(top = if (isPhone) WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 8.dp else 16.dp),
