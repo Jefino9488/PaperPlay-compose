@@ -164,11 +164,10 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
         while (lan == null) { kotlinx.coroutines.delay(2_000); lan = backend.lanSync }
         val sync = lan
         launch {
-            var seen = emptyList<String>()
+            // The sync loop dials an offline paired device every 20 seconds; each device is announced once per run.
+            val announced = mutableSetOf<String>()
             sync.connecting.collect { now ->
-                val fresh = now.filter { it !in seen }
-                seen = now
-                fresh.firstOrNull()?.let { name -> snack.currentSnackbarData?.dismiss(); launch { snack.showSnackbar("Connecting to $name", duration = androidx.compose.material3.SnackbarDuration.Short) } }
+                now.firstOrNull { announced.add(it) }?.let { name -> snack.currentSnackbarData?.dismiss(); launch { snack.showSnackbar("Connecting to $name", duration = androidx.compose.material3.SnackbarDuration.Short) } }
             }
         }
         var known = sync.connected.value.map { it.id }.toSet()
