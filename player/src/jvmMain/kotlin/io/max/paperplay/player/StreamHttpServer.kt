@@ -9,7 +9,12 @@ import java.util.concurrent.Executors
 
 /** Loopback HTTP server exposing [StreamSource]s with Range support. */
 class StreamHttpServer : AutoCloseable {
-    private val sources = ConcurrentHashMap<String, StreamSource>()
+    // Only the most recently registered songs stay: every song played used to stay registered, with its buffers, until the app closed.
+    private val sources: MutableMap<String, StreamSource> = java.util.Collections.synchronizedMap(
+        object : LinkedHashMap<String, StreamSource>(16, 0.75f, true) {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, StreamSource>?) = size > MAX_SOURCES
+        },
+    )
     private val server = HttpServer.create(InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0).apply {
         executor = Executors.newCachedThreadPool { r -> Thread(r, "stream-http").apply { isDaemon = true } }
         createContext("/") { handle(it) }
@@ -63,6 +68,7 @@ class StreamHttpServer : AutoCloseable {
 
     companion object {
         private const val CHUNK = 64 * 1024
+        private const val MAX_SOURCES = 8
 
         /** Single "bytes=a-b" / "a-" / "-n" range clamped to [size]; null if malformed or unsatisfiable. */
         internal fun parseRange(header: String, size: Long): Pair<Long, Long>? {
