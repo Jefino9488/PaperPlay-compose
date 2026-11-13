@@ -65,6 +65,9 @@ val accentOptions = listOf(
 
 /** Look and layout choices, stored under the same pref keys as the Flutter app so a restored backup carries over. */
 class UiPrefs(private val read: (String) -> String?, private val write: (String, String) -> Unit) {
+    /** A saved text value by key, for small per-screen choices such as one playlist's sort order. */
+    fun getString(key: String): String? = read(key)
+    fun putString(key: String, value: String) = write(key, value)
     /** How song lists are ordered, shared by every list and kept between launches. */
     var songSort by mutableStateOf(io.max.paperplay.ui.logic.SongSort.entries.firstOrNull { it.name == read("song_sort") } ?: io.max.paperplay.ui.logic.SongSort.Added)
         private set

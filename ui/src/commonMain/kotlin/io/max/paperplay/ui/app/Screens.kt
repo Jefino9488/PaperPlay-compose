@@ -239,7 +239,10 @@ fun DetailScreen(
     val rawSongs by flow.collectAsState(emptyList())
     var name by remember(detail) { mutableStateOf(detail.title) }
     var dialog by remember(detail) { mutableStateOf<String?>(null) }
-    var sort by remember(detail) { mutableStateOf(PlaylistSort.Order) }
+    // Each playlist remembers its own order between launches.
+    val sortPrefs = LocalUiPrefs.current
+    val sortKey = "playlist_sort:" + ((detail as? Detail.Playlist)?.id ?: detail.title)
+    var sort by remember(detail) { mutableStateOf(PlaylistSort.entries.firstOrNull { it.name == sortPrefs?.getString(sortKey) } ?: PlaylistSort.Order) }
     var sortMenu by remember(detail) { mutableStateOf(false) }
     var moreMenu by remember(detail) { mutableStateOf(false) }
     var reorderOpen by remember(detail) { mutableStateOf(false) }
@@ -269,7 +272,7 @@ fun DetailScreen(
                             PlaylistSort.entries.forEach { o ->
                                 DropdownMenuItem(
                                     text = { Text(if (o == sort) "${o.label} (selected)" else o.label) },
-                                    onClick = { sort = o; sortMenu = false; moreMenu = false },
+                                    onClick = { sort = o; sortPrefs?.putString(sortKey, o.name); sortMenu = false; moreMenu = false },
                                 )
                             }
                         } else {
