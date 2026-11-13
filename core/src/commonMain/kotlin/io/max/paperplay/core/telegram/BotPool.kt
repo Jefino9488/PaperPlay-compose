@@ -19,6 +19,8 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.longOrNull
+import kotlinx.serialization.json.put
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.seconds
 
@@ -27,6 +29,10 @@ data class PoolBot(
     /** Telegram's bot id (the part of the token before the colon). 0 is the main bot. */
     val id: Long,
     val username: String? = null,
+    /** The bot's display name from Telegram. */
+    val name: String? = null,
+    /** A local file with the bot's profile picture, when it has one and it has been downloaded. */
+    val photoPath: String? = null,
     /** "starting", "working" or "error". */
     val state: String = "starting",
     val error: String? = null,
@@ -125,15 +131,41 @@ class BotPool(
             lock.withLock { clients[id] = c }
             c.start()
             c.ready(45.seconds)
-            val me = runCatching { c.call(request("getMe")) }.getOrNull()
-            val names = me?.get("usernames")?.jsonObject?.get("active_usernames")?.jsonArray
-            val first = names?.firstOrNull()?.jsonPrimitive?.contentOrNull
-            setBot(id) { it.copy(state = "working", error = null, username = first?.let { n -> "@$n" } ?: it.username) }
+            val who = profileOf(c)
+            setBot(id) { it.copy(state = "working", error = null, username = who.username ?: it.username, name = who.name ?: it.name, photoPath = who.photoPath ?: it.photoPath) }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Throwable) {
             setBot(id) { it.copy(state = "error", error = e.message ?: "It did not start.") }
         }
+    }
+
+    private class Who(val name: String?, val username: String?, val photoPath: String?)
+
+    /** Name, @username and profile picture of the account [c] is logged in as. Anything Telegram does not give is null. */
+    private suspend fun profileOf(c: TdClient): Who {
+        val me = runCatching { c.call(request("getMe")) }.getOrNull() ?: return Who(null, null, null)
+        val user = me.get("usernames")?.jsonObject?.get("active_usernames")?.jsonArray?.firstOrNull()?.jsonPrimitive?.contentOrNull
+        val name = listOfNotNull(me["first_name"]?.jsonPrimitive?.contentOrNull, me["last_name"]?.jsonPrimitive?.contentOrNull)
+            .joinToString(" ").trim().ifEmpty { null }
+        val fileId = me["profile_photo"]?.jsonObject?.get("small")?.jsonObject?.get("id")?.jsonPrimitive?.longOrNull
+        val path = fileId?.let {
+            runCatching {
+                c.call(request("downloadFile") { put("file_id", it); put("priority", 1); put("offset", 0); put("limit", 0); put("synchronous", true) }, 60.seconds)
+                    .get("local")?.jsonObject?.get("path")?.jsonPrimitive?.contentOrNull?.takeIf { p -> p.isNotEmpty() }
+            }.getOrNull()
+        }
+        return Who(name, user?.let { "@$it" }, path)
+    }
+
+    /** Fills in the main bot's name, @username and picture from Telegram. False when the main bot is not logged in yet. */
+    suspend fun loadMainProfile(): Boolean {
+        val c = main() ?: return false
+        if (c.auth.value != "authorizationStateReady") return false
+        val who = profileOf(c)
+        if (who.name == null && who.username == null) return false
+        _mainWait.update { it.copy(name = who.name, username = who.username, photoPath = who.photoPath ?: it.photoPath) }
+        return true
     }
 
     private fun setBot(id: Long, change: (PoolBot) -> PoolBot) =
