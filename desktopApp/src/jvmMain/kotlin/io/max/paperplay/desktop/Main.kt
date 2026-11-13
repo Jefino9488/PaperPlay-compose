@@ -9,6 +9,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Tray
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.window.Window
 import androidx.compose.foundation.window.WindowDraggableArea
 import androidx.compose.ui.window.application
@@ -189,8 +191,9 @@ fun main() {
         val trayOk = androidx.compose.ui.window.isTraySupported
         val fullscreen by io.max.paperplay.ui.app.WindowFullscreen.on.collectAsState()
         androidx.compose.runtime.LaunchedEffect(Unit) { io.max.paperplay.ui.app.WindowFullscreen.supported.value = true }
+        // Windows uses a borderless window over the monitor (BorderlessFullscreen); elsewhere the toolkit's full screen.
         androidx.compose.runtime.LaunchedEffect(fullscreen) {
-            mainState.placement = if (fullscreen) androidx.compose.ui.window.WindowPlacement.Fullscreen else androidx.compose.ui.window.WindowPlacement.Floating
+            if (!BorderlessFullscreen.supported) mainState.placement = if (fullscreen) androidx.compose.ui.window.WindowPlacement.Fullscreen else androidx.compose.ui.window.WindowPlacement.Floating
         }
         val quit = {
             // libvlc writes its plugin cache (plugins.dat) only when released.
@@ -206,13 +209,15 @@ fun main() {
                 val trayIcon = java.awt.TrayIcon(image, "Paper Play").apply {
                     isImageAutoSize = true
                     addMouseListener(object : java.awt.event.MouseAdapter() {
+                        // Windows delivers a left click reliably only as press and release, not as mouseClicked.
                         override fun mouseReleased(e: java.awt.event.MouseEvent) {
                             if (e.isPopupTrigger || e.button == java.awt.event.MouseEvent.BUTTON3) trayMenuAt = e.point
-                        }
-                        override fun mouseClicked(e: java.awt.event.MouseEvent) {
-                            if (e.button == java.awt.event.MouseEvent.BUTTON1) { mainVisible = true; mainState.isMinimized = false; raise++ }
+                            else if (e.button == java.awt.event.MouseEvent.BUTTON1) {
+                                javax.swing.SwingUtilities.invokeLater { trayMenuAt = null; mainVisible = true; mainState.isMinimized = false; raise++ }
+                            }
                         }
                     })
+                    addActionListener { javax.swing.SwingUtilities.invokeLater { mainVisible = true; mainState.isMinimized = false; raise++ } }
                 }
                 java.awt.SystemTray.getSystemTray().add(trayIcon)
                 onDispose { java.awt.SystemTray.getSystemTray().remove(trayIcon) }
@@ -261,9 +266,23 @@ fun main() {
         Window(
             onCloseRequest = { if (trayOk) mainVisible = false else quit() },
             visible = mainVisible, title = "Paper Play", state = mainState, icon = androidx.compose.ui.res.painterResource("icon.png"),
+            onPreviewKeyEvent = {
+                if (fullscreen && it.key == androidx.compose.ui.input.key.Key.Escape && it.type == androidx.compose.ui.input.key.KeyEventType.KeyDown) {
+                    io.max.paperplay.ui.app.WindowFullscreen.on.value = false; true
+                } else false
+            },
         ) {
             titleBarWindow = window
-            androidx.compose.runtime.LaunchedEffect(mainVisible, raise) { if (mainVisible) window.toFront() }
+            androidx.compose.runtime.LaunchedEffect(fullscreen) { BorderlessFullscreen.set(window, fullscreen) }
+            // Windows only lets a window forward itself when it is not minimised and briefly topmost, so do all three.
+            androidx.compose.runtime.LaunchedEffect(mainVisible, raise) {
+                if (mainVisible) {
+                    kotlinx.coroutines.delay(30)
+                    window.extendedState = window.extendedState and java.awt.Frame.ICONIFIED.inv()
+                    window.toFront(); window.requestFocus()
+                    if (!fullscreen) { window.isAlwaysOnTop = true; window.isAlwaysOnTop = false }
+                }
+            }
             androidx.compose.runtime.LaunchedEffect(Unit) { installFileDrop(window) }
             androidx.compose.runtime.LaunchedEffect(Unit) { mark(dir, "window first composition") }
             App(env)
