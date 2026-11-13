@@ -187,7 +187,6 @@ internal fun SettingsPage(
             }
             SectionLabel("Display")
             BackgroundSettings(prefs)
-            if (!isPhone) SwitchRow("Now playing panel", prefs.nowPlayingPanel, prefs::putNowPlayingPanel, Icons.Rounded.MusicNote, "Shown beside the lists on wide screens")
             SliderRow("Corner radius: ${prefs.cornerRadius.toInt()}%", prefs.cornerRadius, 0f..100f, { prefs.putCornerRadius(it) })
             SectionLabel("Look")
             Text("Pick Material 3 or glass for each part, or all at once.", Modifier.padding(horizontal = 20.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
