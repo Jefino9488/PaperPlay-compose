@@ -645,8 +645,30 @@ class CoreBackend(val services: AppServices) : PlayerControls {
     private var currentCache: Pair<Song?, SongUi?> = null to null
 
     /** The player is created here on first use, on a background thread, so startup does not wait for it. */
-    /** Output volume, 0 to 1; kept here since the engines do not report it. */
+    /**
+     * Output volume, 0 to 1. Where the system offers a media volume (Android, Windows) this follows it and the bar changes it,
+     * so the app has no second volume; elsewhere it is the app's own volume, kept here since the engines do not report it.
+     */
     override val volume = kotlinx.coroutines.flow.MutableStateFlow(repo.pref("player_volume")?.toFloatOrNull()?.coerceIn(0f, 1f) ?: 1f)
+    @Volatile private var systemVolume = false
+
+    init {
+        scope.launch(Dispatchers.Default) {
+            var first = true
+            while (true) {
+                val level = io.max.paperplay.player.SystemVolume.get()
+                if (level == null) { if (first) return@launch else { delay(1000); continue } }
+                if (first) {
+                    first = false
+                    systemVolume = true
+                    // The engine plays at full level; the system volume is the only one.
+                    if (playerStarted.value) player.setVolume(1f)
+                }
+                if (kotlin.math.abs(level - volume.value) > 0.004f) volume.value = level
+                delay(1000)
+            }
+        }
+    }
 
     override val speed = MutableStateFlow(repo.pref("player_speed")?.toFloatOrNull()?.coerceIn(0.5f, 2f) ?: 1f)
 
@@ -686,7 +708,7 @@ class CoreBackend(val services: AppServices) : PlayerControls {
         services.playback.also { p ->
             scope.launch { p.outputInfo.collect { _outputInfo.value = it } }
             if (eqOn.value) p.setEqualizer(eqGains.value)
-            if (volume.value != 1f) p.setVolume(volume.value)
+            if (!systemVolume && volume.value != 1f) p.setVolume(volume.value)
             if (speed.value != 1f) p.setSpeed(speed.value)
             if (normalizeOn.value) p.setNormalize(true)
             // A listen counts after half the song or four minutes, whichever comes first.
@@ -856,6 +878,10 @@ class CoreBackend(val services: AppServices) : PlayerControls {
     override fun seekTo(fraction: Float) { player.seek((fraction * playbackMeta.value.durationMs).toLong()) }
     override fun setVolume(v: Float) {
         volume.value = v.coerceIn(0f, 1f)
+        if (systemVolume) {
+            scope.launch(Dispatchers.Default) { io.max.paperplay.player.SystemVolume.set(volume.value) }
+            return
+        }
         if (playerStarted.value) player.setVolume(volume.value)
         repo.setPref("player_volume", volume.value.toString())
     }
