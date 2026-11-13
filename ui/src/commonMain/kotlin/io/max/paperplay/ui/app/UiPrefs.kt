@@ -330,7 +330,8 @@ private fun surfaceAlpha(tint: Float): Float = 0.25f + tint.coerceIn(0f, 1f) * 0
 fun overlayColor(base: Color = MaterialTheme.colorScheme.surfaceContainerHigh): Color {
     val prefs = LocalUiPrefs.current
     if (prefs == null || prefs.look(LookGroup.Overlays) != Look.Glass) return base
-    return base.copy(alpha = maxOf(surfaceAlpha(prefs.glassTint), 0.7f))
+    // Menus are separate windows, so they cannot blur the page behind them; they stay nearly solid so the text behind never shows through.
+    return base.copy(alpha = maxOf(surfaceAlpha(prefs.glassTint), 0.95f))
 }
 
 /** The light rim of a glass overlay; nothing for Material. */
