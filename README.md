@@ -64,6 +64,29 @@ Telegram bot and chats as storage. It targets Android and desktop JVM.
   live and refreshes only newer posts, copying songs into the main chat, a plus button for songs the index has for a
   Spotify playlist, and automatic refresh of imported playlists.
 - Release and debug builds are signed with the same key; the desktop app has its own blue icon.
+- **Player**: Apple Music style phone player (round star and menu buttons, rewind, bare play and fast-forward glyphs,
+  volume bar, output device pill); the PC bar, now playing view and mini player use the same glyphs. A format badge
+  (FLAC, ALAC, Hi-Res Lossless, Dolby, MP3) sits under the seek bar; tapping it, or "Output info" in the three dot menu,
+  shows the source format, the decoded format, the output device, the effects in the path and whether the sound is
+  bit-perfect (desktop never is: Windows mixes at its own format).
+- **Volume** follows the system volume on Android (media stream) and Windows (master volume of the default output);
+  the app has no second volume where the system has one.
+- **Equalizer**: ten octave bands with a draggable response curve, 13 presets, a preamp that stops boosts from clipping.
+- **Desktop**: system tray with a themed menu (left click opens the app), one running copy (a second launch shows the
+  first), borderless full screen on Windows, a mini player window whose width follows the song text, media keys,
+  Explorer style file dialogs (zenity or kdialog on Linux), format badge switch in Player bar settings.
+- **Devices and sync**: the Connection page lists one entry per device with all its addresses (edit, delete, add), your
+  own addresses, pairing and auto link when a paired device shows up. Linked devices show what they play and take
+  play, pause, next and previous. The player bar popup (PC) and the "Play on" sheet (phone) list them without
+  addresses and open Connection and Network play. A sync goes both ways and reports both sides.
+- **Search** finds songs by title, artist, album (the film, for film songs), genre and year. Plain lyrics (no
+  timestamps, any language) scroll along with the song.
+- **Telegram reading**: the reading speed is the real number of requests a minute (slider on Repair and above Full
+  rescan). Repair can read each chat with every extra bot and with your own account, then combines the songs; a song only
+  an extra bot can read is played, downloaded and given covers through that bot.
+- **Bots page** shows the name, @username and picture of the main bot and every extra bot.
+- Settings: profile changes show a saved message, the Spotify client id is hidden with an eye button, and the browser
+  page after the Spotify login follows your light or dark setting.
 
 ## Build
 
@@ -137,6 +160,20 @@ The script also copies the normal portable distribution to
 `%USERPROFILE%\Downloads\PaperPlay`. Keep that folder intact if you use the
 portable folder instead of the bundled executable.
 
+## Release build, install and installer
+
+`scripts\release.ps1` builds the signed Android release, installs it on the phone when exactly one `adb` device is
+listed, builds the desktop distribution, runs Inno Setup (`desktopApp\installer\PaperPlay.iss`) and copies
+`PaperPlay-<version>-setup.exe` and `PaperPlay-<version>.apk` to Downloads. Use `-SkipAndroid` or `-SkipDesktop` to do half.
+It stops if `D:\PaperPlayCompose.lock` exists. Versions: `packageVersion` in `desktopApp\build.gradle.kts` and
+`AppVersion` in the `.iss` file (desktop), `versionName` and `versionCode` in `androidApp\build.gradle.kts`.
+
+```powershell
+powershell -File scripts\release.ps1
+```
+
+The desktop app needs JDK 25 to run from Gradle (`C:\Program Files\Zulu\zulu-25`); builds use JDK 17.
+
 ## Desktop VLC runtime setup (developers)
 
 The bundled libvlc DLLs are excluded from Git (they are large platform
@@ -184,13 +221,18 @@ module and use the Split or Design view.
 You provide your own Telegram API ID, API hash, and bot token. PaperPlay does
 not upload this configuration to another service.
 
-## Known limitations & upcoming ports
+## Known limitations
 
-- **Other bots' posts**: a bot cannot see songs another bot posted as itself in a group. Use a channel, post as the chat (anonymous admin), or forward them again as yourself.
-- **Previews**: pages that still take `CoreBackend` (bots, sort, uploads, Spotify, tag dialogs, index, detail, setup, main shell) cannot be previewed yet.
-- **Not built yet**: uploads and the Android share receiver, auto filing and topic moving, extra bots,
-  the task centre, LAN sync and device pairing, offline pinning, loudness normalising, audio output choice,
-  a backup writer, the metadata enricher run, and desktop tray and keyboard shortcuts.
-- **Duplicates**: the finder lists repeats in the main chat; deleting them is not wired yet.
-- **Own account**: login, chat index and copying are built but not yet verified on a device.
-- macOS and Linux libvlc runtimes are not yet bundled (falls back to system VLC on those platforms).
+- **Other bots' posts**: a bot cannot see songs another bot posted as itself in a group (channels are fine). Repair can
+  read with every extra bot and with your own account to find them; a device that lacks a song's owner bot falls back to
+  the main bot, which cannot read it.
+- **Not tried on a device or screen yet** (all of it compiles): system volume on Windows, the tray click, borderless full
+  screen, the themed login page, the device popups, reading with extra bots and the account.
+- **Memory**: the desktop app uses about 300 to 400 MB at rest. About 175 MB of that is the Intel graphics driver the
+  Direct3D backend loads, 64 MB is JVM class data and libvlc is created at startup. Each extra bot is its own Telegram
+  session that starts at launch. Two growth leaks (stream sources kept for every played song) are fixed; longer sessions
+  still need measuring.
+- **Not built yet**: Spotify style handoff of playback between devices (send the queue and position to another device and
+  mirror it), auto filing and the Telegram backup topic, a live level meter for the equalizer, macOS and Linux libvlc
+  runtimes (they fall back to a system VLC), a repair that finds which bot sent each song.
+- **Previews**: pages that still take `CoreBackend` cannot be previewed yet.
