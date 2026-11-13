@@ -275,6 +275,7 @@ internal fun SettingsPage(
             NavRow("Sort General", "Suggests topics for songs in General. Nothing moves till you confirm", Icons.Rounded.DriveFileMove) { stack.add("sort") }
             NavRow("Find duplicates", "Repeated songs in your main chat, and deleting them", Icons.Rounded.ContentCopy) { stack.add("dupes") }
             NavRow("Saved export lists", "Songs not in your library, with Spotify and Apple Music links", Icons.Rounded.IosShare) { stack.add("exports") }
+            RateSlider("reading", backend, notice)
             SettingsRow("Full rescan", icon = Icons.Rounded.Sync, subtitle = "Also removes songs deleted while the app was closed", onClick = { confirm = "rescan" })
             RateSlider("lookups", backend, notice)
             val lyricsRunning by backend.lyricsRunning.collectAsState()
@@ -392,7 +393,7 @@ internal fun SettingsPage(
         "savebackup" -> BackupPasswordDialog({ pw ->
             backend.services.scope.launch { notice.value = backend.saveBackup(pw, "paperplay-backup-${io.max.paperplay.core.app.dayOf(io.max.paperplay.ui.nowMoment().epochMs)}.zip") }
         }) { confirm = null }
-        "rescan" -> ConfirmDialog("Run a full rescan?", "Re-reads every message in your music chats. Takes a few minutes and sends Telegram a lot of requests.", "Rescan", backend::rescan) { confirm = null }
+        "rescan" -> ConfirmDialog("Run a full rescan?", "Re-reads every message in your music chats at the speed set under Reading channels (Library settings or Telegram). A slower speed takes longer but avoids Telegram's rate limit.", "Rescan", backend::rescan) { confirm = null }
         "restore" -> ConfirmDialog("Restore a backup?", "This replaces your library, playlists and favorites with the backup.", "Restore", onRestore) { confirm = null }
         "clearcache" -> ConfirmDialog("Clear the cache?", "Streamed songs stored on this device are deleted. Stop playback first. They download again when played.", "Clear", { backend.clearCache { notice.value = it } }) { confirm = null }
         "accountout" -> ConfirmDialog("Log out of your account?", "Your index stays on this device. Chats and channels need a new login.", "Log out", { backend.services.scope.launch { runCatching { backend.services.indexCloud.save() }; backend.account.logOut() } }) { confirm = null }
@@ -402,10 +403,10 @@ internal fun SettingsPage(
 }
 
 @Composable
-private fun RateSlider(key: String, backend: CoreBackend, notice: androidx.compose.runtime.MutableState<String?>) {
+internal fun RateSlider(key: String, backend: CoreBackend, notice: androidx.compose.runtime.MutableState<String?>) {
     val w = rateWorks.getValue(key)
     var v by remember { mutableStateOf(backend.pref(w.key)?.toIntOrNull()?.coerceIn(1, 1200) ?: w.default) }
-    SliderRow("${w.label}: $v a minute", v.toFloat(), 1f..120f, { v = it.toInt() }, hint = "Faster gets done sooner, but Telegram may slow the bot down if it's pushed too hard.",
+    SliderRow("${w.label}: $v a minute", v.toFloat(), 1f..120f, { v = it.toInt() }, hint = "Requests to Telegram a minute. Slower avoids its rate limit, which pauses the work for a while; faster finishes sooner.",
         onDone = { backend.setPref(w.key, "$v") })
 }
 

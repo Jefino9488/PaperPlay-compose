@@ -34,6 +34,7 @@ internal fun RepairPage(backend: CoreBackend, stack: MutableList<String>) {
     var ui by remember { mutableStateOf(RepairUi()) }
     RepairContent(
         ui,
+        speed = { RateSlider("reading", backend, remember { mutableStateOf<String?>(null) }) },
         onRun = {
             ui = RepairUi(running = true)
             backend.services.scope.launch { runRepair(backend) { ui = it(ui) } }
@@ -86,7 +87,7 @@ private suspend fun runRepair(backend: CoreBackend, update: ((RepairUi) -> Repai
 }
 
 @Composable
-internal fun RepairContent(ui: RepairUi, onRun: () -> Unit, onOpen: (String) -> Unit, onRemoveGone: () -> Unit) {
+internal fun RepairContent(ui: RepairUi, onRun: () -> Unit, onOpen: (String) -> Unit, onRemoveGone: () -> Unit, speed: @Composable () -> Unit = {}) {
     var confirm by remember { mutableStateOf(false) }
     if (confirm) ConfirmDialog(
         "Remove ${ui.gone} songs from the app?",
@@ -98,6 +99,7 @@ internal fun RepairContent(ui: RepairUi, onRun: () -> Unit, onOpen: (String) -> 
             "Reads every chat again, adds songs that were missed, removes songs whose post is gone, and starts the info and cover lookups. Nothing is moved or deleted from Telegram.",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        speed()
         Button(onRun, Modifier.fillMaxWidth(), enabled = !ui.running) { Text(if (ui.running) "Repairing" else "Repair library") }
         if (ui.running) LinearProgressIndicator(Modifier.fillMaxWidth())
         ui.lines.forEach { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
