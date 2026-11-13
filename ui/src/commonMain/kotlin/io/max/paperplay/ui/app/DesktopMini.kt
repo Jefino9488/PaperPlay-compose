@@ -76,7 +76,7 @@ fun MiniPlayerToggle(modifier: Modifier = Modifier) {
 /** Content of the mini window: cover, title and the transport controls, tinted by the cover. */
 @Composable
 fun DesktopMiniContent(onClose: (() -> Unit)? = null) {
-    val loader = remember { FileCoverLoader() }
+    val loader = SharedCovers.loader
     val state by DesktopMini.state.collectAsState()
     val controls by DesktopMini.controls.collectAsState()
     PaperPlayTheme(dark = true, dynamic = false) {

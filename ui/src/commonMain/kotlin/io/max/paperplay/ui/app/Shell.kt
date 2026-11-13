@@ -130,7 +130,7 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
     var pendingAdd by remember { mutableStateOf<Set<String>?>(null) }
     val snack = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
-    val loader = remember { FileCoverLoader() }
+    val loader = SharedCovers.loader
     // Glass needs blur layers; with every part on Material they are skipped.
     val navGlass = prefs.look(LookGroup.Nav) == Look.Glass
     val anyGlass = LookGroup.entries.any { prefs.look(it) == Look.Glass }

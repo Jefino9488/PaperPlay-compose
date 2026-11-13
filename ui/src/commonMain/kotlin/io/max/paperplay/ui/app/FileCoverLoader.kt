@@ -55,3 +55,8 @@ class FileCoverLoader(private val budgetBytes: Long = 48L * 1024 * 1024) : Cover
         return remember(bitmap) { bitmap?.let { BitmapPainter(it, filterQuality = androidx.compose.ui.graphics.FilterQuality.Medium) } }
     }
 }
+
+/** One decoded-cover cache for every window (main, mini player, tray menu) so a cover is held in memory once. */
+object SharedCovers {
+    val loader: FileCoverLoader by lazy { FileCoverLoader(32L * 1024 * 1024) }
+}

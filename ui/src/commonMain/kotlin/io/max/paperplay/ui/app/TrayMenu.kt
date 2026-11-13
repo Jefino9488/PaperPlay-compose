@@ -57,7 +57,7 @@ fun TrayMenuContent(
     onOpen: () -> Unit, onPlayPause: () -> Unit, onNext: () -> Unit, onPrevious: () -> Unit, onMini: () -> Unit, onQuit: () -> Unit,
     dismiss: () -> Unit,
 ) {
-    val loader = remember { FileCoverLoader(budgetBytes = 8L * 1024 * 1024) }
+    val loader = SharedCovers.loader
     val state by DesktopMini.state.collectAsState()
     val song = state.current
     PaperPlayTheme(dark = true, dynamic = false) {
