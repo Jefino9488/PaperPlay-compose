@@ -69,6 +69,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
@@ -220,16 +222,14 @@ private fun PlayerBody(
         val lower: @Composable (Modifier) -> Unit = { lm ->
             Column(lm.fillMaxWidth(), verticalArrangement = if (short) Arrangement.spacedBy(8.dp) else Arrangement.SpaceEvenly) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                    Column(Modifier.weight(1f).padding(start = 12.dp, end = 4.dp).clipToBounds()) {
                         Text(song.title, modifier = Modifier.basicMarquee(), maxLines = 1, style = MaterialTheme.typography.headlineSmall)
                         Text(
                             song.artist, modifier = Modifier.basicMarquee(), maxLines = 1,
                             style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium, color = scheme.onSurface.copy(alpha = 0.7f),
                         )
                     }
-                    // Round translucent buttons, as in Apple Music.
-                    val disc = Modifier.size(36.dp).clip(CircleShape).background(scheme.onSurface.copy(alpha = 0.18f))
-                    IconButton({ actions.setFavorite(song, !song.favorite) }, disc) {
+                    IconButton({ actions.setFavorite(song, !song.favorite) }) {
                         AppIcon(
                             if (song.favorite) Icons.Rounded.Star else Icons.Rounded.StarBorder,
                             if (song.favorite) "Remove from favorites" else "Add to favorites",
@@ -237,9 +237,8 @@ private fun PlayerBody(
                             tint = if (song.favorite) scheme.primary else scheme.onSurface,
                         )
                     }
-                    Spacer(Modifier.width(12.dp))
-                    Box(disc, contentAlignment = Alignment.Center) { SongMenu(song, actions.rowActions(), Icons.Rounded.MoreHoriz, onOutputInfo = { outputInfoOpen = true }) }
-                    Spacer(Modifier.width(8.dp))
+                    SongMenu(song, actions.rowActions(), Icons.Rounded.MoreHoriz, onOutputInfo = { outputInfoOpen = true })
+                    Spacer(Modifier.width(4.dp))
                 }
                 Column(Modifier.padding(horizontal = 12.dp)) {
                     if (error != null) Text(error, color = scheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(bottom = 4.dp))
@@ -273,10 +272,6 @@ private fun PlayerBody(
                 }
                 if (devicesOpen && onDevices != null) PhoneDevicesDialog(onDevices, switchOutput, song) { devicesOpen = false }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    if (onStandby != null) IconButton(onStandby) { AppIcon(Icons.Rounded.NightsStay, "Standby mode") }
-                    if (onDevices != null) {
-                        IconButton({ devicesOpen = true }) { AppIcon(Icons.Rounded.Devices, "Devices") }
-                    }
                     var showLyrics by remember { mutableStateOf(false) }
                     IconButton({ showLyrics = true }, enabled = state.current != null) { AppIcon(Icons.Outlined.Lyrics, "Lyrics") }
                     if (showLyrics) state.current?.let { LyricsDialog(it.id, it.title, backend) { showLyrics = false } }
@@ -289,17 +284,26 @@ private fun PlayerBody(
                             tint = if (state.repeat != RepeatUi.Off) scheme.primary else scheme.onSurface,
                         )
                     }
+                    if (onQueue != null) IconButton(onQueue) { AppIcon(Icons.AutoMirrored.Rounded.QueueMusic, "Queue") }
+                    // Less used controls live behind one button.
                     var showSleep by remember { mutableStateOf(false) }
                     val sleepAt by backend.sleepAt.collectAsState()
-                    IconButton({ showSleep = true }) { AppIcon(Icons.Outlined.Bedtime, "Sleep timer", tint = if (sleepAt != null) scheme.primary else scheme.onSurface) }
-                    if (showSleep) SleepTimerDialog(backend) { showSleep = false }
                     var showSpeed by remember { mutableStateOf(false) }
                     val speed by backend.speed.collectAsState()
-                    TextButton({ showSpeed = true }) {
-                        Text(speedLabel(speed), color = if (speed != 1f) scheme.primary else scheme.onSurface, style = MaterialTheme.typography.labelLarge)
+                    var more by remember { mutableStateOf(false) }
+                    Box {
+                        IconButton({ more = true }) {
+                            AppIcon(Icons.Rounded.Tune, "More controls", tint = if (sleepAt != null || speed != 1f) scheme.primary else scheme.onSurface)
+                        }
+                        androidx.compose.material3.DropdownMenu(more, { more = false }) {
+                            androidx.compose.material3.DropdownMenuItem({ Text(if (sleepAt != null) "Sleep timer (on)" else "Sleep timer") }, { more = false; showSleep = true })
+                            androidx.compose.material3.DropdownMenuItem({ Text("Speed (${speedLabel(speed)})") }, { more = false; showSpeed = true })
+                            if (onStandby != null) androidx.compose.material3.DropdownMenuItem({ Text("Standby mode") }, { more = false; onStandby() })
+                            if (onDevices != null) androidx.compose.material3.DropdownMenuItem({ Text("Devices") }, { more = false; devicesOpen = true })
+                        }
                     }
+                    if (showSleep) SleepTimerDialog(backend) { showSleep = false }
                     if (showSpeed) SpeedDialog(backend) { showSpeed = false }
-                    if (onQueue != null) IconButton(onQueue) { AppIcon(Icons.AutoMirrored.Rounded.QueueMusic, "Queue") }
                 }
             }
         }
