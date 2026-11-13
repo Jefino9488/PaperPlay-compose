@@ -1,7 +1,7 @@
 name: Build PaperPlay
 
-# For now only the Android debug APK is built. The tests, release APK, desktop builds and the release job
-# are switched off with `if: false` (on the release job `false &&` in front of its condition); take that out to turn a job back on.
+# Builds the Android debug and release APKs and the Windows and Linux desktop apps. The tests (a test in :core:jvmTest hangs on
+# the runner) and the job that publishes a GitHub Release are switched off: `if: false`, and `false &&` in front of the release condition.
 on:
   push:
     branches: [ main, beta ]
@@ -28,9 +28,15 @@ permissions:
 
 jobs:
   android:
-    name: Android (debug APK)
+    name: Android (${{ matrix.type }} APK)
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { type: debug, task: assembleDebug }
+          - { type: release, task: assembleRelease }
     env:
       # Optional repository secrets for signing. Without them the release APK is signed with the debug key.
       KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
@@ -66,23 +72,22 @@ jobs:
           } > "$RUNNER_TEMP/signing.properties"
           echo "signing.file=$RUNNER_TEMP/signing.properties" >> local.properties
 
-      - name: Build Android debug APK
-        run: ./gradlew :androidApp:assembleDebug --no-daemon
+      - name: Build Android ${{ matrix.type }} APK
+        run: ./gradlew :androidApp:${{ matrix.task }} --no-daemon
 
       - name: Name the APK
         run: |
           mkdir -p dist
-          cp androidApp/build/outputs/apk/debug/*.apk dist/PaperPlay-Android-debug.apk
+          cp androidApp/build/outputs/apk/${{ matrix.type }}/*.apk dist/PaperPlay-Android-${{ matrix.type }}.apk
 
       - uses: actions/upload-artifact@v4
         with:
-          name: PaperPlay-Android
+          name: PaperPlay-Android-${{ matrix.type }}
           path: dist/*.apk
           if-no-files-found: error
 
   desktop-windows:
     name: Desktop (Windows zip, MSI and setup exe)
-    if: false
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -101,8 +106,12 @@ jobs:
         shell: pwsh
         run: |
           $v = '3.0.21'
-          Invoke-WebRequest "https://get.videolan.org/vlc/$v/win64/vlc-$v-win64.zip" -OutFile "$env:RUNNER_TEMP\vlc.zip"
-          Expand-Archive "$env:RUNNER_TEMP\vlc.zip" -DestinationPath "$env:RUNNER_TEMP\vlc" -Force
+          $zip = "$env:RUNNER_TEMP\vlc.zip"
+          curl.exe --fail --location --retry 3 --silent --show-error -o $zip "https://download.videolan.org/pub/videolan/vlc/$v/win64/vlc-$v-win64.zip"
+          if ($LASTEXITCODE -ne 0) { throw "VLC download failed (curl exit code $LASTEXITCODE)" }
+          "VLC zip: {0:N1} MB" -f ((Get-Item $zip).Length / 1MB)
+          7z x $zip "-o$env:RUNNER_TEMP\vlc" -y | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "VLC unzip failed (7z exit code $LASTEXITCODE)" }
           $src = Get-ChildItem "$env:RUNNER_TEMP\vlc" -Directory | Select-Object -First 1
           $dst = "desktopApp\src\jvmMain\resources\vlc\windows"
           New-Item -ItemType Directory -Force $dst | Out-Null
@@ -143,7 +152,6 @@ jobs:
 
   desktop-linux:
     name: Desktop (Linux archive)
-    if: false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
