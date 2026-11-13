@@ -49,9 +49,11 @@ internal fun BotsPage(backend: CoreBackend) {
     val main by pool.mainBot.collectAsState()
     var now by remember { mutableStateOf(Clock.System.now().toEpochMilliseconds()) }
     LaunchedEffect(Unit) { pool.load(); while (true) { delay(1000); now = Clock.System.now().toEpochMilliseconds() } }
+    // The main bot may still be logging in; ask for its name and picture until it answers.
+    LaunchedEffect(Unit) { repeat(20) { if (runCatching { pool.loadMainProfile() }.getOrDefault(false)) return@LaunchedEffect; delay(3000) } }
     val scope = rememberCoroutineScope()
     BotsContent(
-        mainStatus = status(main, now), bots = bots.map { it to status(it, now) },
+        mainStatus = status(main, now), main = main, bots = bots.map { it to status(it, now) },
         onSaveCredentials = backend::saveCredentials,
         onAddBot = { token -> pool.add(token) },
         onRemove = { id -> scope.launch { pool.remove(id) } },
@@ -65,6 +67,7 @@ internal fun BotsContent(
     onSaveCredentials: (apiId: String, apiHash: String, token: String) -> String?,
     onAddBot: suspend (token: String) -> String?,
     onRemove: (Long) -> Unit,
+    main: PoolBot? = null,
 ) {
     val scope = rememberCoroutineScope()
     var editMain by remember { mutableStateOf(false) }
@@ -74,7 +77,7 @@ internal fun BotsContent(
     var message by remember { mutableStateOf<String?>(null) }
 
     SectionLabel("Main bot")
-    SettingsRow("Main bot", icon = Icons.Rounded.Key, subtitle = mainStatus) {
+    BotRow(main?.name ?: "Main bot", main?.username, main?.photoPath, mainStatus) {
         TextButton({ editMain = !editMain }) { Text(if (editMain) "Close" else "Edit") }
     }
     if (editMain) {
@@ -90,7 +93,7 @@ internal fun BotsContent(
         Modifier.padding(horizontal = 20.dp), color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
     for ((b, text) in bots) {
-        SettingsRow(b.username ?: "Bot ${b.id}", icon = Icons.Rounded.SmartToy, subtitle = text) {
+        BotRow(b.name ?: b.username ?: "Bot ${b.id}", if (b.name != null) b.username else null, b.photoPath, text) {
             OutlinedButton({ onRemove(b.id) }) { Text("Remove") }
         }
     }
@@ -118,6 +121,20 @@ internal fun BotsContent(
         }
     }
     message?.let { Text(it, Modifier.padding(horizontal = 20.dp)) }
+}
+
+/** One bot: its picture (or initials), name, @username, status and a button. */
+@Composable
+private fun BotRow(name: String, username: String?, photoPath: String?, status: String, action: @Composable () -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        Avatar(photoPath, name, 44.dp)
+        Column(Modifier.weight(1f).padding(horizontal = 14.dp)) {
+            Text(name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+            if (username != null) Text(username, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary, maxLines = 1)
+            Text(status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        action()
+    }
 }
 
 @org.jetbrains.compose.ui.tooling.preview.Preview(name = "Bots", widthDp = 390, heightDp = 800, showBackground = true)
