@@ -14,6 +14,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.clickable
+import io.max.paperplay.ui.bouncy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -129,7 +130,9 @@ private fun NavItem(e: NavEntry, on: Boolean, prefs: UiPrefs, modifier: Modifier
             AppIcon(if (on) e.selected else e.icon, e.label, Modifier.size(27.dp), tint = ink)
         }
     }
-    val inner = Modifier.clip(shape).background(bg).then(ring).clickable(onClick = onClick).animateContentSize()
+    val press = androidx.compose.runtime.remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    val inner = Modifier.bouncy(press, 0.92f).clip(shape).background(bg).then(ring)
+        .clickable(interactionSource = press, indication = androidx.compose.foundation.LocalIndication.current, onClick = onClick).animateContentSize()
     when (layout) {
         NavLayout.Pill -> Row(modifier.padding(horizontal = 2.dp).then(inner).padding(vertical = 14.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
             icon()
@@ -163,13 +166,21 @@ fun MiniPlayer(
         androidx.compose.animation.core.tween(400),
     )
     val ink = cover?.onSurface ?: MaterialTheme.colorScheme.onSecondaryContainer
-    Box(modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(bg).clickable(onClick = onOpen)) {
+    val press = androidx.compose.runtime.remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    Box(modifier.fillMaxWidth().bouncy(press, 0.98f).clip(RoundedCornerShape(12.dp)).background(bg)
+        .clickable(interactionSource = press, indication = androidx.compose.foundation.LocalIndication.current, onClick = onOpen)) {
         Column {
             Row(Modifier.padding(start = 8.dp, top = 8.dp, end = 4.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 CoverImage(song.coverUri, song.id, size = 44.dp, radius = 8.dp)
-                Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
-                    Text(song.title, modifier = Modifier.basicMarquee(), maxLines = 1, style = MaterialTheme.typography.titleSmall, color = ink)
-                    Text(song.artist, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = ink.copy(alpha = 0.75f))
+                // The title and artist fade into the next song's instead of jumping.
+                androidx.compose.animation.Crossfade(
+                    Pair(song.title, song.artist), Modifier.weight(1f).padding(horizontal = 12.dp),
+                    animationSpec = io.max.paperplay.ui.theme.motionTween(io.max.paperplay.ui.theme.Motion.STANDARD), label = "mini title",
+                ) { (title, artist) ->
+                    Column {
+                        Text(title, modifier = Modifier.basicMarquee(), maxLines = 1, style = MaterialTheme.typography.titleSmall, color = ink)
+                        Text(artist, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = ink.copy(alpha = 0.75f))
+                    }
                 }
                 if (onDevices != null) {
                     var devicesOpen by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }

@@ -52,10 +52,11 @@ import org.jetbrains.compose.ui.tooling.preview.Preview
 
 /** Scales down a little while pressed and springs back, the Material 3 Expressive way. */
 @Composable
-internal fun Modifier.bouncy(source: MutableInteractionSource): Modifier {
+internal fun Modifier.bouncy(source: MutableInteractionSource, pressedScale: Float = 0.94f): Modifier {
     val pressed by source.collectIsPressedAsState()
+    val reduced = io.max.paperplay.ui.theme.LocalReduceMotion.current
     val scale by androidx.compose.animation.core.animateFloatAsState(
-        if (pressed) 0.94f else 1f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium), label = "press",
+        if (pressed && !reduced) pressedScale else 1f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium), label = "press",
     )
     return graphicsLayer { scaleX = scale; scaleY = scale }
 }

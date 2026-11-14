@@ -1,6 +1,6 @@
 # PaperPlay Compose: what's done and what's left
 
-Updated 13 Nov 2026, code audit (section 6 lists what the code does and does not contain; compiles, mostly not tried on a device; `[x]` in section 1 not individually re-checked)
+Updated 14 Nov 2026 (section 6 is the 13 Nov code audit; the 14 Nov updates at the end cover the motion work and CI). Everything compiles and CI builds it; most of it has not been tried on a device, and `[x]` in section 1 was not individually re-checked)
 
 **Marks:** `[x]` done and written, `[~]` half done, `[ ]` not done.
 "Compiles, not tried" means the Android release and desktop release built on 12 Nov (night) but the feature has not been tried on a device.
@@ -422,7 +422,7 @@ Removed on 13 Nov: `account/Stubs.kt` (`NoAccount`, `NoIndex`) and the empty `li
 ### 6e. Build and CI to do
 - [ ] Find the test that hangs `:core:jvmTest` on CI (one run ran 6 hours, run 31 ran 53 minutes), then put the tests back in the workflow
 - [x] Windows CI job failed every time at the "Get libvlc" step: it now downloads with `curl --fail` from download.videolan.org and unzips with 7-Zip; the TDLib step no longer fails when the `deps` release is missing (14 Nov). The installers then built (`PaperPlay-1.2.0.exe` and `.msi`) but "Collect files" failed: `packageDistributionForCurrentOS` does not create the unpacked `main\app\PaperPlay` folder the zip step reads, only `createDistributable` does. The build step now runs both
-- [~] Linux and Windows jobs are back on; the release-publishing job is still off (remove the leading `false &&` from its condition)
+- [x] Linux and Windows jobs are back on and green (14 Nov, run #46: Windows zip, MSI and setup exe, Linux archive); the release-publishing job is still off (remove the leading `false &&` from its condition)
 - [x] README now says Gradle runs on a JDK 25 daemon it downloads on first use. A machine that cannot reach the download (or the Google Maven repository for the Android plugin) cannot build
 - [ ] The new tests have never been run: `backgroundAndStandbyFollowTheLayoutChoice` (backup prefs), `oldWrongTriesDoNotAddUpToALockout` and `aSuccessClearsTheOverallCount` (pairing)
 
@@ -453,7 +453,15 @@ Open:
 - [x] Desktop motion (14 Nov, compiles, not tried): the sidebar glides open and closed (`animatedWidth`, runs in the layout phase so `Shell` does not recompose), sidebar items and song rows ease their selected colour and lighten under the mouse pointer, the now playing panel expands and collapses from the right edge, the keyboard shortcuts overlay fades, the tray menu fades in and rises a few pixels. The page transitions, player sheet, list gliding and cover fade apply on the desktop too (they live in shared code)
 - [x] Motion tokens (`theme/Motion.kt`) and a Settings > Style > Reduce motion switch (pref `reduce_motion`, per device, carried as layout in backups); everything above becomes instant with it on
 - [ ] Try on the phone: drag the player down slowly, fling it, drag half way and release, back swipe and cancel, open it from the notification and the mini player quickly, rotate while it is open, switch the four tabs, open an album and go back, walk through Settings pages, scroll long lists with the glass nav on and off, reduce motion on
-- [ ] Not done: press-scale on the mini player and nav items, `animateItem` on the library grids and search groups, a "moving" flag to drop blur while the sheet moves (add it only if the drag stutters on glass)
+- [ ] Not done: a "moving" flag to drop blur while the sheet moves (add it only if the drag stutters on glass), `animateItem` on the Home rows, press-scale on song rows
 - [ ] The signed debug APK from CI failed to install on the phone with INSTALL_FAILED_NO_MATCHING_ABIS although the phone reports `arm64-v8a` and the bundled `libtdjson.so` is a valid AArch64 library. Cause unknown; waiting for the list of `lib/` folders inside the APK (`unzip -l`)
-- [ ] The Windows and Linux builds have no TDLib (no `deps` release with `tdlib-windows.zip`), so those apps cannot reach Telegram yet
+- [ ] The Windows and Linux builds have no TDLib (the CI looks for a GitHub release tagged `deps` with `tdlib-windows.zip`, and there is none), so those apps build but cannot reach Telegram yet
+
+## Update 2026-11-14 (smoother pass; compiles in CI, not tried on a device)
+- [x] Windows CI job passes: the build step also runs `createDistributable`, because `packageDistributionForCurrentOS` makes the installers but not the unpacked app folder the zip step reads
+- [x] Pressing the mini player and the nav bar items squeezes them slightly and springs back (`bouncy`, now off with Reduce motion)
+- [x] The song title and artist fade into the next song's in the full player and the mini player; the big cover crossfades between songs inside one shadow
+- [x] Album and artist grids and lists and the search results glide when they change (`motionItem` for grids as well as lists)
+- [x] Each tab keeps its scroll position while you are on another page (`rememberSaveableStateHolder`, phone and desktop; detail, Settings and Tasks pages are not saved)
+- [ ] Try on the phone: leave a long list half way, open an album and come back; skip songs and watch the title and cover; press the nav bar and mini player quickly
 
