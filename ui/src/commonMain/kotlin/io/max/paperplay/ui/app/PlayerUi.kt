@@ -238,12 +238,17 @@ private fun PlayerBody(
         val lower: @Composable (Modifier) -> Unit = { lm ->
             Column(lm.fillMaxWidth(), verticalArrangement = if (short) Arrangement.spacedBy(8.dp) else Arrangement.SpaceEvenly) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f).padding(start = 12.dp, end = 4.dp).clipToBounds()) {
-                        Text(song.title, modifier = Modifier.basicMarquee(), maxLines = 1, style = MaterialTheme.typography.headlineSmall)
-                        Text(
-                            song.artist, modifier = Modifier.basicMarquee(), maxLines = 1,
-                            style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium, color = scheme.onSurface.copy(alpha = 0.7f),
-                        )
+                    androidx.compose.animation.Crossfade(
+                        Pair(song.title, song.artist), Modifier.weight(1f).padding(start = 12.dp, end = 4.dp).clipToBounds(),
+                        animationSpec = io.max.paperplay.ui.theme.motionTween(io.max.paperplay.ui.theme.Motion.STANDARD), label = "song title",
+                    ) { (title, artist) ->
+                        Column {
+                            Text(title, modifier = Modifier.basicMarquee(), maxLines = 1, style = MaterialTheme.typography.headlineSmall)
+                            Text(
+                                artist, modifier = Modifier.basicMarquee(), maxLines = 1,
+                                style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium, color = scheme.onSurface.copy(alpha = 0.7f),
+                            )
+                        }
                     }
                     IconButton({ actions.setFavorite(song, !song.favorite) }) {
                         AppIcon(
@@ -338,7 +343,12 @@ private fun PlayerBody(
 private fun Artwork(song: SongUi, playing: Boolean, size: androidx.compose.ui.unit.Dp) {
     val scale by animateFloatAsState(if (playing) 1f else 0.92f, tween(500))
     Box(Modifier.size(size), contentAlignment = Alignment.Center) {
-        CoverImage(song.coverUri, song.id, Modifier.scale(scale).shadow(24.dp, RoundedCornerShape(28.dp), ambientColor = Color.Black, spotColor = Color.Black), size = size, radius = 28.dp)
+        // One shadow around the cover; the covers of two songs fade into each other inside it.
+        Box(Modifier.scale(scale).shadow(24.dp, RoundedCornerShape(28.dp), ambientColor = Color.Black, spotColor = Color.Black)) {
+            androidx.compose.animation.Crossfade(
+                song.coverUri to song.id, animationSpec = io.max.paperplay.ui.theme.motionTween(io.max.paperplay.ui.theme.Motion.EMPHASIZED), label = "cover",
+            ) { (uri, id) -> CoverImage(uri, id, size = size, radius = 28.dp) }
+        }
     }
 }
 

@@ -12,6 +12,7 @@ import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.lazy.LazyItemScope
+import androidx.compose.foundation.lazy.grid.LazyGridItemScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.layout
@@ -86,3 +87,7 @@ fun panelEnter(): EnterTransition =
 fun panelExit(): ExitTransition =
     if (LocalReduceMotion.current) ExitTransition.None
     else shrinkHorizontally(tween(Motion.STANDARD, easing = Motion.Emphasized), shrinkTowards = Alignment.End) + fadeOut(tween(Motion.FAST))
+
+/** The same for the items of a lazy grid. */
+@Composable
+fun LazyGridItemScope.motionItem(): Modifier = if (LocalReduceMotion.current) Modifier else Modifier.animateItem()

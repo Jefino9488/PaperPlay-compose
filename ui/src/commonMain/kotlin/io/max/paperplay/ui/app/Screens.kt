@@ -2,6 +2,7 @@
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import io.max.paperplay.ui.theme.motionItem
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.ui.draw.clip
@@ -195,7 +196,7 @@ fun GroupGrid(groups: List<GroupUi>, bottomPadding: Dp, empty: String, onClick: 
     ) {
         items(groups.size, key = { groups[it].id }) { i ->
             val g = groups[i]
-            Column(Modifier.clip(RoundedCornerShape(12.dp)).clickable { onClick(g) }) {
+            Column(motionItem().clip(RoundedCornerShape(12.dp)).clickable { onClick(g) }) {
                 androidx.compose.foundation.layout.BoxWithConstraints { CoverImage(g.coverUris.firstOrNull(), g.id, size = maxWidth, radius = 12.dp) }
                 Text(g.name, Modifier.padding(top = 8.dp), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall)
                 Text(g.subtitle, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -211,7 +212,7 @@ fun GroupList(groups: List<GroupUi>, bottomPadding: Dp, empty: String, header: (
         if (header != null) item { header() }
         if (groups.isEmpty()) item { Text(empty, Modifier.padding(24.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
         items(groups, key = { it.id }) { g ->
-            ClickableRow({ onClick(g) }, Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+            ClickableRow({ onClick(g) }, motionItem().padding(horizontal = 16.dp, vertical = 6.dp)) {
                 CoverImage(g.coverUris.firstOrNull(), g.id, size = 56.dp, radius = if (circle) 28.dp else 10.dp)
                 Column(Modifier.weight(1f).padding(start = 14.dp)) {
                     Text(g.name, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium)
@@ -437,7 +438,7 @@ private fun SearchResults(
             SongRow(
                 song = song, onClick = { actions.play(results, i) }, onLongClick = {},
                 current = song.id == currentId, actions = rowActions,
-                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 6.dp),
+                modifier = motionItem().padding(start = 16.dp, end = 16.dp, bottom = 6.dp),
             )
         }
         if (albums.isNotEmpty()) {

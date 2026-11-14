@@ -236,12 +236,15 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
                 Box((if (navGlass) Modifier.fillMaxSize().layerBackdrop(backdrop) else Modifier.fillMaxSize()).padding(top = top)) {
                     // Each page is drawn from its own key, so the page that is leaving keeps showing what it showed.
                     val reduceMotion = io.max.paperplay.ui.theme.LocalReduceMotion.current
+                    // A tab remembers where its list was scrolled to while you are on another page.
+                    val tabStates = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
                     AnimatedContent(
                         targetState = PageKey(settings, detail, tab, tab == 3 && profilePage == "tasks"),
                         modifier = Modifier.fillMaxSize(),
                         transitionSpec = { pageTransition(navMove(initialState.level, targetState.level), reduceMotion) },
                         label = "page",
                     ) { k ->
+                    val phonePage: @Composable () -> Unit = {
                     val d = k.detail
                     when {
                         k.settings -> SettingsHost(settingsStack, prefs, conn, songs.size, backend, onRestore, ::goBack, barsHeight, deep = settingsDeep)
@@ -274,6 +277,8 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
                             scan = scan,
                         )
                     }
+                    }
+                    if (k.settings || k.detail != null || k.tasks) phonePage() else tabStates.SaveableStateProvider("tab${k.tab}") { phonePage() }
                     }
                 }
                 Column(
@@ -336,12 +341,14 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
                         Box(Modifier.weight(1f).fillMaxHeight().deskCard()) {
                             val pad = 16.dp
                             val reduceMotion = io.max.paperplay.ui.theme.LocalReduceMotion.current
+                            val pageStates = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
                             AnimatedContent(
                                 targetState = DeskKey(showNow && pb.current != null, settings, detail, page),
                                 modifier = Modifier.fillMaxSize(),
                                 transitionSpec = { pageTransition(navMove(initialState.level, targetState.level), reduceMotion) },
                                 label = "page",
                             ) { k ->
+                            val deskPage: @Composable () -> Unit = {
                             val d = k.detail
                             when {
                                 k.now -> DesktopNowPlayingView(pb, backend, actions, { showNow = false }, Modifier.fillMaxSize())
@@ -386,6 +393,8 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
                                 k.page == "favorites" -> Column { TopBar("Favorites"); SongList(favorites, currentId, actions, Modifier.fillMaxSize(), pad, empty = "No favorites yet.") }
                                 else -> Column { TopBar("Recently played"); SongList(recents, currentId, actions, Modifier.fillMaxSize(), pad, sortable = false, empty = "Nothing played yet.") }
                             }
+                            }
+                            if (k.now || k.settings || k.detail != null) deskPage() else pageStates.SaveableStateProvider(k.page) { deskPage() }
                             }
                         }
                         androidx.compose.animation.AnimatedVisibility(panel, enter = panelEnter(), exit = panelExit()) {
