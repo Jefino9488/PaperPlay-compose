@@ -421,7 +421,7 @@ Removed on 13 Nov: `account/Stubs.kt` (`NoAccount`, `NoIndex`) and the empty `li
 
 ### 6e. Build and CI to do
 - [ ] Find the test that hangs `:core:jvmTest` on CI (one run ran 6 hours, run 31 ran 53 minutes), then put the tests back in the workflow
-- [x] Windows CI job failed every time at the "Get libvlc" step: it now downloads with `curl --fail` from download.videolan.org and unzips with 7-Zip; the TDLib step no longer fails when the `deps` release is missing (14 Nov; the MSI step was still running when this was written)
+- [x] Windows CI job failed every time at the "Get libvlc" step: it now downloads with `curl --fail` from download.videolan.org and unzips with 7-Zip; the TDLib step no longer fails when the `deps` release is missing (14 Nov). The installers then built (`PaperPlay-1.2.0.exe` and `.msi`) but "Collect files" failed: `packageDistributionForCurrentOS` does not create the unpacked `main\app\PaperPlay` folder the zip step reads, only `createDistributable` does. The build step now runs both
 - [~] Linux and Windows jobs are back on; the release-publishing job is still off (remove the leading `false &&` from its condition)
 - [x] README now says Gradle runs on a JDK 25 daemon it downloads on first use. A machine that cannot reach the download (or the Google Maven repository for the Android plugin) cannot build
 - [ ] The new tests have never been run: `backgroundAndStandbyFollowTheLayoutChoice` (backup prefs), `oldWrongTriesDoNotAddUpToALockout` and `aSuccessClearsTheOverallCount` (pairing)

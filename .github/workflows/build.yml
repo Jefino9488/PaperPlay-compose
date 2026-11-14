@@ -135,7 +135,8 @@ jobs:
 
       - name: Build app image, MSI and setup exe
         shell: cmd
-        run: gradlew.bat :desktopApp:packageDistributionForCurrentOS --no-daemon
+        # createDistributable makes the unpacked app folder the zip needs; the package tasks only make the installers.
+        run: gradlew.bat :desktopApp:createDistributable :desktopApp:packageDistributionForCurrentOS --no-daemon
 
       - name: Collect files
         shell: pwsh
