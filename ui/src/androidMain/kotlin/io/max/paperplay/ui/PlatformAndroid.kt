@@ -24,13 +24,14 @@ import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.flow.Flow
 
 @Composable
-actual fun PlatformBackHandler(enabled: Boolean, onBack: () -> Unit) {
+actual fun PlatformBackHandler(enabled: Boolean, onProgress: (Float) -> Unit, onBack: () -> Unit) {
     PredictiveBackHandler(enabled = enabled) { progress: Flow<BackEventCompat> ->
         try {
-            progress.collect { }
+            progress.collect { onProgress(it.progress) }
             onBack()
         } catch (_: CancellationException) {
             // Back gesture cancelled by user
+            onProgress(0f)
         }
     }
 }

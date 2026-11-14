@@ -5,6 +5,8 @@ import io.max.paperplay.ui.components.AppIcon
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -151,17 +153,25 @@ fun Sidebar(
     val barShape = RoundedCornerShape(((prefs?.barRadius ?: 60f) / 100f * 28f).dp)
     @Composable
     fun item(id: String, label: String, icon: @Composable () -> Unit, selected: Boolean, onClick: () -> Unit) {
-        val fill = when {
+        val selectedFill = when {
             !selected -> Color.Transparent
             look == SelectionLook.Fill -> scheme.primaryContainer.copy(alpha = 0.9f)
             look == SelectionLook.Soft -> scheme.onSurface.copy(alpha = 0.12f)
             look == SelectionLook.Ring || look == SelectionLook.Dot || look == SelectionLook.Text -> Color.Transparent
             else -> scheme.surfaceContainerHighest
         }
+        // The selection colour eases in and out, and the pointer over an item lights it softly.
+        val hover = androidx.compose.runtime.remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+        val hovered by hover.collectIsHoveredAsState()
+        val fill by androidx.compose.animation.animateColorAsState(
+            if (hovered && selectedFill == Color.Transparent) scheme.onSurface.copy(alpha = 0.07f) else selectedFill,
+            io.max.paperplay.ui.theme.motionTween(io.max.paperplay.ui.theme.Motion.FAST), label = "sidebar item",
+        )
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp).clip(itemShape)
                 .background(fill)
                 .then(if (selected && look == SelectionLook.Ring) Modifier.border(1.5.dp, scheme.primary, itemShape) else Modifier)
+                .hoverable(hover)
                 .clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 9.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = if (expanded) Arrangement.Start else Arrangement.Center,

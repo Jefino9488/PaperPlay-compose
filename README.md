@@ -90,7 +90,8 @@ Telegram bot and chats as storage. It targets Android and desktop JVM.
 
 ## Build
 
-Use JDK 17 and run these commands from the repository root.
+Use JDK 17 and run these commands from the repository root. Gradle itself runs on a JDK 25 daemon
+(`gradle/gradle-daemon-jvm.properties`) that it downloads on first use, so the first build needs internet access.
 
 ```powershell
 .\gradlew.bat :player:compileKotlinJvm
@@ -236,3 +237,11 @@ not upload this configuration to another service.
   mirror it), auto filing and the Telegram backup topic, a live level meter for the equalizer, macOS and Linux libvlc
   runtimes (they fall back to a system VLC), a repair that finds which bot sent each song.
 - **Previews**: pages that still take `CoreBackend` cannot be previewed yet.
+- **Secrets on Linux and macOS**: the Android Keystore and Windows DPAPI protect the bot token and the other secrets;
+  on Linux and macOS the desktop app stores them as plain files in its data folder.
+- **Continuous integration** builds the Android debug and release APKs (signed with the keystore stored as repository
+  secrets) and the Windows and Linux apps on `main` and `beta`. The tests are switched off in
+  `.github/workflows/build.yml` because a test in `:core:jvmTest` hangs on the runner. The Windows and Linux builds do not
+  include TDLib until a release named `deps` with `tdlib-windows.zip` exists, so they cannot reach Telegram yet.
+- **Written but not wired up**: `sync/WorkOwner.kt` (splitting background work between linked devices) and
+  `recs/Suggestions.kt` (the Neighbours view) have no caller yet.

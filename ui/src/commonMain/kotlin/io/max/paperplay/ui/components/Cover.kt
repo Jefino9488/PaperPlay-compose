@@ -11,6 +11,7 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -50,11 +51,14 @@ fun CoverImage(
     val decode = when { px <= 160f -> 160; px <= 384f -> 384; px <= 640f -> 768; else -> 1280 }
     val painter = if (uri != null && loader != null) loader.painter(uri, decode) else null
     val shape = io.max.paperplay.ui.app.appShape(radius)
+    // A cover that arrives after the row is shown fades in over the mosaic; one already loaded appears at once.
+    val fade = androidx.compose.runtime.remember(coverId) { androidx.compose.animation.core.Animatable(if (painter != null) 1f else 0f) }
+    val fadeSpec = io.max.paperplay.ui.theme.motionTween<Float>(io.max.paperplay.ui.theme.Motion.FAST)
+    LaunchedEffect(painter != null) { if (painter != null) fade.animateTo(1f, fadeSpec) }
     Box(modifier.size(size).clip(shape)) {
+        if (painter == null || fade.value < 1f) CoverMosaic(key, Modifier.size(size))
         if (painter != null) {
-            Image(painter, contentDescription = null, Modifier.size(size), contentScale = ContentScale.Crop)
-        } else {
-            CoverMosaic(key, Modifier.size(size))
+            Image(painter, contentDescription = null, Modifier.size(size).graphicsLayer { alpha = fade.value }, contentScale = ContentScale.Crop)
         }
     }
 }

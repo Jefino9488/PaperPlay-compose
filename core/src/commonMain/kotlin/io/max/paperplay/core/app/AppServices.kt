@@ -419,11 +419,36 @@ class AppServices(
 
     /**
      * Stops background work and closes the library file, so a restore can replace it (Windows will not rename an open
-     * file). Use it only before [connect]; once connected, [disconnect] first.
+     * file). Use it only before [connect]; once connected, use [shutdown].
      */
     fun close() {
         scope.cancel()
         runCatching { driver.close() }
+    }
+
+    /**
+     * Stops everything that holds the library file, a socket or TDLib's receive loop, then closes the file, so a restore
+     * can replace it while the app runs. Use it instead of [close] once connected. The receive loop is awaited because
+     * TDLib aborts when a new runtime receives while the old one still does.
+     */
+    suspend fun shutdown() {
+        try {
+            lanSync?.let { lan ->
+                val on = library.pref("lan_on") // stop() records "off"; the restore keeps this device's own choice
+                lan.stop()
+                if (on != null) library.setPref("lan_on", on)
+            }
+            netplay.endSession()
+            netplay.leave()
+            netplay.stopDiscovery()
+            if (playbackStarted) kotlinx.coroutines.withTimeoutOrNull(4.seconds) { playback.release() }
+            disconnect()
+            botPool.stopAll()
+            (account as? io.max.paperplay.core.account.UserSession)?.closeForBackup()
+            runtime?.stop()
+        } finally {
+            close()
+        }
     }
 
     /** Adds a library chat and reads it. */

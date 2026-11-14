@@ -2,6 +2,8 @@ package io.max.paperplay.ui.components
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -56,11 +58,18 @@ fun SongRow(
     actions: SongActions? = null,
 ) {
     val scheme = MaterialTheme.colorScheme
-    val containerColor = when {
+    // The row's colour eases between states, and a mouse pointer over it lightens it a little (a touch screen never hovers).
+    val hover = androidx.compose.runtime.remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    val hovered by hover.collectIsHoveredAsState()
+    val rowColor = when {
         selected -> scheme.primaryContainer
         current -> scheme.secondaryContainer.copy(alpha = 0.7f)
         else -> scheme.surfaceContainerLow
     }
+    val containerColor by androidx.compose.animation.animateColorAsState(
+        if (hovered) androidx.compose.ui.graphics.lerp(rowColor, scheme.onSurface, 0.06f) else rowColor,
+        io.max.paperplay.ui.theme.motionTween(io.max.paperplay.ui.theme.Motion.FAST), label = "row",
+    )
     val effectiveCoverUri = coverUriOverride ?: song.coverUri
     val coverKey = song.album.ifBlank { song.title.ifBlank { song.id } }
 
@@ -76,6 +85,7 @@ fun SongRow(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(min = 64.dp)
+                .hoverable(hover)
                 .combinedClickable(onClick = onClick, onLongClick = onLongClick)
                 .padding(start = 12.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically,

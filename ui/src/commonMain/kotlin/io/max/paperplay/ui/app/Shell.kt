@@ -41,6 +41,11 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.animation.AnimatedContent
+import io.max.paperplay.ui.theme.animatedWidth
+import io.max.paperplay.ui.theme.panelEnter
+import io.max.paperplay.ui.theme.panelExit
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -93,6 +98,8 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
     // True when a page was opened straight from Profile or a library link: Back then returns there, not to the Settings list.
     var settingsDeep by remember { mutableStateOf(false) }
     var showPlayer by remember { mutableStateOf(false) }
+    // How far the full player has slid up; it follows a drag and the back swipe.
+    val sheet = remember { PlayerSheetState() }
     // Where the phone came from, so Back returns there instead of jumping to Home or Settings.
     val history = remember { mutableStateListOf<NavSnapshot>() }
     fun snapshot() = NavSnapshot(tab, libraryTab, profilePage, detail, settings, settingsStack.toList(), settingsDeep, page)
@@ -164,11 +171,10 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
         while (lan == null) { kotlinx.coroutines.delay(2_000); lan = backend.lanSync }
         val sync = lan
         launch {
-            var seen = emptyList<String>()
+            // The sync loop dials an offline paired device every 20 seconds; each device is announced once per run.
+            val announced = mutableSetOf<String>()
             sync.connecting.collect { now ->
-                val fresh = now.filter { it !in seen }
-                seen = now
-                fresh.firstOrNull()?.let { name -> snack.currentSnackbarData?.dismiss(); launch { snack.showSnackbar("Connecting to $name", duration = androidx.compose.material3.SnackbarDuration.Short) } }
+                now.firstOrNull { announced.add(it) }?.let { name -> snack.currentSnackbarData?.dismiss(); launch { snack.showSnackbar("Connecting to $name", duration = androidx.compose.material3.SnackbarDuration.Short) } }
             }
         }
         var known = sync.connected.value.map { it.id }.toSet()
@@ -187,7 +193,12 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
         if (openRequest != null) open?.value = null
     }
     // One handler: several enabled handlers would let the last one win.
-    PlatformBackHandler(showPlayer || settings || detail != null || profilePage != null || tab != 0 || history.isNotEmpty(), ::handleBack)
+    PlatformBackHandler(
+        showPlayer || settings || detail != null || profilePage != null || tab != 0 || history.isNotEmpty(),
+        // The player shrinks a little as the swipe goes; a cancelled swipe puts it back.
+        onProgress = { p -> if (showPlayer) scope.launch { sheet.progress.snapTo(1f - 0.3f * p) } },
+        onBack = ::handleBack,
+    )
 
     val songs = (lib.songs as? Load.Ready)?.value.orEmpty()
     val currentId = pb.current?.id
@@ -223,15 +234,23 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
                 val navHeight = if (prefs.navLayout == NavLayout.Labels || prefs.navLayout == NavLayout.Dock) 76.dp else 64.dp
                 val barsHeight = (if (pb.current != null) 70.dp + 8.dp else 0.dp) + navHeight + (if (prefs.floatingNav) 24.dp else 0.dp) + bottomInset + 40.dp // extra scroll room so the last item clears the bar
                 Box((if (navGlass) Modifier.fillMaxSize().layerBackdrop(backdrop) else Modifier.fillMaxSize()).padding(top = top)) {
-                    val d = detail
+                    // Each page is drawn from its own key, so the page that is leaving keeps showing what it showed.
+                    val reduceMotion = io.max.paperplay.ui.theme.LocalReduceMotion.current
+                    AnimatedContent(
+                        targetState = PageKey(settings, detail, tab, tab == 3 && profilePage == "tasks"),
+                        modifier = Modifier.fillMaxSize(),
+                        transitionSpec = { pageTransition(navMove(initialState.level, targetState.level), reduceMotion) },
+                        label = "page",
+                    ) { k ->
+                    val d = k.detail
                     when {
-                        settings -> SettingsHost(settingsStack, prefs, conn, songs.size, backend, onRestore, ::goBack, barsHeight, deep = settingsDeep)
+                        k.settings -> SettingsHost(settingsStack, prefs, conn, songs.size, backend, onRestore, ::goBack, barsHeight, deep = settingsDeep)
                         d != null -> DetailScreen(d, backend, currentId, actions, ::goBack, barsHeight)
-                        tab == 0 -> HomeScreen(lib, home, favorites, currentId, conn, scan, actions, { d2 -> navigate { detail = d2 } }, barsHeight, name = prefs.profileName)
-                        tab == 1 -> SearchScreen(backend::search, songs, currentId, actions, { d2 -> navigate { detail = d2 } }, barsHeight)
-                        tab == 2 -> LibraryScreen(lib, favorites, currentId, actions, { d2 -> navigate { detail = d2 } }, { newPlaylist = true }, barsHeight, selectedTab = libraryTab,
+                        k.tab == 0 -> HomeScreen(lib, home, favorites, currentId, conn, scan, actions, { d2 -> navigate { detail = d2 } }, barsHeight, name = prefs.profileName)
+                        k.tab == 1 -> SearchScreen(backend::search, songs, currentId, actions, { d2 -> navigate { detail = d2 } }, barsHeight)
+                        k.tab == 2 -> LibraryScreen(lib, favorites, currentId, actions, { d2 -> navigate { detail = d2 } }, { newPlaylist = true }, barsHeight, selectedTab = libraryTab,
                             recents = recents, onImportSpotify = { navigate { settings = true; settingsDeep = true; settingsStack.clear(); settingsStack.add("spotify") } })
-                        tab == 3 && profilePage == "tasks" -> TasksScreen(backend.tasks, Modifier.fillMaxSize().padding(bottom = barsHeight), onBack = ::goBack)
+                        k.tasks -> TasksScreen(backend.tasks, Modifier.fillMaxSize().padding(bottom = barsHeight), onBack = ::goBack)
                         else -> ProfileScreen(
                             songs.size, favorites.size, lib.playlists.size, conn, prefs,
                             mainChatTitle,
@@ -255,12 +274,13 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
                             scan = scan,
                         )
                     }
+                    }
                 }
                 Column(
                     Modifier.align(Alignment.BottomCenter).fillMaxWidth().then(if (prefs.floatingNav) Modifier.padding(start = 16.dp, end = 16.dp, bottom = bottomInset.coerceAtLeast(12.dp)) else Modifier),
                 ) {
                     if (pb.current != null) {
-                        MiniPlayer(pb, { showPlayer = true }, backend::togglePlay, backend::next, backend::previous, { pos.value.progress(pb.durationMs) }, if (prefs.floatingNav) Modifier else Modifier.padding(horizontal = 8.dp),
+                        MiniPlayer(pb, { showPlayer = true }, backend::togglePlay, backend::next, backend::previous, { pos.value.progress(pb.durationMs) }, Modifier.graphicsLayer { alpha = 1f - sheet.progress.value }.then(if (prefs.floatingNav) Modifier else Modifier.padding(horizontal = 8.dp)),
                             onDevices = { id -> navigate { settings = true; settingsDeep = true; settingsStack.clear(); settingsStack.add(id) } })
                         Box(Modifier.height(8.dp))
                     }
@@ -273,10 +293,12 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
                         taskRunning = scanning,
                     )
                 }
-                if (showPlayer) FullPlayer(
-                    pb, pbError, backend, actions, { showPlayer = false },
-                    onOpenSettings = { id -> navigate { settings = true; settingsDeep = true; settingsStack.clear(); settingsStack.add(id) } },
-                )
+                PlayerSheetHost(showPlayer, sheet) {
+                    FullPlayer(
+                        pb, pbError, backend, actions, { showPlayer = false },
+                        onOpenSettings = { id -> navigate { settings = true; settingsDeep = true; settingsStack.clear(); settingsStack.add(id) } },
+                    )
+                }
                 SnackbarHost(snack, Modifier.align(Alignment.TopCenter).padding(top = top))
             } else {
                 // Desktop: sidebar, content card, now playing panel, player bar.
@@ -308,19 +330,26 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
                             },
                             onPlaylist = { g -> navigate { detail = Detail.Playlist(g.id, g.name); settings = false } },
                             onNewPlaylist = { newPlaylist = true },
-                            modifier = Modifier.width(if (sidebarExpanded) prefs.sidebarWidth.dp else 72.dp).fillMaxHeight(),
+                            modifier = Modifier.animatedWidth(if (sidebarExpanded) prefs.sidebarWidth.dp else 72.dp).fillMaxHeight(),
                         )
                         Spacer(Modifier.width(12.dp))
                         Box(Modifier.weight(1f).fillMaxHeight().deskCard()) {
-                            val d = detail
                             val pad = 16.dp
+                            val reduceMotion = io.max.paperplay.ui.theme.LocalReduceMotion.current
+                            AnimatedContent(
+                                targetState = DeskKey(showNow && pb.current != null, settings, detail, page),
+                                modifier = Modifier.fillMaxSize(),
+                                transitionSpec = { pageTransition(navMove(initialState.level, targetState.level), reduceMotion) },
+                                label = "page",
+                            ) { k ->
+                            val d = k.detail
                             when {
-                                showNow && pb.current != null -> DesktopNowPlayingView(pb, backend, actions, { showNow = false }, Modifier.fillMaxSize())
-                                settings -> DesktopSettings(settingsStack, prefs, conn, songs.size, backend, onRestore, ::goBack, Modifier.fillMaxSize())
+                                k.now -> DesktopNowPlayingView(pb, backend, actions, { showNow = false }, Modifier.fillMaxSize())
+                                k.settings -> DesktopSettings(settingsStack, prefs, conn, songs.size, backend, onRestore, ::goBack, Modifier.fillMaxSize())
                                 d != null -> DetailScreen(d, backend, currentId, actions, ::goBack, pad)
-                                page == "home" -> HomeScreen(lib, home, favorites, currentId, conn, scan, actions, { d2 -> navigate { detail = d2 } }, pad, name = prefs.profileName)
-                                page == "search" -> SearchScreen(backend::search, songs, currentId, actions, { d2 -> navigate { detail = d2 } }, pad)
-                                page == "profile" -> ProfileScreen(
+                                k.page == "home" -> HomeScreen(lib, home, favorites, currentId, conn, scan, actions, { d2 -> navigate { detail = d2 } }, pad, name = prefs.profileName)
+                                k.page == "search" -> SearchScreen(backend::search, songs, currentId, actions, { d2 -> navigate { detail = d2 } }, pad)
+                                k.page == "profile" -> ProfileScreen(
                                     songs.size, favorites.size, lib.playlists.size, conn, prefs,
                                     mainChatTitle,
                                     onSettings = { id ->
@@ -344,23 +373,26 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
                                     pad,
                                     scan = scan,
                                 )
-                                page == "tasks" -> TasksScreen(backend.tasks, onBack = ::goBack)
-                                page == "upload" -> Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState())) { TopBar("Upload"); UploadsPage(backend); androidx.compose.foundation.layout.Spacer(Modifier.height(120.dp)) }
-                                page == "songs" -> Column { TopBar("Songs"); SongList(songs, currentId, actions, Modifier.fillMaxSize(), pad, empty = "No songs yet. Add a chat in Settings.") }
-                                page == "playlists" -> Column {
+                                k.page == "tasks" -> TasksScreen(backend.tasks, onBack = ::goBack)
+                                k.page == "upload" -> Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState())) { TopBar("Upload"); UploadsPage(backend); androidx.compose.foundation.layout.Spacer(Modifier.height(120.dp)) }
+                                k.page == "songs" -> Column { TopBar("Songs"); SongList(songs, currentId, actions, Modifier.fillMaxSize(), pad, empty = "No songs yet. Add a chat in Settings.") }
+                                k.page == "playlists" -> Column {
                                     TopBar("Playlists")
                                     PlaylistsTab(lib.playlists, favorites, recents, pad, { d2 -> navigate { detail = d2 } }, { newPlaylist = true },
                                         { navigate { settings = true; settingsDeep = true; settingsStack.clear(); settingsStack.add("spotify") } })
                                 }
-                                page == "albums" -> Column { TopBar("Albums"); GroupGrid(lib.albums, pad, "No albums yet.") { g -> navigate { detail = Detail.Album(g.name, g.owner) } } }
-                                page == "artists" -> Column { TopBar("Artists"); GroupList(lib.artists, pad, "No artists yet.", circle = true) { g -> navigate { detail = Detail.Artist(g.name) } } }
-                                page == "favorites" -> Column { TopBar("Favorites"); SongList(favorites, currentId, actions, Modifier.fillMaxSize(), pad, empty = "No favorites yet.") }
+                                k.page == "albums" -> Column { TopBar("Albums"); GroupGrid(lib.albums, pad, "No albums yet.") { g -> navigate { detail = Detail.Album(g.name, g.owner) } } }
+                                k.page == "artists" -> Column { TopBar("Artists"); GroupList(lib.artists, pad, "No artists yet.", circle = true) { g -> navigate { detail = Detail.Artist(g.name) } } }
+                                k.page == "favorites" -> Column { TopBar("Favorites"); SongList(favorites, currentId, actions, Modifier.fillMaxSize(), pad, empty = "No favorites yet.") }
                                 else -> Column { TopBar("Recently played"); SongList(recents, currentId, actions, Modifier.fillMaxSize(), pad, sortable = false, empty = "Nothing played yet.") }
                             }
+                            }
                         }
-                        if (panel) {
-                            Spacer(Modifier.width(12.dp))
-                            NowPlayingPanel(pb, backend, actions, { showPlayer = true }, { prefs.putNowPlayingPanel(false) }, Modifier.width(320.dp).fillMaxHeight().deskCard())
+                        androidx.compose.animation.AnimatedVisibility(panel, enter = panelEnter(), exit = panelExit()) {
+                            Row {
+                                Spacer(Modifier.width(12.dp))
+                                NowPlayingPanel(pb, backend, actions, { showPlayer = true }, { prefs.putNowPlayingPanel(false) }, Modifier.width(320.dp).fillMaxHeight().deskCard())
+                            }
                         }
                     }
                     PlayerBar(pb, volume, backend, actions, { showPlayer = true },
@@ -379,7 +411,7 @@ fun MainShell(backend: CoreBackend, prefs: UiPrefs, onRestore: () -> Unit, open:
                         shell()
                     }
                 } else shell()
-                if (showPlayer) FullPlayer(pb, pbError, backend, actions, { showPlayer = false })
+                PlayerSheetHost(showPlayer, sheet) { FullPlayer(pb, pbError, backend, actions, { showPlayer = false }) }
                 SnackbarHost(snack, Modifier.align(Alignment.BottomCenter).padding(bottom = 96.dp))
                 ShortcutsOverlay(keys, Modifier.fillMaxSize())
             }

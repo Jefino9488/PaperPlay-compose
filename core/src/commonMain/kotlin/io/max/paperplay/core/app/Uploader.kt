@@ -116,6 +116,9 @@ class Uploader(
     private val gate = Mutex()
     private var lastStart = 0L
 
+    /** When a failed job may be tried again (Telegram's flood wait or a pause between attempts); workers skip it until then. */
+    private val retryAt = MutableStateFlow<Map<String, Long>>(emptyMap())
+
     fun setPaused(on: Boolean) {
         paused.value = on
         if (!on) pump()
@@ -151,11 +154,13 @@ class Uploader(
     }
 
     fun retry(id: String) {
+        retryAt.update { it - id }
         update(id) { it.copy(status = UploadStatus.Queued, error = null, attempts = 0, progress = 0f) }
         pump()
     }
 
     fun retryAll() {
+        retryAt.value = emptyMap()
         _jobs.update { l -> l.map { if (it.status == UploadStatus.Failed) it.copy(status = UploadStatus.Queued, error = null, attempts = 0, progress = 0f) else it } }
         pump()
     }
@@ -170,6 +175,7 @@ class Uploader(
         val j = _jobs.value.firstOrNull { it.id == id } ?: return
         if (j.status == UploadStatus.Uploading) return
         if (j.temporary && j.status != UploadStatus.Done) deleteFile(j.path)
+        retryAt.update { it - id }
         _jobs.update { l -> l.filter { it.id != id } }
     }
 
@@ -195,10 +201,23 @@ class Uploader(
 
     private suspend fun worker() {
         while (!paused.value) {
+            var wait = 0L
             val job = gate.withLock {
-                val next = _jobs.value.firstOrNull { it.status == UploadStatus.Queued } ?: return
-                update(next.id) { it.copy(status = UploadStatus.Uploading, progress = 0f) }
-                next
+                val now = nowMs()
+                val queued = _jobs.value.filter { it.status == UploadStatus.Queued }
+                val next = queued.firstOrNull { (retryAt.value[it.id] ?: 0L) <= now }
+                if (next == null) {
+                    // Nothing is queued: this worker is done. Otherwise every queued job is waiting to retry.
+                    wait = (queued.minOfOrNull { retryAt.value[it.id] ?: 0L } ?: return) - now
+                    null
+                } else {
+                    update(next.id) { it.copy(status = UploadStatus.Uploading, progress = 0f) }
+                    next
+                }
+            }
+            if (job == null) {
+                delay(wait.coerceAtLeast(100L))
+                continue
             }
             spaceOut()
             send(job)
@@ -235,8 +254,9 @@ class Uploader(
             td?.retryAfter?.let { pool?.recordFlood(botId, it) }
             val retryable = attempts < MAX_ATTEMPTS && (td == null || td.code == 429 || td.code == 408 || td.code == 0 || td.code >= 500)
             if (retryable) {
+                // The wait is recorded first, so no worker can pick the job up before it is over.
+                retryAt.update { it + (job.id to nowMs() + ((td?.retryAfter ?: (10 * attempts)) + 1) * 1000L) }
                 update(job.id) { it.copy(status = UploadStatus.Queued, attempts = attempts, error = e.message, progress = 0f) }
-                delay(((td?.retryAfter ?: (10 * attempts)) + 1) * 1000L)
             } else {
                 update(job.id) { it.copy(status = UploadStatus.Failed, attempts = attempts, error = e.message ?: "Failed") }
             }

@@ -1,6 +1,6 @@
 # PaperPlay Compose: what's done and what's left
 
-Updated 13 Nov 2026, end of session (compiles, mostly not tried on a device; `[x]` in section 1 not individually re-checked)
+Updated 13 Nov 2026, code audit (section 6 lists what the code does and does not contain; compiles, mostly not tried on a device; `[x]` in section 1 not individually re-checked)
 
 **Marks:** `[x]` done and written, `[~]` half done, `[ ]` not done.
 "Compiles, not tried" means the Android release and desktop release built on 12 Nov (night) but the feature has not been tried on a device.
@@ -34,7 +34,7 @@ Updated 13 Nov 2026, end of session (compiles, mostly not tried on a device; `[x
 - [x] Status toast hides after 20 seconds; swipe threshold lowered
 - [x] Dark Windows title bar that follows the app colours (needs a PC rebuild to see)
 - [x] Windows icon with all sizes (needs a PC rebuild and an icon cache refresh)
-- [ ] Backup does not include the new `bg_*` and `standby_*` prefs
+- [x] Backup carries the `bg_*` and `standby_*` prefs as layout (`bg_image` stays per device); needs the new test run
 
 ### Playback
 - [x] Android (Media3) and desktop (bundled libvlc, no VLC install needed)
@@ -51,12 +51,13 @@ Updated 13 Nov 2026, end of session (compiles, mostly not tried on a device; `[x
 ### Desktop
 - [x] Spotify-style player: now playing view, full-screen synced lyrics, mini always-on-top window,
       device picker (this PC only), keyboard shortcuts overlay (compiles, not tried)
-- [~] Sidebar (corner radii not found in code, width yes): glass option, selection style, corner radii and width in Settings > Navigation bar (compiles, not tried)
+- [x] Sidebar: corner radius slider (`nav_radius`) and width (`sidebar_width`) are in `UiPrefs.kt` and Settings > Navigation bar (found in the 13 Nov audit; glass option and selection style not re-checked) (compiles, not tried)
 - [x] Sidebar Tools group (Sort General, Duplicates, Song info left)
-- [~] Mute button restores the previous volume (no mute-restore code found on re-check)
+- [x] Mute button restores the previous volume (`DesktopShell.kt` remembers `lastVolume`; found in the 13 Nov audit)
 - [x] Settings back arrow goes back one page, leaves Settings only from a top-level page
 - [x] Media keys (`WindowsMedia.kt`)
-- [ ] Tray toggle for the mini player, queue drag-reorder; the bar lyrics button still opens the old dialog
+- [x] Tray menu has a Mini player item (`TrayMenu.kt`); the bar lyrics button no longer opens the old dialog (see the 13 Nov update below)
+- [ ] Queue drag-reorder (rows only have the move / play next / remove menu; no drag code)
 
 ### Telegram and library
 - [x] Bot login, credentials, channels, main chat, TDLib on Android and desktop
@@ -125,7 +126,7 @@ Updated 13 Nov 2026, end of session (compiles, mostly not tried on a device; `[x
 - [x] Home mixes cached so Home opens faster
 
 ### Song list, rows, search and playlist toolbar redesign (12 Nov, edited, compiles not tried)
-- [ ] Slim song rows (badges never wrap, one format badge plus status icon, size only when wide), flat opaque sticky Play/Shuffle/Sort bar, slim search field with clear, grouped search results, playlist top bar with overflow menu
+- [x] Slim song rows (one format chip plus status icon, size only when wide, `maxLines = 1`), slim search field with clear (`PillField`), grouped search results (Songs, Albums, Artists headers), playlist top bar overflow menu: all found in the code on 13 Nov (compiles, not tried). The flat opaque sticky Play/Shuffle/Sort bar was not re-checked
 
 ### Profile and navigation (12 Nov, compiles; debug build not yet on the phone)
 - [x] Profile sections collapse with a chevron and always start collapsed (state not saved)
@@ -174,7 +175,7 @@ Updated 13 Nov 2026, end of session (compiles, mostly not tried on a device; `[x
 - [x] **Spotify login:** the in-progress login (state, PKCE verifier, redirect) is saved so a return link after
       Android ended the app finishes it (edited, compiles, not tried); the Spotify page does not refresh by itself after a late finish
 - [x] **Loudness normalising:** Listening setting. Android limiter (Android 9+), desktop VLC `normvol` (compiles, not tried)
-- [~] **LAN sync:** core, Connection page and Network play are written (see Devices); queue and now-playing sharing between own devices is still a stub
+- [~] **LAN sync:** core, Connection page and Network play are written (see Devices). Queue messages are sent (`sendQueue`) and received (`LanMessage` type `queue`), but `AppServices.bindLan` only acts on `control` (play, pause, next, previous) and sends now-playing, so queue and now-playing sharing between own devices is still not used
 
 ### Needs keys or has known gaps
 - [~] **Metadata:** Last.fm, Discogs, Spotify, Genius not used (they need keys)
@@ -189,7 +190,7 @@ Updated 13 Nov 2026, end of session (compiles, mostly not tried on a device; `[x
 ## 3. Not started
 
 ### Fix first
-- [ ] Android crash after the merge (error text is in Settings > Telegram > Activity log)
+- [ ] Android crash after the merge (error text is in Settings > Telegram > Activity log). The 16:29 crash was the volume poller and is fixed. The older TDLib "Receive must not be called simultaneously" aborts most likely came from a restore starting a second receive loop while the old one still ran; that is fixed in `AppServices.shutdown` (13 Nov audit, R1, not tried on a device; other causes are not ruled out)
 - [ ] Check everything on the phone: login, QR, indexing, copying, refresh, cloud restore, uploads,
       lyrics run, duplicates delete
 
@@ -228,7 +229,7 @@ Updated 13 Nov 2026, end of session (compiles, mostly not tried on a device; `[x
 - [ ] Windows now playing overlay and lock screen controls (needs WinRT media session; `WindowsMedia.kt` has media keys only)
 - [ ] Phone: Settings entry in the side menu (asked; the phone has no side menu, decide where it goes)
 - [ ] Check the first-run tour on a fresh install: restore choice, Skip, bot connect failing, swipe past the locked bot page
-- [ ] Repair library: read embedded tags from cached files, run lyrics after lookups, retry bot-posted songs it cannot see
+- [~] Repair library: embedded tags are applied when a song's download finishes (`AppServices.kt`, `EmbeddedTagFiller`), but Repair does not walk files already cached. Still to do: run lyrics after lookups, retry bot-posted songs it cannot see
 - [ ] Cover search for compilations (e.g. "00s Mixtape") still weak; Deezer and iTunes do not list them
 - [ ] Activity log: keep lines across restarts, add warning level, log more sources (playback, sound, sync, covers) like the Flutter app
 
@@ -249,6 +250,8 @@ Updated 13 Nov 2026, end of session (compiles, mostly not tried on a device; `[x
 
 - [x] Kotlin tests: backup (writer round trip too), database, TDLib client, audio info, index, selection,
       auto sync, QR, user session, playback controller, streaming, scanner, covers
+- [x] Kotlin tests that exist but were not listed here (25 files: 23 in `core`, 2 in `player`, none in `ui`, `androidApp` or `desktopApp`): LAN crypto, LAN sync, pairing and address book, library merge, netplay core and loopback, album split, genre, JVM player engine, stream HTTP server, TDLib JSON smoke. Tests do not run in CI at the moment (see 6e)
+      auto sync, QR, user session, playback controller, streaming, scanner, covers
 - [ ] Dart tests with no Kotlin version yet: album_art, cover, cover_colors, duplicates_view, equalizer,
       glass_style, home_mix, later_stamp, listen_recorder, listen_stats, listenbrainz, logic, loudness,
       main_chat, migration, missing_export, mood, neighbours, playlist_import, setup, spotify, sync, taste,
@@ -264,7 +267,7 @@ Updated 13 Nov 2026, end of session (compiles, mostly not tried on a device; `[x
 - [~] Desktop: native Explorer-style dialogs for open, save and folder (compiles, not tried), frameless mini player, adaptive player bar, song menu, cover-gradient now playing
 - [~] Cover colours and sharper covers
 - [x] Settings: merged Appearance page, All parts incl. sidebar, bold transport icons
-- [ ] Android: one AppServices per process (sync port, crash), notification icon
+- [x] Android: one AppServices per process (`MainActivity.shared`; found in the 13 Nov audit). Notification icon not checked. A restore from Settings now shuts the services down properly first (R1, fixed, not tried on a device)
 - [ ] Background fill of info and lyrics
 - [~] Playlists: From Telegram, starred channels; duplicates covers
 - [x] Installer asks to delete data on uninstall
@@ -363,3 +366,94 @@ Updated 13 Nov 2026, end of session (compiles, mostly not tried on a device; `[x
 - [x] Format badge reads "FLAC" or "FLAC Hi-Res" instead of "FLAC Lossless"
 - [x] Change cover starts with title and artist like Find metadata (album text found nothing); cover search no longer asks Deezer and iTunes twice
 - [ ] Try on the phone: tap near the progress bar and times, long titles beside the star, the Tune menu, Change cover search. Deezer returned empty results from the PC, so covers may come from iTunes only
+
+---
+
+## 6. Code audit, 13 Nov 2026
+
+Method: file inventory of every module, then a search of the code for each "not done" and "half done" line, a
+sample of the `[x]` lines, and a search for code that no line mentions. Nothing was run on a device. "In the
+code" means the code exists, not that it works.
+
+### 6a. Not in the code at all (every search came back empty)
+- [ ] Auto filing (new songs go to the right topic by themselves). The filing code (`filing/TopicMover`, `TopicSort`, `Topics`) only runs from the Sort General page
+- [ ] Backup to a Telegram topic with a schedule (no schedule or topic backup code; `BackupExport.kt` only writes the zip)
+- [ ] Neighbours view in Discover, and any other use of `recs/Suggestions.kt` (nothing calls it)
+- [ ] Remote playback and PC offload; Spotify style active device handoff (`sendQueue` and the `queue` message exist, nothing uses them)
+- [ ] Log out of all devices; session export and import
+- [ ] Queue drag-reorder
+- [ ] Windows now playing overlay and lock screen controls (`WindowsMedia.kt` has media keys only)
+- [ ] Standby auto-start while charging (the standby code reads the battery level only)
+- [ ] Embedded lyrics tag; pick the lyrics source order; per-song "wrong lyrics" button
+- [ ] Lyrics and metadata run progress on the Home scan chip (progress shows in Tasks)
+- [ ] In-app update from GitHub Releases; the app downloading TDLib
+- [ ] Android folder picker for music folders (no `OpenDocumentTree`) and any folder watcher
+- [ ] Camera QR scan for Network play (the page says so) and the `paperplay://netplay` manifest intent filter (the manifest only has `paperplay://spotify`)
+- [ ] macOS packaging (`VlcLoader.kt` knows macOS library paths; there is no macOS target)
+- [ ] Activity log kept across restarts and a warning level
+- [ ] Desktop battery and notification permissions
+
+### 6b. Partly in the code
+- [~] LAN queue and now-playing sharing: transport exists, `AppServices.bindLan` ignores `queue`
+- [~] Repair library reading embedded tags: applied after a download, not over cached files
+- [~] Secrets: Android Keystore and Windows DPAPI protect them; on Linux and macOS `DesktopSecretStore` writes plain files
+- [~] Extra bots all start at launch (no lazy start); libvlc is created at startup
+- [~] Sort order is remembered for song lists and each playlist only, not for the albums, artists and playlists tabs
+- [~] Netplay: join by pasted link or PIN works in code; no camera, no intent filter
+- [~] Dart tests ported: only some (sync merge, LAN, netplay, album split, genre); the list in section 4 is mostly still open
+
+### 6c. In the code but missing from this list
+- [x] Work splitting between linked devices (`sync/WorkOwner.kt`: which device does song info, covers, lyrics and mood scans for a song). **Written but nothing calls it**
+- [x] Library merge rules for synced libraries (`sync/LibraryMerge.kt`: the newest change to a song wins, plays take the larger count, deleted playlists and removed playlist items are remembered; has tests)
+- [x] Automatic refresh of imported Spotify playlists (`integrations/PlaylistAutoSync.kt`, wired in `AppServices`, has a test)
+- [x] Albums that share a name split by artist (`library/AlbumSplit.kt`, used by `CoreBackend`, has a test)
+- [x] Crash capture: an uncaught exception is written to `crash.txt` and shown in the Activity log on the next start (`MainActivity.kt`)
+- [x] Android Keystore secret store (`core/.../AndroidSecretStore.kt`) and Windows DPAPI store (`DesktopSecretStore.kt`)
+- [x] Desktop loopback stream server for libvlc with range support (`player/.../StreamHttpServer.kt`, has a test)
+- [x] Home shelves (`recs/HomeShelves.kt`: rows of albums and artists, each cover used once on the page)
+- [x] CI (14 Nov): the workflow builds the Android debug and release APKs (signed with the repository keystore secrets `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`) and the Windows and Linux desktop apps on `main` and `beta`, 30 minute timeout per job. The tests and the GitHub Release job are switched off with `if: false`
+
+### 6d. Dead or empty code (written, never used)
+Removed on 13 Nov: `account/Stubs.kt` (`NoAccount`, `NoIndex`) and the empty `library/Placeholder.kt`.
+- `desktopApp/.../AppTitleBar.kt`: the custom title bar that was reverted; nothing calls it
+- `core/.../recs/Suggestions.kt`: written, never called
+- `core/.../sync/WorkOwner.kt`: written, never called
+
+### 6e. Build and CI to do
+- [ ] Find the test that hangs `:core:jvmTest` on CI (one run ran 6 hours, run 31 ran 53 minutes), then put the tests back in the workflow
+- [x] Windows CI job failed every time at the "Get libvlc" step: it now downloads with `curl --fail` from download.videolan.org and unzips with 7-Zip; the TDLib step no longer fails when the `deps` release is missing (14 Nov). The installers then built (`PaperPlay-1.2.0.exe` and `.msi`) but "Collect files" failed: `packageDistributionForCurrentOS` does not create the unpacked `main\app\PaperPlay` folder the zip step reads, only `createDistributable` does. The build step now runs both
+- [~] Linux and Windows jobs are back on; the release-publishing job is still off (remove the leading `false &&` from its condition)
+- [x] README now says Gradle runs on a JDK 25 daemon it downloads on first use. A machine that cannot reach the download (or the Google Maven repository for the Android plugin) cannot build
+- [ ] The new tests have never been run: `backgroundAndStandbyFollowTheLayoutChoice` (backup prefs), `oldWrongTriesDoNotAddUpToALockout` and `aSuccessClearsTheOverallCount` (pairing)
+
+### 6f. Bugs found in the audit
+Fixed and pushed to `beta` (compiled by CI except where noted):
+- [x] Keep-running setting was read once, so turning it off was undone by the next scan or upload
+- [x] Pairing lockout counters never decayed or reset on success (15 old typos locked pairing for 5 minutes)
+- [x] Shared audio import updated its list without an atomic update; crash handler was wrapped again on every activity
+- [x] Manifest lacked `FOREGROUND_SERVICE` and `POST_NOTIFICATIONS` (confirm a notification shows on Android 13 and later)
+- [x] Release-group cache in `MetadataEnricher` was an unlocked `HashMap` used by two workers
+- [x] Backup: `bg_*` and `standby_*` prefs now follow the "apply layout" choice; `bg_image` stays per device
+- [x] `StreamHttpServer.parseRange` threw on huge numbers (desktop source, not compiled by CI)
+- [x] Desktop Spotify login could stall on an idle connection; reads now time out after 5 s (desktop source, not compiled by CI)
+- [x] R1 Restore while connected: `AppServices.shutdown()` stops LAN sync (keeping the `lan_on` choice), netplay, playback, the main and extra bots and the account, waits for TDLib's receive loop (`TdRuntime.stop()`), then closes the database; `App.kt` calls it behind a spinner before the restore screen, and Android never reuses services that were shut down. Not tried on a device
+- [x] R2 Upload retries now wait: a failed job carries a retry time that every worker honours, so Telegram's flood wait is respected (the Uploads page already shows "Retrying, attempt N")
+- [x] R3 "Listened" time now adds up normal forward playback steps; a seek no longer counts as listening (`PlaybackController`)
+- [x] R4 Deleting a song with no main chat set now fails with a clear message instead of removing it only locally (`DeleteQueue.deleteSong`)
+
+Open:
+- [ ] R5 Many empty `catch` blocks, for example in `JavaNetplay.kt` (the poll loop swallows every `tick` failure). They need a logger passed in (netplay has none, only a notice flow); not changed without one
+- Not a bug (R6): the local stream server cutting a response short when a read comes back empty ends the connection, and the player sees the short body; nothing to fix
+
+## Update 2026-11-14 (device toast, player sheet, motion; compiles in CI, not tried on a device)
+- [x] Device toast: "Connecting to X" is shown once per device per run. `JavaLanSync.autoConnect` dials an offline paired device every 20 seconds and the old toast appeared each time (`Shell.kt`). "Connected to X" still shows on every real link
+- [x] Full player is a slide-up sheet (`PlayerSheet.kt`): it follows your finger when you drag the cover down, settles open or closed with the fling speed, and shrinks with Android's back swipe (cancel puts it back). It moves with `graphicsLayer`, so it does not recompose per frame. The mini player fades as it rises; the queue and song views crossfade
+- [x] Pages slide and fade (`PageTransitions.kt`): going deeper (detail page, Tasks, Settings page) slides in over the old page, going back reverses it, switching tabs fades through. On the phone page area, the desktop page card and the Settings pages
+- [x] Song list and queue rows glide when they move (`animateItem`); a cover that loads late fades in over the mosaic; the nav pill uses the shared spring; the dead constant scale animation is gone
+- [x] Desktop motion (14 Nov, compiles, not tried): the sidebar glides open and closed (`animatedWidth`, runs in the layout phase so `Shell` does not recompose), sidebar items and song rows ease their selected colour and lighten under the mouse pointer, the now playing panel expands and collapses from the right edge, the keyboard shortcuts overlay fades, the tray menu fades in and rises a few pixels. The page transitions, player sheet, list gliding and cover fade apply on the desktop too (they live in shared code)
+- [x] Motion tokens (`theme/Motion.kt`) and a Settings > Style > Reduce motion switch (pref `reduce_motion`, per device, carried as layout in backups); everything above becomes instant with it on
+- [ ] Try on the phone: drag the player down slowly, fling it, drag half way and release, back swipe and cancel, open it from the notification and the mini player quickly, rotate while it is open, switch the four tabs, open an album and go back, walk through Settings pages, scroll long lists with the glass nav on and off, reduce motion on
+- [ ] Not done: press-scale on the mini player and nav items, `animateItem` on the library grids and search groups, a "moving" flag to drop blur while the sheet moves (add it only if the drag stutters on glass)
+- [ ] The signed debug APK from CI failed to install on the phone with INSTALL_FAILED_NO_MATCHING_ABIS although the phone reports `arm64-v8a` and the bundled `libtdjson.so` is a valid AArch64 library. Cause unknown; waiting for the list of `lib/` folders inside the APK (`unzip -l`)
+- [ ] The Windows and Linux builds have no TDLib (no `deps` release with `tdlib-windows.zip`), so those apps cannot reach Telegram yet
+

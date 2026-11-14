@@ -94,6 +94,7 @@ class MetadataEnricher(
 
     private class Dz(val match: ExternalMatch, val albumId: Long?)
     private val groups = HashMap<String, String?>()
+    private val groupMutex = Mutex() // several workers look releases up at once
 
     private val _running = MutableStateFlow(false)
 
@@ -507,11 +508,11 @@ class MetadataEnricher(
     }
 
     private suspend fun releaseGroup(releaseId: String): String? {
-        if (groups.containsKey(releaseId)) return groups[releaseId]
+        groupMutex.withLock { if (groups.containsKey(releaseId)) return groups[releaseId] }
         val res = mbGet(httpsUrl("musicbrainz.org", "/ws/2/release/$releaseId", mapOf("inc" to "release-groups", "fmt" to "json")))
         if (res.status != 200) return null
         val root = parse(res) ?: return null
-        return releaseGroupOf(root).also { groups[releaseId] = it }
+        return releaseGroupOf(root).also { group -> groupMutex.withLock { groups[releaseId] = group } }
     }
 
     private fun parse(res: HttpResponse): JsonObject? =

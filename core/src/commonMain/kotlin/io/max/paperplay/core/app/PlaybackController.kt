@@ -28,6 +28,9 @@ private const val SESSION_QUEUE = "session_queue"
 private const val SESSION_INDEX = "session_index"
 private const val SESSION_POS = "session_pos"
 
+/** The largest step between two position updates that is playing; a bigger forward jump is a seek, not listening. */
+private const val MAX_LISTEN_STEP_MS = 5_000L
+
 /** What the player UI shows. [index] is into [queue], which is in play order (shuffled when [shuffle]). */
 data class NowPlaying(
     val song: Song? = null,
@@ -131,8 +134,11 @@ class PlaybackController(
             }
         }
         scope.launch {
+            var lastPos = 0L
             engine.positionMs.collect { pos ->
-                listenedMs = maxOf(listenedMs, pos)
+                val step = pos - lastPos
+                if (step in 1..MAX_LISTEN_STEP_MS) listenedMs += step
+                lastPos = pos
                 if (engine.state.value != PlayerState.Playing) return@collect
                 val idx = engine.currentIndex.value
                 val cur = meta.value.queue.getOrNull(idx) ?: return@collect

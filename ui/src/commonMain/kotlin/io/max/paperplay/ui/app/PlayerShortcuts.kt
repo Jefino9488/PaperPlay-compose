@@ -96,9 +96,14 @@ private val shortcutList = listOf(
 /** The shortcut list, shown over the window while [PlayerKeys.help] is on. */
 @Composable
 fun ShortcutsOverlay(keys: PlayerKeys, modifier: Modifier = Modifier) {
-    if (!keys.help) return
-    Box(modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.5f)).clickable { keys.help = false }, contentAlignment = Alignment.Center) {
-        ShortcutsCard()
+    androidx.compose.animation.AnimatedVisibility(
+        keys.help,
+        enter = androidx.compose.animation.fadeIn(io.max.paperplay.ui.theme.motionTween(io.max.paperplay.ui.theme.Motion.FAST)),
+        exit = androidx.compose.animation.fadeOut(io.max.paperplay.ui.theme.motionTween(io.max.paperplay.ui.theme.Motion.FAST)),
+    ) {
+        Box(modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.5f)).clickable { keys.help = false }, contentAlignment = Alignment.Center) {
+            ShortcutsCard()
+        }
     }
 }
 

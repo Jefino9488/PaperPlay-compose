@@ -93,9 +93,25 @@ fun SettingsHost(
     stack: MutableList<String>, prefs: UiPrefs, conn: ConnectionUi, songCount: Int, backend: CoreBackend,
     onRestore: () -> Unit, onExit: () -> Unit, bottomPadding: Dp, modifier: Modifier = Modifier, deep: Boolean = false,
 ) {
-    val page = stack.lastOrNull()
+    val reduceMotion = io.max.paperplay.ui.theme.LocalReduceMotion.current
+    // A page opened from the list slides in; going back slides out. The page leaving keeps drawing itself.
+    androidx.compose.animation.AnimatedContent(
+        targetState = stack.lastOrNull() to stack.size,
+        modifier = modifier,
+        transitionSpec = { pageTransition(navMove(initialState.second, targetState.second), reduceMotion) },
+        label = "settings",
+    ) { (page, _) ->
+        SettingsScreen(page, stack, prefs, conn, songCount, backend, onRestore, onExit, bottomPadding, deep)
+    }
+}
+
+@Composable
+private fun SettingsScreen(
+    page: String?, stack: MutableList<String>, prefs: UiPrefs, conn: ConnectionUi, songCount: Int, backend: CoreBackend,
+    onRestore: () -> Unit, onExit: () -> Unit, bottomPadding: Dp, deep: Boolean,
+) {
     val title = categories.firstOrNull { it.id == page }?.title ?: settingsPageTitle(page) ?: "Settings"
-    Column(modifier) {
+    Column(Modifier.fillMaxSize()) {
         BackTopBar(title, onBack = { if (stack.isEmpty() || (deep && stack.size <= 1)) onExit() else stack.removeAt(stack.lastIndex) }) {
             val loggedIn by backend.account.loggedIn.collectAsState()
             if (page == "channels" && loggedIn) IconButton({ stack.add("index") }) { AppIcon(Icons.Rounded.Forum, "Your chats and channels") }
@@ -174,6 +190,7 @@ internal fun SettingsPage(
             ChoiceRow(IconSet.entries, prefs.iconSet, { it.label }, prefs::putIconSet)
             Text("Applies to the app on Android and desktop. Only the icons used by PaperPlay are included.", Modifier.padding(horizontal = 20.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             SwitchRow("True black", prefs.amoled, prefs::putAmoled, Icons.Rounded.DarkMode, "Pure black surfaces on dark, easier on OLED screens")
+            SwitchRow("Reduce motion", prefs.reduceMotion, prefs::putReduceMotion, null, "Screens and the player switch instantly instead of sliding and fading")
             SectionLabel("Accent")
             androidx.compose.foundation.layout.FlowRow(Modifier.padding(horizontal = 16.dp)) {
                 if (isPhone) {

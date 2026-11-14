@@ -78,12 +78,12 @@ class StreamHttpServer : AutoCloseable {
             val start: Long
             val end: Long
             if (a.isEmpty()) {
-                val n = b.toLong().coerceAtMost(size)
+                val n = (b.toLongOrNull() ?: return null).coerceAtMost(size)
                 start = size - n
                 end = size - 1
             } else {
-                start = a.toLong()
-                end = if (b.isEmpty()) size - 1 else minOf(b.toLong(), size - 1)
+                start = a.toLongOrNull() ?: return null
+                end = if (b.isEmpty()) size - 1 else minOf(b.toLongOrNull() ?: return null, size - 1)
             }
             return if (start >= size || start > end) null else start to end
         }

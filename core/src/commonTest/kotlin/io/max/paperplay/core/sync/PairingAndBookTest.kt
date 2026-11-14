@@ -56,6 +56,22 @@ class PairingAndBookTest {
         assertEquals(CodeAttempt.Locked, g.attempt("new") { true })
     }
 
+    @Test fun oldWrongTriesDoNotAddUpToALockout() {
+        val g = guard()
+        repeat(4) { g.attempt("a") { false } }
+        now += 6 * 60_000 // past the lock window: the four typos are forgotten
+        assertEquals(CodeAttempt.Wrong, g.attempt("a") { false })
+        assertFalse(g.isLocked("a"))
+    }
+
+    @Test fun aSuccessClearsTheOverallCount() {
+        val g = guard()
+        repeat(14) { i -> g.attempt("s$i") { false } }
+        val pin = g.newPin()
+        assertEquals(CodeAttempt.Ok, g.attempt("friend") { it == pin.code })
+        repeat(14) { i -> assertEquals(CodeAttempt.Wrong, g.attempt("t$i") { false }) } // 28 wrong in all, never locked
+    }
+
     private fun book(store: Array<String?> = arrayOf(null)) = AddressBook({ store[0] }, { store[0] = it }, { now })
 
     @Test fun addressBookOrdersNewestSeenFirstAndPersists() {

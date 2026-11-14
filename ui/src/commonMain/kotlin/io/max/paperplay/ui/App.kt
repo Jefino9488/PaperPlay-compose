@@ -12,6 +12,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
@@ -19,6 +20,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import io.max.paperplay.core.app.AppServices
 import io.max.paperplay.ui.app.CoreBackend
@@ -91,6 +93,8 @@ fun App(env: AppEnv) {
 
 @Composable
 private fun Main(env: AppEnv, firstRun: Boolean, onTourDone: () -> Unit, onRestore: () -> Unit) {
+    var closing by remember { mutableStateOf(false) }
+    val closeScope = rememberCoroutineScope()
     // The database, services and backend are built off the UI thread; a blank themed screen shows meanwhile.
     val built by produceState<CoreBackend?>(null) {
         value = withContext(Dispatchers.Default) {
@@ -99,7 +103,7 @@ private fun Main(env: AppEnv, firstRun: Boolean, onTourDone: () -> Unit, onResto
         env.mark("services ready")
     }
     val backend = built
-    if (backend == null) {
+    if (backend == null || closing) {
         Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background), contentAlignment = Alignment.Center) {
             CircularProgressIndicator(Modifier.size(28.dp), strokeWidth = 3.dp)
         }
@@ -118,9 +122,13 @@ private fun Main(env: AppEnv, firstRun: Boolean, onTourDone: () -> Unit, onResto
         ThemeMode.System -> androidx.compose.foundation.isSystemInDarkTheme()
     }
     val restore = {
-        // The library file must be closed before a restore replaces it.
-        backend.services.close()
-        onRestore()
+        // Everything holding the library file, a socket or TDLib must stop before a restore replaces the library.
+        closing = true
+        closeScope.launch {
+            backend.services.shutdown()
+            onRestore()
+        }
+        Unit
     }
     // Only the cover path is read here, so position ticks do not recompose the theme.
     val pb = backend.playback.collectAsState()
@@ -129,7 +137,7 @@ private fun Main(env: AppEnv, firstRun: Boolean, onTourDone: () -> Unit, onResto
     val coverAccent = prefs.accent == "cover" || (prefs.accent == "dynamic" && !isPhone)
     val seed = if (coverAccent) io.max.paperplay.ui.app.CoverSeeds.seed(coverUri) else prefs.seed
     PaperPlayTheme(dark = dark, seed = seed, dynamic = prefs.accent == "dynamic", amoled = prefs.amoled) {
-        androidx.compose.runtime.CompositionLocalProvider(io.max.paperplay.ui.app.LocalUiPrefs provides prefs) {
+        androidx.compose.runtime.CompositionLocalProvider(io.max.paperplay.ui.app.LocalUiPrefs provides prefs, io.max.paperplay.ui.theme.LocalReduceMotion provides prefs.reduceMotion) {
             if (firstRun) {
                 io.max.paperplay.ui.app.WindowTint(MaterialTheme.colorScheme.background)
                 Onboarding(prefs, revisit = false, backend = backend, setPref = backend::setPref) { choice ->

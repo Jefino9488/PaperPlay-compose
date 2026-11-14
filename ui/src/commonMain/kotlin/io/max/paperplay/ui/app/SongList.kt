@@ -1,5 +1,6 @@
 ﻿package io.max.paperplay.ui.app
 
+import io.max.paperplay.ui.theme.motionItem
 import io.max.paperplay.ui.components.AppIcon
 
 import androidx.compose.foundation.background
@@ -282,7 +283,7 @@ fun SongList(
                     selected = song.id in picked,
                     coverUriOverride = songCoverUri,
                     actions = if (picked.active) null else rowActions,
-                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 6.dp),
+                    modifier = motionItem().padding(start = 16.dp, end = 16.dp, bottom = 6.dp),
                 )
             }
         }

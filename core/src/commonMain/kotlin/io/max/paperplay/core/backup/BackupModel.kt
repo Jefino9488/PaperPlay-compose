@@ -2,17 +2,30 @@ package io.max.paperplay.core.backup
 
 import app.cash.sqldelight.db.SqlDriver
 
+/** Background settings. `bg_image` is a file path on this device, so it is kept per device and never part of the layout. */
+private val backgroundPrefs = listOf(
+    "bg_mode", "bg_grad_c1", "bg_grad_c2", "bg_grad_c3", "bg_grad_angle", "bg_grad_cover", "bg_blur", "bg_dim",
+    "bg_anim", "bg_anim_c1", "bg_anim_c2", "bg_anim_speed", "bg_anim_density",
+)
+
+/** Standby settings; one `standby_w_*` key per widget (see `StandbyWidget`). */
+private val standbyPrefs = listOf(
+    "standby_style", "standby_color", "standby_custom", "standby_24h", "standby_clock_size", "standby_dim", "standby_shift",
+    "standby_w_clock", "standby_w_song", "standby_w_cover", "standby_w_progress", "standby_w_controls",
+    "standby_w_battery", "standby_w_next", "standby_w_lyrics", "standby_w_weather",
+)
+
 /**
  * App layout and settings a backup carries (Flutter `layoutPrefs`). Applied only when
  * [RestoreOptions.applyLayout] is set; nothing outside this list is ever applied from `layout`.
  */
 val layoutPrefs = listOf(
     "theme_mode", "theme_amoled", "theme_accent", "cover_gradient", "now_playing_panel", "floating_nav",
-    "nav_radius", "nav_style", "glass_style", "profile_name", "sort_songs", "sort_reverse", "sort_playlist",
+    "nav_radius", "nav_style", "glass_style", "reduce_motion", "profile_name", "sort_songs", "sort_reverse", "sort_playlist",
     "norm_mode", "norm_preamp", "eq_on", "eq_gains", "rate_filing", "rate_uploads", "rate_reading",
     "rate_lookups", "rate_covers", "rate_accountCopy", "upload_slower", "upload_parallel", "upload_ask",
     "upload_skip_known", "keep_running", "listenbrainz_on", "weather_city", "weather_lat", "weather_lon",
-)
+) + backgroundPrefs + standbyPrefs
 
 /** Prefs tied to one device (Flutter `AppDb.devicePrefs`): kept from this device, never taken from a backup. */
 val devicePrefs = listOf(
@@ -21,10 +34,10 @@ val devicePrefs = listOf(
     "rate_lookups", "rate_covers", "rate_accountCopy", "lan_addresses", "lan_discovery", "theme_mode",
     "theme_amoled", "theme_accent", "now_playing_panel", "audio_device", "weather_city", "weather_lat",
     "weather_lon", "spotify_client_id", "upload_slower", "upload_parallel", "uploaded_files", "upload_skip_known",
-    "topics_read", "floating_nav", "nav_radius", "nav_style", "glass_style", "profile_name", "profile_photo",
+    "topics_read", "floating_nav", "nav_radius", "nav_style", "glass_style", "reduce_motion", "profile_name", "profile_photo",
     "profile_name_at", "profile_photo_at", "file_here", "file_existing", "upload_ask", "keep_running", "export_lists", "lan_paired", "lan_name", "lan_port", "lan_on",
-    "lan_require_pairing", "lan_token_mode",
-)
+    "lan_require_pairing", "lan_token_mode", "bg_image",
+) + backgroundPrefs + standbyPrefs
 
 /** One file in the backup zip, read once, in zip order. */
 interface BackupEntry {
