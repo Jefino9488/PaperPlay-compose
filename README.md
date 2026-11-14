@@ -222,6 +222,27 @@ module and use the Split or Design view.
 You provide your own Telegram API ID, API hash, and bot token. PaperPlay does
 not upload this configuration to another service.
 
+## TDLib for the Windows build in CI
+
+The Windows job downloads TDLib from a GitHub release tagged `deps` that holds one asset, `tdlib-windows.zip`. Without it the
+app builds but cannot reach Telegram. The zip must hold the DLLs **at its root** (no folder inside): `tdjson.dll` and every
+DLL it needs (for example the OpenSSL and zlib ones). The build copies only top-level `*.dll` files.
+
+On the PC that has your TDLib build (the folder `PAPERPLAY_TDLIB` points at, by default
+`D:\Git forks\Teleplayer\windows\third_party\tdlib`), in PowerShell:
+
+```powershell
+$dlls = "D:\Git forks\Teleplayer\windows\third_party\tdlib\*.dll"
+Compress-Archive -Path $dlls -DestinationPath "$env:TEMP\tdlib-windows.zip" -Force
+gh release create deps "$env:TEMP\tdlib-windows.zip" --repo maxcodl/PaperPlay-compose --target beta `
+  --title "deps" --notes "TDLib for the Windows build. Not an app release." --prerelease
+```
+
+To replace it later: `gh release upload deps "$env:TEMP\tdlib-windows.zip" --clobber --repo maxcodl/PaperPlay-compose`.
+Without the `gh` command: GitHub > Releases > Draft a new release, create the tag `deps`, tick "Set as a pre-release",
+attach the zip, publish. Then push to `beta` (or re-run the latest run); the "Get TDLib for Windows" step then finds it and
+the log no longer warns.
+
 ## Known limitations
 
 - **Other bots' posts**: a bot cannot see songs another bot posted as itself in a group (channels are fine). Repair can
